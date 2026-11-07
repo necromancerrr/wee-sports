@@ -1,3 +1,4 @@
+import {SportSwitcher} from '../components/SportSwitcher.jsx';
 /**
  * Placeholder TV lobby. Functional only: the TV display owner restyles and
  * owns this page. It exists to prove the join works end to end — code, QR,
@@ -181,7 +182,7 @@ export default function HostStub() {
     <main className="stub host-lobby">
       <div className="session-heading"><p className="eyebrow">TV lobby</p><ThemeToggle /></div>
       <h1>{sportName(lobby.sport)} lobby</h1>
-      <p className="stub__muted">{lobby.sport === 'bowling' ? 'One to four players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
+      <p className="stub__muted">{lobby.sport === 'table-tennis' ? 'One player, one phone. Practise returns or play a scored game against the bot.' : lobby.sport === 'bowling' ? 'One to four players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
       {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your session.</p> : null}
       {url ? <>
         <p className="stub__muted">Scan with your phone camera to join and calibrate.</p>
@@ -231,6 +232,8 @@ export default function HostStub() {
         </p>
       ) : null}
 
+      {lobby.recovery?.ownerRequired ? <p className="alert">Continuing a saved solo game. Sign in to the same profile on your phone, then join this room.</p> : null}
+      <SportSwitcher lobby={lobby} disabled={reconnecting} />
       <TvCountdown lobby={lobby} onTick={audio.onCountdown} />
 
       <div className="stub__actions">

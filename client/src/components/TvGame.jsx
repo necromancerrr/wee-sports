@@ -52,7 +52,7 @@ export function TvGame({ lobby, paused, onClose, error, immersive = true, fullsc
         </div>
       </header>
       {error ? <p className="game-session__error" role="alert">{error}</p> : null}
-      <PrototypeFrame code={lobby.code} players={lobby.players} paused={paused} sport={lobby.sport} gameId={lobby.gameId} gameState={lobby.gameState}
+      <PrototypeFrame code={lobby.code} players={lobby.players} paused={paused} sport={lobby.sport} gameId={lobby.gameId} gameState={lobby.gameState} generation={lobby.inputGeneration} hostEpoch={lobby.hostEpoch} matchRound={lobby.matchRound}
         onAudio={onAudio} manuallyPaused={lobby.manuallyPaused} onPauseToggle={pauseDisabled ? undefined : onPauseToggle}
         pauseMessage={lobby.reconnecting?.length ? `Waiting for ${lobby.reconnecting.map(member => member.name).join(', ')} to reconnect.`
           : lobby.setupPending?.length ? `Waiting for ${lobby.setupPending.join(', ')} to finish controller setup.`

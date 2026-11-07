@@ -7,6 +7,8 @@ import { BowlingIcon, GolfIcon, RacketIcon } from '../components/icons.jsx';
  * Icons and tints are placeholders until the asset pass.
  */
 const CATALOG = [
+  { id: 'table-tennis', name: 'Table Tennis', blurb: 'Find your rhythm with practice feeds, then challenge the bot.',
+    players: {min: 1, max: 1}, Icon: RacketIcon, tint: ['#dff7f8', '#9edadd'] },
   {
     id: 'tennis',
     name: 'Tennis',

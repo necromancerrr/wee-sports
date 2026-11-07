@@ -15,8 +15,8 @@ for (const name of ['player', 'racket']) {
   console.log(`Verified ${name}.glb (${bytes.length} bytes)`);
 }
 
-for (const page of ['index', 'game', 'controller', 'bowling']) {
+for (const page of ['index', 'game', 'controller', 'bowling', 'table-tennis', 'table-tennis-controller']) {
   const html = readFileSync(resolve(buildDir, `${page}.html`), 'utf8');
   if (!html.includes('type="module"')) throw new Error(`Missing built entry point: ${page}`);
 }
-console.log('Verified all four built pages');
+console.log('Verified all six built pages');

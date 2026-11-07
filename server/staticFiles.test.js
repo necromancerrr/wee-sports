@@ -9,7 +9,7 @@ import { createStaticHandler } from './staticFiles.js';
 let root, handler;
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'wee-static-'));
-  for (const name of ['index', 'game', 'bowling', 'controller']) await writeFile(join(root, `${name}.html`), name);
+  for (const name of ['index', 'game', 'bowling', 'controller', 'table-tennis', 'table-tennis-controller']) await writeFile(join(root, `${name}.html`), name);
   await mkdir(join(root, 'assets'));
   await writeFile(join(root, 'assets', 'player.glb'), 'model');
   handler = await createStaticHandler(root);
@@ -30,8 +30,10 @@ async function request(url, method = 'GET') {
 }
 
 test('production routes host/join to the homepage and serves game/model files', async () => {
-  for (const path of ['/', '/host/ABCD', '/join?code=ABCD']) expect((await request(path)).body).toBe('index');
+  for (const path of ['/', '/host/ABCD', '/join?code=ABCD', '/profile', '/profile/']) expect((await request(path)).body).toBe('index');
   expect((await request('/controller.html?room=lobby-ABCD')).body).toBe('controller');
+  expect((await request('/table-tennis.html')).body).toBe('table-tennis');
+  expect((await request('/table-tennis-controller.html')).body).toBe('table-tennis-controller');
   const model = await request('/assets/player.glb');
   expect(model.body).toBe('model');
   expect(model.headers['content-type']).toBe('model/gltf-binary');

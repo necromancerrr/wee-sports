@@ -1,3 +1,4 @@
+import {createProfileService} from './profiles/service.js';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createGameServer } from './src/app.js';
@@ -31,7 +32,9 @@ const phoneLink = { origin: publicOrigin, status: process.env.PHONE_LINK_MANAGED
 if (process.env.PHONE_LINK_MANAGED === '1') process.on('message', message => {
   if (message?.type === 'phone-link-status' && ['ready', 'connecting', 'reconnecting', 'unavailable'].includes(message.status)) phoneLink.status = message.status;
 });
-const app = createGameServer({ origins, requestHandler: phoneLinkHandler(() => phoneLink, pages) });
+let profiles;
+try {profiles = createProfileService();} catch {console.warn('Profiles unavailable: check WEE_PROFILE_DB permissions. Guest play is available.');}
+const app = createGameServer({ profiles, origins, requestHandler: phoneLinkHandler(() => phoneLink, pages) });
 const relay = attachRelay(app.http);
 app.http.listen(port, '0.0.0.0', () => {
   const listeningPort = app.http.address().port;
@@ -45,6 +48,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
   for (const client of relay.clients) client.terminate();
   await new Promise(resolve => relay.close(resolve));
   await app.close();
+  profiles?.close();
   if (vite && !builtPreview) await vite.close();
   process.exit(0);
 });

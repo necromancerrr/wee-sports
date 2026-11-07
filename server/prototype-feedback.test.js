@@ -39,6 +39,8 @@ function mount(overrides = {}) {
   cleanups = effects.map(({ effect }) => effect());
   const receive = (data, envelope = {}) => listener({ data, source: contentWindow, origin: window.location.origin, ...envelope });
   receive({ type: 'wee:bridge-ready' });
+  // Recovery is part of mounting a modern host; individual bridge assertions start after that handshake.
+  h.request.mockClear();
   const rerender = changes => {
     props = { ...props, ...changes };
     h.refIndex = 0; h.reuseRefs = true; h.effects = [];
@@ -225,7 +227,7 @@ test('tennis input crosses only the current playing frame and uses the unbuffere
   await f.receive({type: 'wee:player-swing', event: {...event, gameId: 'old'}});
   expect(h.requestSwing).not.toHaveBeenCalled();
   await f.receive({type: 'wee:player-swing', event});
-  expect(h.requestSwing).toHaveBeenCalledExactlyOnceWith(EVENTS.PLAYER_SWING, event, expect.any(Function));
+  expect(h.requestSwing).toHaveBeenCalledExactlyOnceWith(EVENTS.PLAYER_SWING, {...event, generation: 0, hostEpoch: 1}, expect.any(Function));
   expect(f.contentWindow.postMessage).toHaveBeenLastCalledWith({type: 'wee:swing-ack', gameId: 'match-a', result: {ok: true, id: 'swing-a'}}, window.location.origin);
   f.rerender({playing: false});
   await f.receive({type: 'wee:player-swing', event});
@@ -277,4 +279,35 @@ test('pause shortcut uses the trusted current game and can request resume while 
   expect(onPauseToggle).toHaveBeenCalledOnce();
   f.rerender({playing: true, controller: true}); await f.receive(message);
   expect(onPauseToggle).toHaveBeenCalledOnce();
+});
+
+
+test('a host cannot save or accept a roll before its recovery read completes', async () => {
+  let recover;
+  h.request.mockImplementationOnce(() => new Promise(resolve => {recover = resolve;}));
+  const f = mount({sport:'bowling'});
+  await f.receive({type:'wee:game-checkpoint',gameId:'match-a',sport:'bowling',payload:{version:1}});
+  expect(h.request).not.toHaveBeenCalled();
+  const ack = vi.fn();
+  h.socketHandlers.get(EVENTS.GAME_ROLL)({type:'roll',id:'early',gameId:'match-a',aim:0,spin:0,power:.5},ack);
+  expect(ack).toHaveBeenCalledWith({ok:false,error:'game-loading'});
+  recover({ok:false,error:'disconnected'});
+  await Promise.resolve(); await Promise.resolve();
+  await f.receive({type:'wee:game-checkpoint',gameId:'match-a',sport:'bowling',payload:{version:1}});
+  expect(h.request).not.toHaveBeenCalled();
+  expect(f.contentWindow.postMessage.mock.calls.some(([message]) => message.type === 'wee:checkpoint-request')).toBe(false);
+});
+
+test('same-game epoch changes invalidate asynchronous tennis delivery', async () => {
+  const f = mount({controller:true,generation:7,hostEpoch:2});
+  let finish;
+  h.requestSwing.mockImplementationOnce(() => new Promise(resolve => {finish=resolve;}));
+  const event = {type:'swing',id:'old-epoch',gameId:'match-a',label:'Forehand',hand:'Right'};
+  const pending = f.receive({type:'wee:player-swing',event});
+  const current = h.requestSwing.mock.calls[0][2];
+  f.rerender({generation:8,hostEpoch:3});
+  expect(current()).toBe(false);
+  f.contentWindow.postMessage.mockClear();
+  finish({ok:true}); await pending;
+  expect(f.contentWindow.postMessage).not.toHaveBeenCalled();
 });

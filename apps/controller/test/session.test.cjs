@@ -1,0 +1,105 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+
+async function fixture() {
+  const { ControllerSession } = await import('../src/session.js');
+  const { EVENTS } = await import('../../../shared/protocol.js');
+  class Socket extends EventEmitter {
+    connected = true;
+    sendBuffer = [];
+    io = { engine: { transport: { writable: true } } };
+    sent = [];
+    responses = new Map();
+    volatile = { emit: (event, payload) => this.sent.push({ event, payload, volatile: true }) };
+    timeout() { return { emit: (event, payload, ack) => { this.sent.push({ event, payload }); const response = this.responses.get(event); ack(response === 'timeout' ? new Error('timeout') : null, response === 'timeout' ? undefined : response || { ok: true }); } }; }
+    connect() { this.connected = true; super.emit('connect'); }
+    disconnect() { this.connected = false; super.emit('disconnect'); }
+  }
+  const socket = new Socket();
+  const feedback = [];
+  let now = 1000;
+  const session = new ControllerSession('https://game.example', { makeSocket: () => socket, now: () => now, feedback: event => feedback.push(event) });
+  session.seat = { code: 'K7PM', slot: 0, phase: 'game', gameId: 'game-a', inputGeneration: 3, hostEpoch: 2, sport: 'table-tennis', paused: false };
+  return { session, socket, feedback, EVENTS, advance: ms => { now += ms; } };
+}
+
+test('only public HTTPS join links are accepted by the scanner', async () => {
+  const { parseRoomLink, serverOrigin } = await import('../src/session.js');
+  assert.deepEqual(parseRoomLink('https://game.example/join?code=K7PM'), { origin: 'https://game.example', code: 'K7PM' });
+  for (const link of ['http://game.example/join?code=K7PM', 'https://u:p@game.example/join?code=K7PM',
+    'https://game.example/host/K7PM', 'https://game.example/join?code=K7PM&token=private',
+    'https://game.example/join?code=K7PM&code=2222', 'https://game.example/join?code=K7PM#token',
+    'https://game.example/join?code=OOOO']) assert.throws(() => parseRoomLink(link));
+  assert.equal(serverOrigin('http://10.0.2.2:5173', true), 'http://10.0.2.2:5173');
+  assert.throws(() => serverOrigin('http://10.0.2.2:5173'));
+  assert.throws(() => serverOrigin('https://game.example/private'));
+});
+
+test('latest pose is bounded and stamped from the active session, never client identity', async () => {
+  const { session, socket, advance, EVENTS } = await fixture();
+  assert.equal(session.latest('pose', { gameId: 'spoof', seq: 900, orientation: [0, 0, 0, 1] }), true);
+  assert.equal(socket.sent[0].event, EVENTS.PLAYER_POSE);
+  assert.equal(socket.sent[0].payload.gameId, 'game-a');
+  assert.equal(socket.sent[0].payload.generation, 3);
+  assert.equal(socket.sent[0].payload.hostEpoch, 2);
+  assert.equal(socket.sent[0].payload.generation, 3);
+  assert.equal(socket.sent[0].payload.hostEpoch, 2);
+  assert.equal(socket.sent[0].payload.seq, 0);
+  assert.equal(socket.sent[0].volatile, true);
+  assert.equal(session.latest('pose', {}), false);
+  advance(34);
+  assert.equal(session.latest('pose', {}), true);
+  assert.equal(socket.sent[1].payload.seq, 1);
+  advance(34); socket.io.engine.transport.writable = false;
+  assert.equal(session.latest('pose', {}), false);
+  session.dispose();
+});
+
+test('backgrounding cancels buffered input and cannot emit gameplay while suspended', async () => {
+  const { session, socket, EVENTS } = await fixture();
+  socket.sendBuffer.push({ old: true });
+  session.background();
+  assert.deepEqual(socket.sendBuffer, []);
+  assert.equal(session.latest('pose', {}), false);
+  assert.deepEqual(await session.action(EVENTS.PLAYER_ROLL, { type: 'roll' }), { ok: false, error: 'not-playing' });
+  session.dispose();
+});
+
+test('timed out deliberate action has one stable id and is never automatically resent', async () => {
+  const { session, socket, EVENTS } = await fixture();
+  socket.responses.set(EVENTS.PLAYER_ROLL, 'timeout');
+  const response = await session.action(EVENTS.PLAYER_ROLL, { type: 'roll', aim: 0, power: .5, spin: 0 });
+  assert.equal(response.error, 'outcome-unknown');
+  assert.equal(socket.sent.length, 1);
+  assert.equal(socket.sent[0].payload.id, response.id);
+  assert.equal(socket.sent[0].payload.gameId, 'game-a');
+  assert.deepEqual(socket.sendBuffer, []);
+  session.dispose();
+});
+
+test('feedback is scoped to the live match/generation and deduplicated', async () => {
+  const { session, feedback } = await fixture();
+  const event = { id: 'hit-a', gameId: 'game-a', generation: 3, hostEpoch: 2 };
+  session.onFeedback({ ...event, generation: 2 });
+  session.onFeedback({ ...event, gameId: 'game-old' });
+  session.onFeedback(event); session.onFeedback(event);
+  assert.equal(feedback.length, 1);
+  session.background(); session.onFeedback({ ...event, id: 'hit-b' });
+  assert.equal(feedback.length, 1);
+  session.dispose();
+});
+
+test('resume revalidates setup instead of replaying pre-interruption input', async () => {
+  const { session, socket, EVENTS } = await fixture();
+  session.token = 'private-reconnect-token';
+  socket.responses.set(EVENTS.SESSION_RESUME, { ok: true, ...session.seat, inputGeneration: 4, token: session.token });
+  socket.sendBuffer.push({ old: true });
+  session.background(); session.foreground();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(session.seat.inputGeneration, 4);
+  assert.deepEqual(socket.sendBuffer, []);
+  assert.ok(socket.sent.some(item => item.event === EVENTS.PLAYER_SETUP && item.payload.setup === null));
+  assert.equal(socket.sent.filter(item => item.event === EVENTS.PLAYER_POSE).length, 0);
+  session.dispose();
+});

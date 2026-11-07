@@ -105,3 +105,5 @@
   .game-session__bar { min-height: 44px; padding-block: 2px; }
   .game-session button, .game-session summary { min-height: 36px; padding-block: 6px; }
 }
+
+.game-session .prototype-frame > .game-save-status { top: auto; bottom: 12px; left: auto; right: 12px; max-width: min(360px, calc(100% - 24px)); padding: 5px 10px; font-size: .75rem; color: #e9f4ec; }

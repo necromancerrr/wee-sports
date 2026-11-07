@@ -1,3 +1,4 @@
+import {getSport} from './sportRegistry.js';
 /**
  * The room protocol, shared by the server, the TV and the phones.
  *
@@ -7,6 +8,7 @@
 
 /** Bumped when a message shape changes incompatibly. */
 export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_MINOR = 1;
 
 /** A dropped connection keeps its seat for one minute. */
 export const RECONNECT_MS = 60_000;
@@ -23,7 +25,7 @@ export const CODE_LENGTH = 4;
 /** Largest supported party; tennis has two playing seats. */
 export const MAX_PLAYERS = 4;
 export function playerCapacity(sport) {
-  return sport === 'tennis' ? 2 : sport === 'bowling' ? MAX_PLAYERS : 0;
+  return getSport(sport)?.players.max ?? 0;
 }
 export const NAME_MAX = 12;
 
@@ -35,7 +37,7 @@ export const COUNTDOWN_SECONDS = 5;
 export const VOTE_SECONDS = 20;
 
 /** Sports a lobby can be opened for. Art and copy live in client/src/lib/sports.js. */
-export const OPEN_SPORTS = ['tennis', 'bowling'];
+export const OPEN_SPORTS = ['tennis', 'bowling', 'table-tennis'];
 
 export function isController(sport, slot) {
   return Number.isInteger(slot) && slot >= 0 && slot < playerCapacity(sport);
@@ -100,6 +102,17 @@ export const PHASES = {
 export const EVENTS = {
   /** TV -> server: open a lobby. Ack: { ok, ...snapshot }. */
   HOST_CREATE: 'host:create',
+  HOST_SWITCH_SPORT: 'host:switch-sport',
+  PLAYER_SWITCH_SPORT: 'player:switch-sport',
+  PLAYER_POSE: 'player:pose',
+  GAME_POSE: 'game:pose',
+  PLAYER_AIM: 'player:aim',
+  GAME_AIM: 'game:aim',
+  INPUT_STATUS: 'input:status',
+  PLAYER_ACTION_STATUS: 'player:action-status',
+  HOST_CHECKPOINT: 'host:checkpoint',
+  HOST_RECOVERY: 'host:recovery',
+  HOST_RESTORE: 'host:restore',
   SESSION_RESUME: 'session:resume',
   SESSION_AWAY: 'session:away',
   SESSION_REPLACED: 'session:replaced',
@@ -180,7 +193,15 @@ export function isGameCommand(event, sport) {
   if (!isRecord(event) || !isIdentifier(event.id) || !isIdentifier(event.gameId)) return false;
   let fields = ['id', 'gameId', 'action'];
   let valid = false;
-  if (sport === 'bowling') valid = event.action === 'new-match';
+  if (sport === 'bowling') valid = ['new-match', 'practice-start', 'practice-stop'].includes(event.action);
+  else if (sport === 'table-tennis') {
+    if (event.action === 'configure') {
+      fields.push('settings');
+      valid = isRecord(event.settings) && Object.keys(event.settings).length > 0 &&
+        Object.entries(event.settings).every(([key, value]) => key === 'assistance'
+          ? ['friendly', 'standard'].includes(value) : key === 'sensitivity' && Number.isFinite(value) && value >= .25 && value <= 2);
+    } else valid = ['new-match', 'practice-start', 'practice-stop', 'feed', 'recenter'].includes(event.action);
+  }
   else if (sport === 'tennis') {
     if (event.action === 'configure') {
       fields.push('settings');
@@ -199,7 +220,11 @@ export function isGameCommand(event, sport) {
 /** The host reports actual applied options; phones do not optimistically own simulation state. */
 export function isGameOptions(snapshot, sport) {
   if (!isRecord(snapshot) || !isIdentifier(snapshot.gameId) || snapshot.sport !== sport) return false;
-  if (sport === 'bowling') return true;
+  if (sport === 'bowling') return snapshot.practice === undefined || typeof snapshot.practice?.active === 'boolean';
+  if (sport === 'table-tennis') return isRecord(snapshot.settings) &&
+    ['friendly', 'standard'].includes(snapshot.settings.assistance) &&
+    Number.isFinite(snapshot.settings.sensitivity) && snapshot.settings.sensitivity >= .25 && snapshot.settings.sensitivity <= 2 &&
+    typeof snapshot.practice?.active === 'boolean';
   return sport === 'tennis' && isRecord(snapshot.settings) &&
     Object.entries(optionValidators).every(([key, validate]) => validate(snapshot.settings[key])) &&
     ['full', 'quick'].includes(snapshot.settings.format) &&
@@ -241,7 +266,7 @@ export function isStrokeResult(event) {
 }
 
 export function isGameSoundEvent(sport, event) {
-  const events = sport === 'tennis'
+  const events = sport === 'tennis' || sport === 'table-tennis'
     ? ['hit', 'bounce', 'serve', 'point', 'game', 'set', 'match', 'fault', 'let', 'start', 'stop']
     : sport === 'bowling' ? ['release', 'roll', 'roll-end', 'pin', 'gutter', 'strike', 'spare', 'result', 'match', 'start', 'stop'] : [];
   return events.includes(event);
@@ -259,11 +284,11 @@ export function isTennisHit(event) {
 }
 
 export function isGameHit(event, sport) {
-  return ['tennis', 'bowling'].includes(sport) &&
+  return OPEN_SPORTS.includes(sport) &&
     (event?.kind === undefined || event.kind === sport) &&
     typeof event?.id === 'string' && event.id.length > 0 && event.id.length <= 100 &&
     typeof event.gameId === 'string' && event.gameId.length > 0 && event.gameId.length <= 100 &&
-    Number.isInteger(event.player) && event.player >= 1 && event.player <= (sport === 'tennis' ? 2 : 4);
+    Number.isInteger(event.player) && event.player >= 1 && event.player <= playerCapacity(sport);
 }
 
 export const ERRORS = {
@@ -324,4 +349,31 @@ export function cleanName(value) {
     .replace(/\s+/g, ' ')
     .trim();
   return [...collapsed].slice(0, NAME_MAX).join('').trim();
+}
+
+/** Latest-state streams use server-issued epochs and SI angular velocity. */
+export function isInputEnvelope(event) {
+  return isRecord(event) && isIdentifier(event.gameId) &&
+    Number.isSafeInteger(event.generation) && event.generation >= 0 &&
+    Number.isSafeInteger(event.hostEpoch) && event.hostEpoch >= 1 &&
+    Number.isSafeInteger(event.seq) && event.seq >= 0;
+}
+export function isAim(event) {
+  return isInputEnvelope(event) && Number.isFinite(event.aim) && Math.abs(event.aim) <= 1 && typeof event.locked === 'boolean';
+}
+export function isPose(event) {
+  if (!isInputEnvelope(event) || !Array.isArray(event.orientation) || event.orientation.length !== 4 ||
+      !event.orientation.every(Number.isFinite)) return false;
+  const norm = Math.hypot(...event.orientation);
+  return norm >= .9 && norm <= 1.1 && isRecord(event.angularVelocity) &&
+    ['x', 'y', 'z'].every(axis => Number.isFinite(event.angularVelocity[axis]) && Math.abs(event.angularVelocity[axis]) <= 100) &&
+    Number.isSafeInteger(event.calibrationRevision) && event.calibrationRevision >= 0 &&
+    (event.reach === undefined || isRecord(event.reach) && ['x', 'y'].every(axis => Number.isFinite(event.reach[axis]) && Math.abs(event.reach[axis]) <= 1));
+}
+export function isTableTennisState(state) {
+  return isRecord(state) && ['ready', 'serve', 'rally', 'complete'].includes(state.phase) &&
+    Array.isArray(state.score) && state.score.length === 2 && state.score.every(n => Number.isInteger(n) && n >= 0 && n <= 10000) &&
+    [1, 2].includes(state.server) && typeof state.practice === 'boolean' &&
+    (state.phase === 'complete' ? [1, 2].includes(state.winner) : state.winner === null) &&
+    (state.pointId === undefined || isIdentifier(state.pointId));
 }

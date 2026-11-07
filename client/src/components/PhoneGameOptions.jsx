@@ -3,6 +3,7 @@ import { EVENTS, PHASES, isGameOptions } from '@wee/shared/protocol.js';
 import { request } from '../lib/socket.js';
 import { errorText } from '../lib/errors.js';
 import { createInputId } from '../../../src/network/inputId.js';
+import { sportName } from '../lib/sports.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
 
 /** Shared match changes belong to P1; appearance remains local to each phone. */
@@ -24,11 +25,12 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
   const available = options?.gameId === lobby.gameId && isGameOptions(options, lobby.sport);
   const playing = lobby.phase === PHASES.GAME;
   const tennis = lobby.sport === 'tennis';
+  const tableTennis = lobby.sport === 'table-tennis';
   const settings = options?.settings;
   const completed = playing && lobby.gameState?.phase === 'complete';
-  const winners = completed ? tennis ? [lobby.gameState.winner] : lobby.gameState.winners ?? [] : [];
+  const winners = completed ? tennis || tableTennis ? [lobby.gameState.winner] : lobby.gameState.winners ?? [] : [];
   const winnerNames = winners.map(player => lobby.players?.find(seat => seat.slot + 1 === player)?.name ??
-    (tennis && player === 2 ? 'Bot' : `Player ${player}`));
+    ((tennis || tableTennis) && player === 2 ? 'Bot' : `Player ${player}`));
   const resultTitle = winnerNames.length > 1 ? 'A shared victory!' : winnerNames.length ? `${winnerNames[0]} wins!` : 'Game complete';
   const locked = disabled || lobby.paused || !playing || !available || slot !== 0 || busy;
   // P1 can end the match from the countdown, the tutorial vote and the tutorial too.
@@ -100,7 +102,7 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
     <dialog ref={dialog} className={`phone-game-options${resultMode ? ' phone-game-options--result' : ''}`} data-sport={lobby.sport} aria-labelledby="phone-game-options-title"
       onClick={event => { if (event.target === event.currentTarget) dialog.current?.close(); }}>
       <div className="phone-game-options__content">
-        <header><div><p className="eyebrow">{lobby.sport === 'bowling' ? 'Bowling' : 'Tennis'} · {lobby.code}</p><h2 id="phone-game-options-title">{resultMode ? 'Match complete' : 'Game options'}</h2></div>
+        <header><div><p className="eyebrow">{sportName(lobby.sport)} · {lobby.code}</p><h2 id="phone-game-options-title">{resultMode ? 'Match complete' : 'Game options'}</h2></div>
           <button className="phone-options-close" type="button" aria-label={resultMode ? 'Close result' : 'Close game options'} onClick={() => dialog.current?.close()}>×</button></header>
         {resultMode ? <div className="phone-match-result">
           <div className="phone-match-result__medal" aria-hidden="true"><svg viewBox="0 0 48 48" width="52" height="52" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 7h18v12a9 9 0 0 1-18 0V7ZM15 10H8v5a8 8 0 0 0 8 8M33 10h7v5a8 8 0 0 1-8 8M24 28v10M16 41h16M19 38h10" /></svg></div>
@@ -142,13 +144,27 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
                       <label>Playing hand<select value={hand} onChange={event => setHand(event.target.value)}><option>Right</option><option>Left</option></select></label>
                       <button type="button" className="btn btn--secondary" onClick={() => command('practice-start', { stroke, hand })}>Start practice</button></>}
                 </details> : null}
-              </> : <p className="stub__muted">Ten frames. Strike and spare bonuses update as your next rolls finish.</p>}
-              <details className="phone-options-section"><summary>{tennis ? 'New match' : 'New bowling game'}</summary>
+              </> : tableTennis ? <>
+                <label>Playing assistance<select value={settings.assistance} onChange={event => configure('assistance', event.target.value)}>
+                  <option value="friendly">Friendly</option><option value="standard">Standard</option></select></label>
+                <label>Paddle sensitivity<input type="range" min="0.25" max="2" step="0.05" value={settings.sensitivity}
+                  onChange={event => configure('sensitivity', Number(event.target.value))} /></label>
+                <button type="button" className="btn btn--secondary" onClick={() => command(options.practice.active ? 'practice-stop' : 'practice-start')}>
+                  {options.practice.active ? 'Start a bot game' : 'Practice feeds (resets score)'}</button>
+                <button type="button" className="btn btn--secondary" onClick={() => command('feed')}>Serve / feed ball</button>
+                <button type="button" className="btn btn--ghost" onClick={() => command('recenter')}>Recenter paddle</button>
+              </> : <>
+                <p className="stub__muted">Ten frames. Strike and spare bonuses update as your next rolls finish.</p>
+                {lobby.players.length === 1 ? <button type="button" className="btn btn--secondary"
+                  onClick={() => command(options.practice?.active ? 'practice-stop' : 'practice-start')}>
+                  {options.practice?.active ? 'Start a new ten-frame game' : 'Practice rolls (resets score)'}</button> : null}
+              </>}
+              <details className="phone-options-section"><summary>{tennis || tableTennis ? 'New match' : 'New bowling game'}</summary>
                 {tennis ? <label>Match length<select value={format} onChange={event => { setFormat(event.target.value); setConfirmRestart(false); }}><option value="full">Full · best of 3 sets</option><option value="quick">Quick · tie-break to 7</option></select></label> : null}
                 <p className="stub__muted">This resets the current score for everyone.</p>
                 {confirmRestart ? <div className="phone-options-confirm"><button type="button" className="btn btn--primary" onClick={() => command('new-match', tennis ? { format } : {})}>Reset score and start</button>
                   <button type="button" className="btn btn--ghost" onClick={() => setConfirmRestart(false)}>Cancel</button></div>
-                  : <button type="button" className="btn btn--secondary" onClick={() => setConfirmRestart(true)}>{tennis ? 'Start new match' : 'Start new bowling game'}</button>}
+                  : <button type="button" className="btn btn--secondary" onClick={() => setConfirmRestart(true)}>{tennis || tableTennis ? 'Start new match' : 'Start new bowling game'}</button>}
               </details>
             </fieldset>
           </>}

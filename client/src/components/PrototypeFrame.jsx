@@ -1,15 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
-import { EVENTS, isRoll, isSwing, isGameHit, isTennisState, isBowlingState, isStrokeResult, isGameSoundEvent, isGameCommand, isGameOptions } from '@wee/shared/protocol.js';
+import { EVENTS, isRoll, isSwing, isGameHit, isTennisState, isBowlingState, isStrokeResult, isGameSoundEvent, isGameCommand, isGameOptions, isPose, isAim, isTableTennisState } from '@wee/shared/protocol.js';
 import { request, requestSwing, socket, useConnection } from '../lib/socket.js';
 import { createInputId } from '../../../src/network/inputId.js';
 
 const NO_PLAYERS = [];
 /** Keep the game/controller alive while the outer page owns the lobby session. */
-export function PrototypeFrame({ code, controller = false, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
+export function PrototypeFrame({ code, controller = false, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
   const frame = useRef(null);
   const ready = useRef(false);
   const pending = useRef(new Map());
   const pendingCommands = useRef(new Map());
+  const checkpointRevision = useRef(0);
+  const checkpointKey = useRef('');
+  const checkpointQueue = useRef(Promise.resolve());
+  const recovering = useRef(!controller);
+  const recoveryRequest = useRef(null);
+  const [saveStatus, setSaveStatus] = useState('');
+  const [profilePreferences, setProfilePreferences] = useState(null);
+  const stateKey = `${gameId}:${matchRound}`;
+  if (checkpointKey.current !== stateKey) {checkpointKey.current = stateKey; checkpointRevision.current = 0;}
+  useEffect(() => {
+    if (!controller) return;
+    let active = true;
+    fetch('/api/profile').then(response => response.ok ? response.json() : null).then(data => {
+      if (active && data?.profile?.preferences) setProfilePreferences(data.profile.preferences);
+    }).catch(() => {});
+    return () => {active = false;};
+  }, [controller]);
+  const currentControl = useRef('');
+  currentControl.current = `${gameId}:${generation}:${hostEpoch}`;
   const currentGame = useRef(gameId);
   const inputGeneration = useRef(0);
   currentGame.current = gameId;
@@ -21,18 +40,20 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
   const room = `lobby-${code}`;
   // A sport change is a bridge message, not a controller navigation: keep the
   // phone’s sensor permission and verified setup alive for the next game.
-  const src = `/${controller ? 'controller' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}`;
+  const src = `/${controller ? sport === 'table-tennis' ? 'table-tennis-controller' : 'controller' : sport === 'table-tennis' ? 'table-tennis' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}`;
   function publishState() {
     const post = message => frame.current?.contentWindow?.postMessage(message, window.location.origin);
-    post({ type: 'wee:lobby-state', paused: paused || connection !== 'online', manuallyPaused, connected: connection === 'online', players, playing, sport, gameId });
+    post({ type: 'wee:lobby-state', paused: paused || connection !== 'online' || (!controller && recovering.current), manuallyPaused, connected: connection === 'online', players, playing, sport, gameId, generation, inputGeneration: generation, hostEpoch });
+    if (controller && profilePreferences) post({type:'wee:profile-preferences',preferences:profilePreferences});
     if (controller && sport === 'bowling') post({ type: 'wee:bowling-state', ...gameState,
       canRoll: playing && !paused && connection === 'online' && gameState?.phase === 'ready' && gameState.currentPlayer === player });
+    if (controller && sport === 'table-tennis' && isTableTennisState(gameState)) post({type: 'wee:table-tennis-state', ...gameState, gameId});
     if (controller && sport === 'tennis' && isTennisState(gameState)) {
       post({ type: 'wee:tennis-state', ...gameState, gameId });
     }
   }
   useEffect(() => {
-    ready.current = false;
+    ready.current = false; recovering.current = !controller; recoveryRequest.current = null;
     setLoading(true); setFailed(false);
     const timer = setTimeout(() => { if (!ready.current) setFailed(true); }, 15000);
     return () => {
@@ -50,18 +71,65 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
   }, [src, attempt, gameId, paused, playing, connection]);
   useEffect(() => {
     const post = message => frame.current?.contentWindow?.postMessage(message, window.location.origin);
+    const recoverHost = async () => {
+      if (controller || !ready.current || !recovering.current || connection !== 'online') return;
+      if (sport === 'tennis') {recovering.current = false; publishState(); return;}
+          const control = currentControl.current;
+          if (recoveryRequest.current === control) return;
+          recoveryRequest.current = control;
+          const recovery = await request(EVENTS.HOST_RECOVERY, {gameId, hostEpoch});
+          if (currentControl.current !== control) return;
+          if (!recovery.ok) {setSaveStatus('Could not load saved progress. Reload the TV to retry.'); return;}
+          if (recovery.ok && recovery.checkpoint) {
+            checkpointRevision.current = recovery.checkpoint.revision;
+            setSaveStatus('Restoring the last settled roll or point…');
+            post({type:'wee:restore-checkpoint',gameId,payload:recovery.checkpoint.payload});
+          } else {
+            recovering.current = false; publishState();
+            setSaveStatus('Progress will save after a settled roll or point.');
+            post({type:'wee:checkpoint-request',gameId});
+          }
+    };
     const receive = async event => {
       if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return;
       const data = event.data;
       if (data?.type === 'wee:bridge-ready') {
+        const firstReady = !ready.current;
         ready.current = true; setLoading(false); setFailed(false); publishState();
+        if (!controller && firstReady) void recoverHost();
+      } else if (!controller && data?.type === 'wee:restore-checkpoint-result' && data.gameId === gameId) {
+        if (data.ok) {
+          recovering.current = false; publishState();
+          // A continued profile game has a new durable match identity. Commit
+          // its restored boundary even before the player takes another turn.
+          post({type:'wee:checkpoint-request',gameId});
+        }
+        setSaveStatus(data.ok ? 'Restored the last settled roll or point.' : 'Could not restore this checkpoint. Return to the lobby to start again.');
+      } else if (!controller && data?.type === 'wee:game-checkpoint' && data.gameId === gameId &&
+          ['bowling', 'table-tennis'].includes(sport) && !recovering.current) {
+        const key = checkpointKey.current;
+        const control = currentControl.current;
+        checkpointQueue.current = checkpointQueue.current.catch(() => {}).then(async () => {
+          if (key !== checkpointKey.current || control !== currentControl.current) return;
+          let result = await request(EVENTS.HOST_CHECKPOINT, {...data, generation, hostEpoch, expectedRevision:checkpointRevision.current});
+          if (key !== checkpointKey.current || control !== currentControl.current) return;
+          if (result.error === 'revision-conflict') {
+            setSaveStatus('Progress changed in another TV session. Reload to recover the saved game.'); return;
+          }
+          if (result.ok) checkpointRevision.current = result.revision;
+          setSaveStatus(result.ok && result.saved ? 'Progress saved.' : 'Progress is not saved to disk. Keep the TV open.');
+        });
+      } else if (controller && data?.type === 'wee:player-game-command' && isGameCommand(data.command, sport)) {
+        const result = !ready.current || !playing || paused || data.command.gameId !== gameId ? {ok:false,error:'not-playing'}
+          : await request(EVENTS.PLAYER_GAME_COMMAND, data.command);
+        post({type:'wee:game-command-result',gameId,id:data.command.id,result});
       } else if (!controller && data?.type === 'wee:pause-toggle' && ready.current && playing &&
           connection === 'online' && data.gameId === gameId) {
         onPauseToggle?.();
       } else if (!controller && data?.type === 'wee:game-options' && ready.current &&
           connection === 'online' && data.gameId === gameId && isGameOptions(data, sport)) {
         await request(EVENTS.HOST_GAME_OPTIONS, { gameId, sport,
-          ...(sport === 'tennis' ? { settings: data.settings, practice: data.practice, humanOpponent: data.humanOpponent } : {}) });
+          ...(sport === 'tennis' ? { settings: data.settings, practice: data.practice, humanOpponent: data.humanOpponent } : sport === 'table-tennis' ? {settings: data.settings, practice: data.practice} : data.practice ? {practice: data.practice} : {}) });
       } else if (!controller && data?.type === 'wee:game-command-result' && data.gameId === gameId &&
           typeof data.result?.ok === 'boolean') {
         const delivery = pendingCommands.current.get(data.id);
@@ -73,23 +141,37 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
         }
       } else if (controller && data?.type === 'wee:player-swing' && isSwing(data.event)) {
         const inputGame = data.event.gameId;
-        const generation = inputGeneration.current;
+        const inputToken = inputGeneration.current;
+        const control = currentControl.current;
         const result = !ready.current || !playing || sport !== 'tennis' || !gameId || inputGame !== gameId
           ? { ok: false, error: 'not-playing' }
           : paused || connection !== 'online' ? { ok: false, error: 'paused' }
-          : await requestSwing(EVENTS.PLAYER_SWING, data.event,
-            () => currentGame.current === inputGame && inputGeneration.current === generation);
+          : await requestSwing(EVENTS.PLAYER_SWING, {...data.event, generation, hostEpoch},
+            () => currentGame.current === inputGame && inputGeneration.current === inputToken && currentControl.current === control);
         // A late acknowledgement belongs to the old controller game, not its replacement.
-        if (currentGame.current === gameId) post({ type: 'wee:swing-ack', gameId: inputGame, result: { ...result, id: data.event.id } });
+        if (currentGame.current === gameId && currentControl.current === control) post({ type: 'wee:swing-ack', gameId: inputGame, result: { ...result, id: data.event.id } });
+      } else if (controller && ['wee:player-pose', 'wee:player-aim'].includes(data?.type)) {
+        if (!ready.current || !playing || paused || connection !== 'online' || !socket.connected) return;
+        const envelope = {...data.event, seq: data.event?.seq ?? data.event?.sequence, gameId, generation, hostEpoch};
+        if (data.type === 'wee:player-pose' && sport === 'table-tennis' && isPose(envelope)) socket.volatile.emit(EVENTS.PLAYER_POSE, envelope);
+        if (data.type === 'wee:player-aim' && sport === 'bowling' && isAim(envelope)) socket.volatile.emit(EVENTS.PLAYER_AIM, envelope);
       } else if (controller && data?.type === 'wee:player-roll' && isRoll(data.event)) {
+        const control = currentControl.current;
         const result = paused || connection !== 'online' ? { ok: false, error: 'paused' }
-          : await request(EVENTS.PLAYER_ROLL, data.event);
-        post({ type: 'wee:roll-ack', result });
+          : !ready.current || !playing || sport !== 'bowling' || data.event.gameId && data.event.gameId !== gameId ? {ok:false,error:'not-playing'}
+          : await request(EVENTS.PLAYER_ROLL, {...data.event, gameId, generation, hostEpoch});
+        if (['timeout', 'outcome-unknown'].includes(result.error)) {
+          const status = await request(EVENTS.PLAYER_ACTION_STATUS, {id: data.event.id, gameId});
+          if (status.ok && status.result) Object.assign(result, status.result);
+        }
+        if (currentControl.current === control) post({ type: 'wee:roll-ack', result: {...result,id:data.event.id} });
       } else if (!controller && sport === 'bowling' && data?.type === 'wee:bowling-state' &&
           data.gameId === gameId && isBowlingState(data)) {
         await request(EVENTS.HOST_GAME_STATE, { gameId, phase: data.phase, frame: data.frame, currentPlayer: data.currentPlayer,
           ...(data.phase === 'complete' && data.winners !== undefined
             ? { winners: [...data.winners], winnerScore: data.winnerScore } : {}) });
+      } else if (!controller && sport === 'table-tennis' && data?.type === 'wee:table-tennis-state' && data.gameId === gameId && isTableTennisState(data)) {
+        await request(EVENTS.HOST_GAME_STATE, {...data, gameId});
       } else if (!controller && sport === 'tennis' && data?.type === 'wee:tennis-state' &&
           data.gameId === gameId && isTennisState(data)) {
         await request(EVENTS.HOST_GAME_STATE, { gameId, phase: data.phase, server: data.server, winner: data.winner,
@@ -123,7 +205,8 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
       if (typeof ack === 'function') ack({ ok });
     };
     const roll = (event, ack = () => {}) => {
-      if (controller || !ready.current || paused || connection !== 'online' || event.gameId !== gameId || !isRoll(event)) {
+      if (controller || !ready.current || recovering.current || paused || connection !== 'online' || event.gameId !== gameId || !isRoll(event) ||
+          (event.generation !== undefined && (event.generation !== generation || event.hostEpoch !== hostEpoch))) {
         ack({ ok: false, error: 'game-loading' }); return;
       }
       const timer = setTimeout(() => { pending.current.delete(event.id); ack({ ok: false, error: 'game-loading' }); }, 1800);
@@ -132,7 +215,7 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
     };
     const command = (event, callback) => {
       const ack = typeof callback === 'function' ? callback : () => {};
-      if (controller || !ready.current || !playing || paused || connection !== 'online' ||
+      if (controller || !ready.current || recovering.current || !playing || paused || connection !== 'online' ||
           event?.gameId !== gameId || !isGameCommand(event, sport)) {
         ack({ ok: false, error: 'game-loading' }); return;
       }
@@ -142,6 +225,18 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
       }, 1800);
       pendingCommands.current.set(event.id, { ack, timer });
       post({ type: 'wee:game-command', command: event });
+    };
+    const pose = event => {
+      if (!controller && sport === 'table-tennis' && ready.current && !recovering.current && playing && !paused &&
+          event.gameId === gameId && event.generation === generation && event.hostEpoch === hostEpoch && isPose(event)) {
+        post({type: 'wee:table-tennis-pose', event});
+      }
+    };
+    const aim = event => {
+      if (!controller && sport === 'bowling' && ready.current && !recovering.current && playing && !paused &&
+          event.gameId === gameId && event.generation === generation && event.hostEpoch === hostEpoch && isAim(event)) {
+        post({type: 'wee:game-aim', event: {...event, sequence: event.seq, inputGeneration: event.generation}});
+      }
     };
     const hit = event => {
       if (controller && ready.current && playing && !paused &&
@@ -157,22 +252,24 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
       }
     };
     window.addEventListener('message', receive);
-    if (!controller) { socket.on(EVENTS.GAME_SWING, swing); socket.on(EVENTS.GAME_ROLL, roll); socket.on(EVENTS.GAME_COMMAND, command); }
+    if (!controller) { socket.on(EVENTS.GAME_SWING, swing); socket.on(EVENTS.GAME_ROLL, roll); socket.on(EVENTS.GAME_COMMAND, command); socket.on(EVENTS.GAME_POSE, pose); socket.on(EVENTS.GAME_AIM, aim); }
     else { socket.on(EVENTS.GAME_HIT, hit); socket.on(EVENTS.GAME_STROKE_RESULT, strokeResult); }
     publishState();
+    void recoverHost();
     return () => {
       window.removeEventListener('message', receive);
       socket.off(EVENTS.GAME_SWING, swing); socket.off(EVENTS.GAME_ROLL, roll);
-      socket.off(EVENTS.GAME_COMMAND, command);
+      socket.off(EVENTS.GAME_COMMAND, command); socket.off(EVENTS.GAME_POSE, pose); socket.off(EVENTS.GAME_AIM, aim);
       socket.off(EVENTS.GAME_HIT, hit);
       socket.off(EVENTS.GAME_STROKE_RESULT, strokeResult);
     };
-  }, [paused, manuallyPaused, connection, src, controller, attempt, players, playing, sport, gameId, gameState, player, onAudio, onPauseToggle]);
+  }, [paused, manuallyPaused, connection, src, controller, attempt, players, playing, sport, gameId, gameState, generation, hostEpoch, matchRound, profilePreferences, player, onAudio, onPauseToggle]);
   return (
     <div className={`prototype-frame ${controller ? 'prototype-frame--phone' : ''}`}>
       {loading ? <p role="status">{failed ? 'Taking too long to load.' : `Loading ${controller ? 'controller' : sport}…`}
         {failed ? <button type="button" className="btn btn--ghost" onClick={() => setAttempt(value => value + 1)}>Retry loading</button> : null}</p> : null}
-      <iframe key={attempt} ref={frame} src={src} title={`${sport === 'bowling' ? 'Bowling' : 'Tennis'} ${controller ? 'phone controller' : 'game'}`}
+      {!controller && saveStatus ? <p className="game-save-status" role="status">{saveStatus}</p> : null}
+      <iframe key={attempt} ref={frame} src={src} title={`${sport === 'bowling' ? 'Bowling' : sport === 'table-tennis' ? 'Table Tennis' : 'Tennis'} ${controller ? 'phone controller' : 'game'}`}
         style={controller ? { height } : undefined}
         allow={controller ? 'accelerometer; gyroscope; screen-wake-lock' : undefined} onLoad={publishState} />
       {showPause ? <div className="prototype-frame__pause" role="status">{pauseMessage || 'Match paused. Reconnect and finish controller setup to continue.'}</div> : null}

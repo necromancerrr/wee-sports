@@ -51,6 +51,42 @@ const tick = (ms = 20, rate = { alpha: 0.1, beta: -.1, gamma: .2 }, sensors = {}
   vi.advanceTimersByTime(ms);
 };
 
+test('trusted profile preferences provide initial UI defaults without granting sensor setup', async () => {
+  await import('../src/controller/main.js');
+  const profile = {type: 'wee:profile-preferences', preferences: {hand: 'Left', sensitivity: 1.5, haptics: false, touchControls: false}};
+  emit('message', {source: {}, origin: location.origin, data: profile});
+  expect(elements.get('hand').value).toBe('Right');
+  emit('message', {source: parent, origin: location.origin, data: profile});
+  expect(elements.get('hand').value).toBe('Left');
+  expect(elements.get('haptics').checked).toBe(false);
+  expect(elements.get('motion-sensitivity').value).toBe('1.5');
+  expect(permission).not.toHaveBeenCalled();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  expect(elements.get('setup-panel').hidden).toBe(false);
+});
+
+test('late profile preferences cannot replace an active chosen controller session', async () => {
+  await import('../src/controller/main.js');
+  elements.get('use-buttons').onclick();
+  emit('message', {source: parent, origin: location.origin, data: {type: 'wee:profile-preferences', preferences: {
+    hand: 'Left', sensitivity: 2, haptics: false, touchControls: false,
+  }}});
+  expect(elements.get('hand').value).toBe('Right');
+  expect(elements.get('haptics').checked).toBe(true);
+  expect(elements.get('motion-sensitivity').value).toBe('1');
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
+});
+
+test('initial touch preference selects a playable fallback without fabricating motion calibration', async () => {
+  await import('../src/controller/main.js');
+  emit('message', {source: parent, origin: location.origin, data: {type: 'wee:profile-preferences', preferences: {
+    touchControls: true,
+  }}});
+  expect(permission).not.toHaveBeenCalled();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
+  expect(elements.get('setup-status').textContent).toContain('Button');
+});
+
 test('phone diagnostics keep delivery and contact separate and ignore unrelated or replayed results', async () => {
   await import('../src/controller/main.js');
   state({ gameId: 'match-a' }); elements.get('use-buttons').onclick();
@@ -677,6 +713,32 @@ test('bowling tilt aims before arming, locks during delivery and sends measured 
   expect(Number(elements.get('motion-power').value)).toBe(rolls[0].event.power);
   expect(elements.get('motion-curve').textContent).toMatch(/^Right/);
   expect(elements.get('bowling-readout').hidden).toBe(false);
+});
+
+test('bowling live aim streams only on the active turn, announces aim lock, and preserves release aim', async () => {
+  location.search += '&sport=bowling';
+  await import('../src/controller/main.js');
+  await calibrate();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'bowl-one'});
+  const turn = currentPlayer => emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', canRoll: true, currentPlayer, phase: 'ready'}});
+  turn(2); tick();
+  expect(messages.filter(message => message.type === 'wee:player-aim')).toHaveLength(0);
+  turn(1);
+  elements.get('aim').value = '.35'; elements.get('aim').oninput();
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event).toMatchObject({aim: .35, locked: false});
+  elements.get('arm-roll').onclick();
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event).toMatchObject({aim: .35, locked: true});
+  elements.get('aim').value = '-.8'; // Even a stray UI mutation cannot steer an armed delivery.
+  for (let index = 0; index <= 60; index++) {
+    const pitch = index < 20 ? 500 * Math.sin(Math.PI * index / 20) : 0;
+    tick(20, {alpha: pitch + .1, beta: -.1, gamma: .2});
+  }
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
+  expect(messages.filter(message => message.type === 'wee:player-roll')[0].event.aim).toBe(.35);
+  const sent = messages.filter(message => message.type === 'wee:player-aim').length;
+  state({playing: true, paused: true, gameId: 'bowl-one'}); tick(300, null);
+  expect(messages.filter(message => message.type === 'wee:player-aim')).toHaveLength(sent);
 });
 
 test('losing usable gravity restores manual aim while gyro motion remains live', async () => {

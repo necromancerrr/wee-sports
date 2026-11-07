@@ -10,7 +10,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 /** Serve only the production bundle. No development server or tunnel required. */
 export async function createStaticHandler(directory) {
   const root = resolve(directory);
-  for (const page of ['index', 'game', 'bowling', 'controller']) {
+  for (const page of ['index', 'game', 'bowling', 'controller', 'table-tennis', 'table-tennis-controller']) {
     if (!(await stat(resolve(root, `${page}.html`))).isFile()) throw new Error(`Missing build: ${page}.html`);
   }
   return async (request, response) => {
@@ -28,7 +28,7 @@ export async function createStaticHandler(directory) {
         path.split('/').some(part => part === '..' || part.startsWith('.'))) {
       end(404, 'Not found'); return;
     }
-    const home = path === '/' || /^\/join\/?$/.test(path) || /^\/host\/[A-Z0-9]{4}\/?$/.test(path);
+    const home = path === '/' || /^\/(join|profile)\/?$/.test(path) || /^\/host\/[A-Z0-9]{4}\/?$/.test(path);
     const file = resolve(root, home ? 'index.html' : `.${path}`);
     if (!file.startsWith(`${root}${sep}`)) { end(404, 'Not found'); return; }
     try {

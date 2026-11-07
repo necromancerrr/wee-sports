@@ -1,9 +1,16 @@
 import * as THREE from 'three';
-import {BowlingMatch, BowlingPlayer, BowlingState} from './match';
-import {BALL_RADIUS, BowlingPhysics, LANE, PIN_COM, pinSpot, RollControls, RollSettlement, validRoll} from './physics';
+import {BowlingMatch, BowlingPlayer, BowlingState, BowlingMatchCheckpoint, BowlingResult} from './match';
+import {BALL_RADIUS, BowlingPhysics, LANE, PIN_COM, pinSpot, RollControls, RollSettlement, validRoll, SettledPin, validSettledPins} from './physics';
 
 export type {BowlingPlayer, BowlingState} from './match';
 export interface BowlingRoll extends RollControls {player: number}
+export interface BowlingCheckpoint {
+  version: 1;
+  boundary: 'settled';
+  match: BowlingMatchCheckpoint;
+  pins: SettledPin[];
+  settings: {aim: number; practice?: boolean};
+}
 export type BowlingSoundEvent = 'release' | 'roll' | 'roll-end' | 'pin' | 'gutter' | 'strike' | 'spare' | 'result' | 'match';
 
 /** A TV-owned scene. Phones only request deliveries; all pinfall is simulated here. */
@@ -35,6 +42,8 @@ export class BowlingWorld {
   private cameraPosition = new THREE.Vector3(0.1, 2.25, -4);
   private cameraTarget = new THREE.Vector3(0, 0.05, 7.8);
   private aim = 0;
+  private practice = false;
+  private practiceLastRoll: BowlingResult | null = null;
 
   constructor(private container: HTMLElement, players: BowlingPlayer[]) {
     this.players = players.map(player => ({...player}));
@@ -87,7 +96,51 @@ export class BowlingWorld {
     this.render();
   }
 
-  getState(): BowlingState { return this.match.getState(this.rolling); }
+  getState(): BowlingState {
+    const state = this.match.getState(this.rolling);
+    return this.practice ? {...state, practice: true, lastRoll: this.practiceLastRoll} : state;
+  }
+
+  setPractice(active: boolean): boolean {
+    if (this.rolling || this.disposed || (active && this.players.length !== 1)) return false;
+    this.practice = active;
+    this.practiceLastRoll = null;
+    this.reset();
+    return true;
+  }
+
+  exportCheckpoint(): BowlingCheckpoint | null {
+    if (this.rolling || this.settlement || this.disposed) return null;
+    const pins = this.physics.exportSettledPins(this.match.getState().pinsStanding);
+    if (!pins) return null;
+    return {version: 1, boundary: 'settled', match: this.match.exportCheckpoint(), pins,
+      settings: {aim: this.aim, ...(this.practice ? {practice: true} : {})}};
+  }
+
+  restoreCheckpoint(value: unknown): boolean {
+    if (this.rolling || this.settlement || this.disposed) return false;
+    const data = value as BowlingCheckpoint;
+    try {
+      if (!data || data.version !== 1 || data.boundary !== 'settled' || !Number.isFinite(data.settings?.aim) || Math.abs(data.settings.aim) > 1) return false;
+      if (data.settings.practice !== undefined && typeof data.settings.practice !== 'boolean') return false;
+      if (data.settings.practice && this.players.length !== 1) return false;
+      const match = BowlingMatch.fromCheckpoint(data.match);
+      const players = match.getState().players;
+      if (players.length !== this.players.length || players.some((player, index) => player.player !== this.players[index].player || player.name !== this.players[index].name)) return false;
+      const ids = match.getState().pinsStanding;
+      if (!validSettledPins(data.pins, ids)) return false;
+      if (!this.physics.restoreSettledPins(data.pins, ids)) return false;
+      this.match = match;
+      this.practice = data.settings.practice === true;
+      this.practiceLastRoll = null;
+      this.setAim(data.settings.aim);
+      this.aimLine.visible = !match.getState().complete;
+      this.trail.visible = false;
+      this.syncBodies(); this.render();
+      this.onState?.(this.getState());
+      return true;
+    } catch { return false; }
+  }
 
   start(): void {
     if (this.disposed || this.running) return;
@@ -126,15 +179,23 @@ export class BowlingWorld {
   }
 
   /** Optional TV preview; the phone's authenticated roll remains authoritative. */
-  setAim(aim: number): void {
-    if (!Number.isFinite(aim)) return;
+  setAim(aim: number, locked = false): void {
+    if (!Number.isFinite(aim) || this.rolling) return;
     this.aim = THREE.MathUtils.clamp(aim, -1, 1);
-    this.aimLine?.geometry.dispose();
     if (this.aimLine) {
-      this.aimLine.geometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0.012, 0.35), new THREE.Vector3(-Math.tan(this.aim * 0.06) * 7, 0.012, 7.35),
+      const points = this.aimLine.geometry.getAttribute('position');
+      const endX = -Math.tan(this.aim * 0.06) * 7;
+      if (points?.count === 2) {
+        points.setXYZ(1, endX, .012, 7.35);
+        points.needsUpdate = true;
+      } else this.aimLine.geometry.setFromPoints([
+        new THREE.Vector3(0, 0.012, 0.35), new THREE.Vector3(endX, 0.012, 7.35),
       ]);
+      this.aimLine.geometry.computeBoundingSphere();
       this.aimLine.computeLineDistances();
+      const material = this.aimLine.material as THREE.LineDashedMaterial;
+      material.color.set(locked ? 0xffcc66 : 0x91c77c);
+      material.opacity = locked ? 1 : .8;
     }
   }
 
@@ -142,6 +203,7 @@ export class BowlingWorld {
     this.endRollingSound();
     this.players = players.map(player => ({...player}));
     this.match = new BowlingMatch(players);
+    this.practiceLastRoll = null;
     this.physics.resetRack();
     this.rolling = false;
     this.settlement = null;
@@ -244,7 +306,11 @@ export class BowlingWorld {
       this.revealTime -= dt;
       if (this.revealTime <= 0) {
         const transition = this.match.record(this.settlement.remaining);
-        if (transition.resetRack) this.physics.resetRack();
+        if (this.practice) {
+          this.practiceLastRoll = transition.result;
+          this.match = new BowlingMatch(this.players);
+          this.physics.resetRack();
+        } else if (transition.resetRack) this.physics.resetRack();
         else if (!this.match.getState().complete) this.physics.sweep(this.settlement.remaining);
         this.settlement = null;
         this.rolling = false;

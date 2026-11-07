@@ -1,8 +1,24 @@
 # wee-sports
 
-A browser-based tennis game controlled by keyboard input or phone motion.
+A browser sports platform for a TV/laptop and a phone. Play Bowling, Table
+Tennis, or the existing Tennis game as a guest. Scan the room QR with your
+normal camera, choose motion or touch controls, and play; no account or app
+installation is required.
 
-## Controls
+## Games and controls
+
+- **Bowling:** one to four players, ten-frame scoring and solo practice. Aim on
+  the phone and watch the live TV indicator; arming a forward delivery freezes
+  aim. Button controls provide aim, power, curve and a deliberate roll.
+- **Table Tennis:** one player, repeatable practice feeds or a scored bot game
+  to 11 with a two-point lead. Use compact motion or the touch paddle. The
+  standalone diagnostic view also supports pointer/arrow movement, click/Space
+  to stroke, and P to pause. Friendly assistance helps reach; contact still
+  determines the ball's path.
+- **Tennis:** one player against a bot or two phone controllers. Existing
+  forehand/backhand motion and button controls remain available.
+
+Tennis keyboard controls:
 
 - **J/K** or **Phone Swing**: backhand/forehand swing 
 - **B / Shift+B**: feed a practice ball
@@ -12,11 +28,20 @@ A browser-based tennis game controlled by keyboard input or phone motion.
 
 ## Features
 
-- Phone and keyboard swing input
-- Racket contact and collision detection
-- Assisted player positioning
-- Optional Player 2 bot
-- Court-targeted shot trajectories
+- Browser guest pairing, readiness, shared pause and private reconnect tokens.
+- Same-room sport switching preserves player identities; changed motion grips
+  are checked again. Touch setup remains usable across sports.
+- Shared SI-unit motion adapters and capability negotiation; continuous
+  table-tennis pose and bowling aim are distinct from deliberate actions.
+- Optional [Expo controller](apps/controller/README.md) with scanner, native
+  sensors and haptics. Hardware acceptance is separate from browser delivery.
+- Optional profiles, preferences and casual match history backed by local
+  SQLite. Bowling and Table Tennis save settled roll/point boundaries; they
+  never promise exact mid-flight recovery.
+
+See the [trial runbook](docs/system-plan/README.md) and
+[acceptance evidence](docs/system-plan/acceptance.md) for what was checked and
+which physical-device trials remain open.
 
 ## Development
 
@@ -102,10 +127,40 @@ The TV can stay on `http://localhost:5173`; its QR will use that secure origin.
 
 ## Operational Use Case
 
-This prototype demonstrates a full end-to-end multiplayer web application:
-- **Host / Display (TV/Laptop):** Connects to the local Vite/Node server, renders the 3D court/lane using Three.js and Cannon-es physics running at 120Hz, and displays an auto-generated QR code for phone pairing.
-- **Controller (Smartphone):** Scanning the QR code opens the phone controller over a secure HTTPS tunnel. Reading device gyroscope/accelerometer motion data, it streams calibrated swing and roll inputs back to the host via WebSockets.
-- **Full Flow:** Players pair their phones, calibrate motion, select Tennis or Bowling, and play an active match with live motion detection, score tracking, and automated bot or 2-player support.
+The TV owns the simulation and renders the Three.js scene. Existing Tennis uses
+a 120 Hz step; Bowling retains cannon-es at 240 Hz; Table Tennis uses its own
+fixed-step ball/paddle simulation with swept contacts. The room service
+authenticates players and routes inputs; the phone cannot award itself a score.
+
+The normal phone-camera QR opens the browser controller. Motion permission and
+calibration are explicit, with touch controls when sensors are unavailable.
+Players can return to the lobby and choose another sport without recreating
+their identities. Profiles and the optional native client remain independent
+of this guest journey.
+
+## Optional profiles and saved games
+
+Open **Profile & history** to create a username/password profile or sign in.
+Preferences include hand, sensitivity, assistance, sound, haptics and accessible
+controls. Device calibration stays local. Password recovery is not implemented;
+guest play remains available without an account.
+
+The server uses Node 24's SQLite support and stores data in
+`.wee-data/profiles.sqlite` by default. Set `WEE_PROFILE_DB` to an appropriate
+persistent path for deployment. Protect and back up that data; an ephemeral
+container filesystem is not durable storage. No external identity provider or
+hosting service is provisioned by this repository. Use HTTPS for account access
+outside local development.
+
+The TV reports whether the latest stable boundary was saved. Reloading a live
+Bowling or Table Tennis host restores its available settled boundary. After a
+server restart, in-memory room codes expire; a signed-in solo participant can
+use **Continue a solo game** in Profile & history on a new TV to open an owned
+saved boundary, then join from a phone signed into the same profile. Interrupted
+rolls or points restart from the last saved state. The original boundary remains
+read-only and allows one continuation under a new game identity. Party-room archive recovery,
+exact mid-flight continuation and ranked result integrity are not supported.
+Existing Tennis does not yet have durable score recovery.
 
 ## Play with built assets
 

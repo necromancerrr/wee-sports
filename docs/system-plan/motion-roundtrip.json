@@ -1,0 +1,592 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-07T18:13:53.217Z",
+  "revision": "1410caf713e7e6c27c16ab18339246d805b22e60",
+  "runtime": "v24.22.1",
+  "detectorSources": [
+    {
+      "path": "src/controller/swingStream.js",
+      "sha256": "9b348e253d4e5ffcbf4fcd48844adcf419263d3a8ec961d6128bd2804f9832dd"
+    },
+    {
+      "path": "src/controller/classifySwing.js",
+      "sha256": "c647fdff1605c43fc738d0d53fafe990fdb557796a76e21572953ae505320ad9"
+    },
+    {
+      "path": "shared/motion.js",
+      "sha256": "b5208299b501397eab50e3c2e6c695fb4fa97fa8980881674d79a78b56d70630"
+    }
+  ],
+  "measurement": "Recorded peak to first online stream emission on the fixture clock; milliseconds.",
+  "limitation": "Five selected recordings, 19 expected strokes. No physical device, sensor delivery, network, rendering or haptic timing was measured. This is not a general accuracy benchmark.",
+  "summaries": [
+    {
+      "mode": "fast",
+      "count": 19,
+      "minMs": 67,
+      "medianMs": 84,
+      "p95Ms": 150,
+      "maxMs": 150
+    },
+    {
+      "mode": "completed",
+      "count": 19,
+      "minMs": 150,
+      "medianMs": 217,
+      "p95Ms": 317,
+      "maxMs": 317
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "two-forehands-one-backhand",
+      "hand": "Right",
+      "samples": 330,
+      "expectedLabels": [
+        "Forehand",
+        "Forehand",
+        "Backhand"
+      ],
+      "sha256": "4f4e1ef2b4f92b669445c71e95674ae00df05551a8cbcebeb3acfb63fec66847",
+      "gitBlobSha1": "aaee842102325773f78c2f4dfe9a4a6fc17cb128",
+      "modes": [
+        {
+          "mode": "fast",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Forehand",
+              "peakTimeMs": 1142,
+              "confirmedAtSampleMs": 1225,
+              "peakToConfirmationMs": 83,
+              "detectorWindowEndMs": 1225
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 2575,
+              "confirmedAtSampleMs": 2675,
+              "peakToConfirmationMs": 100,
+              "detectorWindowEndMs": 2675
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 4142,
+              "confirmedAtSampleMs": 4242,
+              "peakToConfirmationMs": 100,
+              "detectorWindowEndMs": 4242
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 330,
+            "strokes": 3,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 3,
+            "minMs": 83,
+            "medianMs": 100,
+            "p95Ms": 100,
+            "maxMs": 100
+          }
+        },
+        {
+          "mode": "completed",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Forehand",
+              "peakTimeMs": 1142,
+              "confirmedAtSampleMs": 1359,
+              "peakToConfirmationMs": 217,
+              "detectorWindowEndMs": 1359
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 2575,
+              "confirmedAtSampleMs": 2809,
+              "peakToConfirmationMs": 234,
+              "detectorWindowEndMs": 2809
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 4142,
+              "confirmedAtSampleMs": 4392,
+              "peakToConfirmationMs": 250,
+              "detectorWindowEndMs": 4392
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 330,
+            "strokes": 3,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 3,
+            "minMs": 217,
+            "medianMs": 234,
+            "p95Ms": 250,
+            "maxMs": 250
+          }
+        }
+      ]
+    },
+    {
+      "name": "four-backhands",
+      "hand": "Right",
+      "samples": 343,
+      "expectedLabels": [
+        "Backhand",
+        "Backhand",
+        "Backhand",
+        "Backhand"
+      ],
+      "sha256": "a01f20722f5e2d120f76d6ed8f8eb3588461a13b5a7c851a90810d9c4d175d55",
+      "gitBlobSha1": "0caf954eca2e32b6260618b455584dcfad52e161",
+      "modes": [
+        {
+          "mode": "fast",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Backhand",
+              "peakTimeMs": 1360,
+              "confirmedAtSampleMs": 1427,
+              "peakToConfirmationMs": 67,
+              "detectorWindowEndMs": 1427
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 2443,
+              "confirmedAtSampleMs": 2510,
+              "peakToConfirmationMs": 67,
+              "detectorWindowEndMs": 2510
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 3510,
+              "confirmedAtSampleMs": 3577,
+              "peakToConfirmationMs": 67,
+              "detectorWindowEndMs": 3577
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 4527,
+              "confirmedAtSampleMs": 4610,
+              "peakToConfirmationMs": 83,
+              "detectorWindowEndMs": 4610
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 343,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 67,
+            "medianMs": 67,
+            "p95Ms": 83,
+            "maxMs": 83
+          }
+        },
+        {
+          "mode": "completed",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Backhand",
+              "peakTimeMs": 1360,
+              "confirmedAtSampleMs": 1527,
+              "peakToConfirmationMs": 167,
+              "detectorWindowEndMs": 1527
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 2443,
+              "confirmedAtSampleMs": 2593,
+              "peakToConfirmationMs": 150,
+              "detectorWindowEndMs": 2593
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 3510,
+              "confirmedAtSampleMs": 3677,
+              "peakToConfirmationMs": 167,
+              "detectorWindowEndMs": 3677
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 4527,
+              "confirmedAtSampleMs": 4727,
+              "peakToConfirmationMs": 200,
+              "detectorWindowEndMs": 4727
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 343,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 150,
+            "medianMs": 167,
+            "p95Ms": 200,
+            "maxMs": 200
+          }
+        }
+      ]
+    },
+    {
+      "name": "left-mixed",
+      "hand": "Left",
+      "samples": 320,
+      "expectedLabels": [
+        "Forehand",
+        "Backhand",
+        "Forehand",
+        "Backhand"
+      ],
+      "sha256": "9c4e29ba2e4324c49ad47c63dbf9c47a5e26f4ecdb655a605aeb2e3e866c1e06",
+      "gitBlobSha1": "55400295b123ed1318dbe42c39d3467c2c71ebc1",
+      "modes": [
+        {
+          "mode": "fast",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Forehand",
+              "peakTimeMs": 1224,
+              "confirmedAtSampleMs": 1374,
+              "peakToConfirmationMs": 150,
+              "detectorWindowEndMs": 1374
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 2141,
+              "confirmedAtSampleMs": 2224,
+              "peakToConfirmationMs": 83,
+              "detectorWindowEndMs": 2224
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 3158,
+              "confirmedAtSampleMs": 3291,
+              "peakToConfirmationMs": 133,
+              "detectorWindowEndMs": 3291
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 4078,
+              "confirmedAtSampleMs": 4158,
+              "peakToConfirmationMs": 80,
+              "detectorWindowEndMs": 4158
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 320,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 4.547473508864641e-13,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 80,
+            "medianMs": 108,
+            "p95Ms": 150,
+            "maxMs": 150
+          }
+        },
+        {
+          "mode": "completed",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Forehand",
+              "peakTimeMs": 1224,
+              "confirmedAtSampleMs": 1508,
+              "peakToConfirmationMs": 284,
+              "detectorWindowEndMs": 1508
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 2141,
+              "confirmedAtSampleMs": 2324,
+              "peakToConfirmationMs": 183,
+              "detectorWindowEndMs": 2324
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 3158,
+              "confirmedAtSampleMs": 3441,
+              "peakToConfirmationMs": 283,
+              "detectorWindowEndMs": 3441
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 4078,
+              "confirmedAtSampleMs": 4260,
+              "peakToConfirmationMs": 182,
+              "detectorWindowEndMs": 4260
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 320,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 4.547473508864641e-13,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 182,
+            "medianMs": 233,
+            "p95Ms": 284,
+            "maxMs": 284
+          }
+        }
+      ]
+    },
+    {
+      "name": "left-four-backhands-new",
+      "hand": "Left",
+      "samples": 293,
+      "expectedLabels": [
+        "Backhand",
+        "Backhand",
+        "Backhand",
+        "Backhand"
+      ],
+      "sha256": "6748720c3fa3b23ae19dbcd5678e6792258e10efd4ebf8fb82a5df7f3df9c20d",
+      "gitBlobSha1": "f2acf7bfdbf9defe3df15a1764c1475cec5976f9",
+      "modes": [
+        {
+          "mode": "fast",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Backhand",
+              "peakTimeMs": 999,
+              "confirmedAtSampleMs": 1066,
+              "peakToConfirmationMs": 67,
+              "detectorWindowEndMs": 1066
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 1916,
+              "confirmedAtSampleMs": 2066,
+              "peakToConfirmationMs": 150,
+              "detectorWindowEndMs": 2066
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 2998,
+              "confirmedAtSampleMs": 3065,
+              "peakToConfirmationMs": 67,
+              "detectorWindowEndMs": 3065
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 3883,
+              "confirmedAtSampleMs": 3967,
+              "peakToConfirmationMs": 84,
+              "detectorWindowEndMs": 3967
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 293,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 67,
+            "medianMs": 75.5,
+            "p95Ms": 150,
+            "maxMs": 150
+          }
+        },
+        {
+          "mode": "completed",
+          "unknownCount": 0,
+          "actions": [
+            {
+              "label": "Backhand",
+              "peakTimeMs": 999,
+              "confirmedAtSampleMs": 1182,
+              "peakToConfirmationMs": 183,
+              "detectorWindowEndMs": 1182
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 1916,
+              "confirmedAtSampleMs": 2182,
+              "peakToConfirmationMs": 266,
+              "detectorWindowEndMs": 2182
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 2998,
+              "confirmedAtSampleMs": 3149,
+              "peakToConfirmationMs": 151,
+              "detectorWindowEndMs": 3149
+            },
+            {
+              "label": "Backhand",
+              "peakTimeMs": 3883,
+              "confirmedAtSampleMs": 4082,
+              "peakToConfirmationMs": 199,
+              "detectorWindowEndMs": 4082
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 293,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 151,
+            "medianMs": 191,
+            "p95Ms": 266,
+            "maxMs": 266
+          }
+        }
+      ]
+    },
+    {
+      "name": "left-four-forehands",
+      "hand": "Left",
+      "samples": 362,
+      "expectedLabels": [
+        "Forehand",
+        "Forehand",
+        "Forehand",
+        "Forehand"
+      ],
+      "sha256": "1292deb1c9062d1e4f79966217e2fcf5687cbd77d05b1ab5e47798d898a144a4",
+      "gitBlobSha1": "d7d2877375a8a16a98dd3b73d70cc1ac1bdaed1c",
+      "modes": [
+        {
+          "mode": "fast",
+          "unknownCount": 1,
+          "actions": [
+            {
+              "label": "Forehand",
+              "peakTimeMs": 1022,
+              "confirmedAtSampleMs": 1155,
+              "peakToConfirmationMs": 133,
+              "detectorWindowEndMs": 1155
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 2188,
+              "confirmedAtSampleMs": 2305,
+              "peakToConfirmationMs": 117,
+              "detectorWindowEndMs": 2305
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 3505,
+              "confirmedAtSampleMs": 3605,
+              "peakToConfirmationMs": 100,
+              "detectorWindowEndMs": 3605
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 4805,
+              "confirmedAtSampleMs": 4922,
+              "peakToConfirmationMs": 117,
+              "detectorWindowEndMs": 4922
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 362,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 100,
+            "medianMs": 117,
+            "p95Ms": 133,
+            "maxMs": 133
+          }
+        },
+        {
+          "mode": "completed",
+          "unknownCount": 1,
+          "actions": [
+            {
+              "label": "Forehand",
+              "peakTimeMs": 1022,
+              "confirmedAtSampleMs": 1288,
+              "peakToConfirmationMs": 266,
+              "detectorWindowEndMs": 1288
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 2188,
+              "confirmedAtSampleMs": 2505,
+              "peakToConfirmationMs": 317,
+              "detectorWindowEndMs": 2505
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 3505,
+              "confirmedAtSampleMs": 3789,
+              "peakToConfirmationMs": 284,
+              "detectorWindowEndMs": 3789
+            },
+            {
+              "label": "Forehand",
+              "peakTimeMs": 4805,
+              "confirmedAtSampleMs": 5072,
+              "peakToConfirmationMs": 267,
+              "detectorWindowEndMs": 5072
+            }
+          ],
+          "canonicalRoundTrip": {
+            "adapter": "shared/motion.js: browser degrees → SI radians → legacy degrees",
+            "samples": 362,
+            "strokes": 4,
+            "labelsMatch": true,
+            "maxPeakErrorMs": 0,
+            "maxConfirmationErrorMs": 0
+          },
+          "peakToConfirmation": {
+            "count": 4,
+            "minMs": 266,
+            "medianMs": 275.5,
+            "p95Ms": 317,
+            "maxMs": 317
+          }
+        }
+      ]
+    }
+  ]
+}

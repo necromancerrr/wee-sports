@@ -1,3 +1,4 @@
+import {createRoomPersistence} from '../profiles/roomPersistence.js';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { ERRORS, EVENTS } from '../../shared/protocol.js';
@@ -5,8 +6,14 @@ import { RoomStore } from './RoomStore.js';
 import { waitForSwingTransport } from '../../src/network/swingRequest.js';
 
 /** Importable server for tests. index.js owns the listening port. */
-export function createGameServer({ store = new RoomStore(), origins = [], tickMs = 250, requestHandler } = {}) {
-  const http = createServer((request, response) => {
+export function createGameServer({ store = new RoomStore(), origins = [], tickMs = 250, requestHandler, profiles } = {}) {
+  const persistence = profiles ? createRoomPersistence(profiles) : null;
+  const http = createServer(async (request, response) => {
+    if (profiles && await profiles.handle(request, response)) return;
+    if (!profiles && request.url?.startsWith('/api/profile')) {
+      response.writeHead(503, {'content-type':'application/json', 'cache-control':'no-store'});
+      response.end(JSON.stringify({error:'profile-storage-unavailable'})); return;
+    }
     if (request.url !== '/health' && requestHandler) return requestHandler(request, response);
     response.writeHead(request.url === '/health' ? 200 : 404, { 'content-type': 'text/plain' });
     response.end(request.url === '/health' ? 'ok' : 'Not found');
@@ -17,21 +24,41 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     pingTimeout: 5000,
     maxHttpBufferSize: 8192,
   });
+  const authenticateSocket = socket => {
+    try {
+    if (!profiles) return null;
+    if (typeof socket.handshake.auth?.profileToken === 'string') return profiles.store.authenticate(socket.handshake.auth.profileToken);
+    // WebSocket handshakes are not protected by fetch CORS. Never bind
+    // browser account cookies sent by an untrusted same-site origin.
+    const origin = socket.request.headers.origin;
+    try {
+      const url = new URL(origin);
+      if (!['http:', 'https:'].includes(url.protocol) || (url.host !== socket.request.headers.host && !origins.includes(url.origin))) return null;
+    } catch {return null;}
+    return profiles.authenticateRequest(socket.request);
+    } catch {return null;}
+  };
   const reply = (ack, value) => { if (typeof ack === 'function') ack(value); };
   const broadcast = code => { const lobby = store.lobby(code); if (lobby) io.to(code).emit(EVENTS.LOBBY_UPDATE, lobby); };
   function publish(result) {
     if (!result) return;
     if (result.closed) {
+      if (result.recoverySource && profiles) {
+        try {profiles.store.releaseRecovery(result.recoverySource.matchId,result.recoverySource.claimId);} catch { /* lease expiration handles a storage outage */ }
+      }
       io.to(result.code).emit(EVENTS.ROOM_CLOSED, { code: result.code });
       io.in(result.code).socketsLeave(result.code);
     } else broadcast(result.code);
   }
   io.on('connection', socket => {
     let swingWaiting = false;
+    persistence?.attach(socket, io, store);
     for (const [event, method] of [[EVENTS.HOST_CREATE, 'createRoom'], [EVENTS.PLAYER_JOIN, 'join'], [EVENTS.SESSION_RESUME, 'resume']]) {
       socket.on(event, (payload, ack) => {
-        const result = store[method](socket.id, payload);
+        const profile = authenticateSocket(socket);
+        const result = store[method](socket.id, payload, profile?.id);
         if (result.ok) {
+          store.bindProfile(socket.id, profile?.id);
           if (result.replacedSocketId) {
             const old = io.sockets.sockets.get(result.replacedSocketId);
             old?.leave(result.code);
@@ -44,6 +71,73 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
         if (result.ok) broadcast(result.code);
       });
     }
+    for (const [event, role] of [[EVENTS.HOST_SWITCH_SPORT, 'host'], [EVENTS.PLAYER_SWITCH_SPORT, 'player']]) {
+      socket.on(event, (payload, ack) => {
+        const context = store.sessionContext(socket.id);
+        const result = store.switchSport(socket.id, payload, role);
+        if (result.ok && context.room.sport !== payload.sport && context.room.recoverySource && profiles) {
+          try {profiles.store.releaseRecovery(context.room.recoverySource.matchId,context.room.recoverySource.claimId);} catch {}
+        }
+        reply(ack, result); if (result.ok) broadcast(result.code);
+      });
+    }
+    let lastInputNotice = 0;
+    for (const [event, kind, outbound] of [[EVENTS.PLAYER_POSE, 'pose', EVENTS.GAME_POSE], [EVENTS.PLAYER_AIM, 'aim', EVENTS.GAME_AIM]]) {
+      socket.on(event, payload => {
+        const result = store.continuousTarget(socket.id, payload, kind);
+        if (!result.ok) {
+          if (Date.now() - lastInputNotice > 1000 && result.error !== 'rate-limited') {
+            lastInputNotice = Date.now(); socket.volatile.emit(EVENTS.INPUT_STATUS, {kind, error: result.error});
+          }
+          return;
+        }
+        const host = io.sockets.sockets.get(result.hostSocketId);
+        if (host?.connected && host.conn.transport.writable) host.volatile.emit(outbound, result.event);
+      });
+    }
+    socket.on(EVENTS.PLAYER_ACTION_STATUS, (payload, ack) => reply(ack, store.actionStatus(socket.id, payload)));
+    socket.on(EVENTS.HOST_RESTORE, (payload, ack) => {
+      try {
+        const profile = authenticateSocket(socket);
+        if (!profile) return reply(ack, {ok:false,error:'not-signed-in'});
+        const source = profiles.store.recoverySource(profile.id, payload?.matchId);
+        const existing = store.sessionContext(socket.id);
+        const result = store.createRecovery(socket.id, payload, source);
+        if (result.ok) {
+          const context = store.sessionContext(socket.id);
+          try {profiles.store.reserveRecovery(profile.id,payload.matchId,context.memberId);}
+          catch (error) {if (!existing) store.remove(socket.id); throw error;}
+          socket.join(result.code); broadcast(result.code);
+        }
+        reply(ack, result);
+      } catch (error) {reply(ack, {ok:false,error:error.code || 'recovery-unavailable'});}
+    });
+    socket.on(EVENTS.HOST_CHECKPOINT, (payload, ack) => {
+      const result = store.saveCheckpoint(socket.id, payload);
+      if (!result.ok) return reply(ack, result);
+      let status = {saved: false, error: 'profile-storage-unavailable'};
+      if (persistence && (!result.duplicate || !result.checkpoint.saved)) {
+        try {status = persistence.save(store.sessionContext(socket.id), {payload: result.checkpoint.payload});}
+        catch (error) {status = {saved:false,error:error.code || 'profile-storage-unavailable'};}
+        store.checkpointStatus(result.code, result.checkpoint.revision, status);
+      } else if (result.duplicate) status = {saved:result.checkpoint.saved, error: result.checkpoint.saveError};
+      reply(ack, {ok:true, revision:result.checkpoint.revision, saved:status.saved, error:status.error});
+      broadcast(result.code);
+    });
+    socket.on(EVENTS.HOST_RECOVERY, (payload, ack) => {
+      const result = store.recovery(socket.id, payload);
+      if (!result.ok) return reply(ack, result);
+      const context = store.sessionContext(socket.id);
+      if (context?.room.recoverySource && profiles) {
+        try {profiles.store.reserveRecovery(context.profileId,context.room.recoverySource.matchId,context.room.recoverySource.claimId);}
+        catch (error) {return reply(ack,{ok:false,error:error.code || 'recovery-unavailable'});}
+      }
+      // Rotation of the durable host lease makes older TV callbacks stale too.
+      if (persistence) {
+        try {persistence.restore(store.sessionContext(socket.id));} catch { /* live in-memory checkpoint remains usable */ }
+      }
+      reply(ack, result);
+    });
     socket.on(EVENTS.LOBBY_GET, (payload, ack) => {
       const code = payload?.code;
       reply(ack, code && store.hostedBy(socket.id) === code ? { ok: true, ...store.lobby(code) } : { ok: false, error: ERRORS.NO_ROOM });
@@ -98,6 +192,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
         store.finishGameCommand(result.code, result.event.id, result.event.gameId);
         return reply(ack, { ok: false, error: 'disconnected' });
       }
+      if (['new-match', 'practice-start', 'practice-stop'].includes(event.action)) broadcast(result.code);
       // The phone waits for the game to apply the change, not just relay delivery.
       host.timeout(2500).emit(EVENTS.GAME_COMMAND, result.event, (error, received) => {
         store.finishGameCommand(result.code, result.event.id, result.event.gameId);
@@ -131,10 +226,16 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       }
       // Acknowledge the actual game result; never buffer or retry a release.
       host.timeout(2500).emit(EVENTS.GAME_ROLL, result.event, (error, received) => {
-        store.finishRollDelivery(result.code, result.event.id, result.event.gameId);
+        const current = store.lobby(result.code);
+        if (current?.hostEpoch !== result.hostEpoch || current?.inputGeneration !== result.inputGeneration) {
+          store.finishRollDelivery(result.code, result.event.id, result.event.gameId, {ok:false,error:'outcome-unknown'});
+          return reply(ack, {ok:false,error:'outcome-unknown',id:result.event.id});
+        }
+        const outcome = !error && received?.ok ? {ok: true, id: result.event.id, receivers: 1}
+          : {ok: false, id: result.event.id, error: error ? 'outcome-unknown' : received?.error || 'game-loading'};
+        store.finishRollDelivery(result.code, result.event.id, result.event.gameId, outcome);
         if (store.lobby(result.code)?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
-        reply(ack, !error && received?.ok ? { ok: true, id: result.event.id, receivers: 1 }
-          : { ok: false, error: received?.error || 'game-loading' });
+        reply(ack, outcome);
       });
     });
     socket.on(EVENTS.HOST_STROKE_RESULT, (event, ack) => {

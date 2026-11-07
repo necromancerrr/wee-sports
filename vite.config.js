@@ -31,6 +31,8 @@ export default defineConfig(({ mode }) => {
       outDir: env.WEE_BUILD_DIR || 'dist',
       rollupOptions: {
         input: {
+          tableTennis: fileURLToPath(new URL('./table-tennis.html', import.meta.url)),
+          tableTennisController: fileURLToPath(new URL('./table-tennis-controller.html', import.meta.url)),
           home: fileURLToPath(new URL('./index.html', import.meta.url)),
           bowling: fileURLToPath(new URL('./bowling.html', import.meta.url)),
           game: fileURLToPath(new URL('./game.html', import.meta.url)),

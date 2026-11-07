@@ -18,6 +18,13 @@ let pageSuspended = false;
 let manuallyPaused = false;
 let paused = embedded;
 let connected = false;
+let inputGeneration: number | undefined;
+let hostEpoch: number | undefined;
+let lastAimSequence = -1;
+let lastAimPlayer: number | null = null;
+let lastCheckpoint = '';
+let restored = false;
+let restoring = false;
 const sound = embedded ? null : createSportsAudio('bowling');
 sound?.mountButton(document.querySelector('.bowling-heading') as HTMLElement);
 sound?.setActive(!paused);
@@ -31,7 +38,17 @@ const post = (message: object): void => { if (embedded) window.parent.postMessag
 document.body.classList.toggle('bowling-embedded', embedded);
 el('replay').hidden = embedded;
 function publishOptions(): void {
-  if (gameId) post({type: 'wee:game-options', gameId, sport: 'bowling'});
+  if (gameId) post({type: 'wee:game-options', gameId, sport: 'bowling',
+    ...(world?.getState().practice ? {practice: {active: true}} : {})});
+}
+function publishCheckpoint(): void {
+  if (!gameId || restoring) return;
+  const payload = world?.exportCheckpoint?.();
+  if (!payload) return;
+  const serialized = JSON.stringify(payload);
+  if (serialized === lastCheckpoint) return;
+  lastCheckpoint = serialized;
+  post({type: 'wee:game-checkpoint', gameId, sport: 'bowling', rulesVersion: 1, checkpointVersion: 1, payload});
 }
 function clearCallout(): void {
   if (calloutTimer !== null) clearTimeout(calloutTimer);
@@ -59,12 +76,13 @@ function audioEvent(event: string): void {
 }
 
 function render(state: BowlingState): void {
+  if (state.currentPlayer !== lastAimPlayer) { lastAimSequence = -1; lastAimPlayer = state.currentPlayer; }
   complete = state.complete;
   const call = callouts.observe(state, paused);
   if (paused || state.phase === 'rolling' || !state.lastRoll) clearCallout();
   if (state.phase !== 'rolling') audioEvent('roll-end');
   const player = state.players.find(p => p.player === state.currentPlayer);
-  el('frame-label').textContent = state.complete ? 'Final · 10 frames' : `Frame ${state.frame} / 10 · Ball ${state.ball}`;
+  el('frame-label').textContent = state.practice ? 'Solo practice · fresh rack' : state.complete ? 'Final · 10 frames' : `Frame ${state.frame} / 10 · Ball ${state.ball}`;
   const last = state.lastRoll;
   const result = last ? last.strike ? 'Strike!' : last.spare ? 'Spare!' : `${last.pins} ${last.pins === 1 ? 'pin' : 'pins'} down` : '';
   const cue = paused ? manuallyPaused ? 'Paused · resume on your phone or TV' : 'Paused · waiting for controllers' : state.complete ? 'Final scores' : state.phase === 'rolling' ? `${player?.name} · ball in play` :
@@ -113,9 +131,15 @@ function render(state: BowlingState): void {
     }));
   }
   (el('roll') as HTMLButtonElement).disabled = paused || state.phase !== 'ready';
+  const practiceButton = document.getElementById('practice');
+  if (practiceButton) {
+    practiceButton.textContent = state.practice ? 'Start ten-frame game' : 'Practice a fresh rack';
+    (practiceButton as HTMLButtonElement).disabled = paused || state.phase === 'rolling';
+  }
   if (call) showCallout(call);
   post({type: 'wee:bowling-state', gameId, phase: state.phase, currentPlayer: state.currentPlayer, frame: state.frame,
     ...(state.complete ? {winners: winners.map(player => player.player), winnerScore: winners[0].total} : {})});
+  publishCheckpoint();
 }
 function create(players: Array<{player: number; name: string}>): void {
   callouts.reset(); complete = false; clearCallout();
@@ -135,6 +159,7 @@ function newMatch(): void {
   audioEvent('stop');
   clearCallout(); callouts.reset();
   delivered.clear(); world?.reset();
+  lastAimSequence = -1;
   audioEvent('start'); publishOptions();
 }
 function receive(event: MessageEvent): void {
@@ -144,6 +169,10 @@ function receive(event: MessageEvent): void {
     const wasPaused = paused;
     const wasConnected = connected;
     connected = data.connected === true;
+    const generation = data.inputGeneration ?? data.generation;
+    if (generation !== inputGeneration || data.hostEpoch !== hostEpoch) lastAimSequence = -1;
+    inputGeneration = generation;
+    hostEpoch = data.hostEpoch;
     lobbyPaused = data.paused || !connected || !data.playing || typeof data.gameId !== 'string';
     manuallyPaused = data.manuallyPaused === true;
     paused = lobbyPaused || pageSuspended;
@@ -159,6 +188,7 @@ function receive(event: MessageEvent): void {
       if (!players.length) return;
       audioEvent('roll-end');
       world?.dispose(); world = null; gameId = data.gameId; delivered.clear(); commands.clear();
+      lastAimSequence = -1; lastCheckpoint = ''; restored = false;
       try { create(players); }
       catch (error) {
         el('frame-label').textContent = 'Lane unavailable';
@@ -170,6 +200,30 @@ function receive(event: MessageEvent): void {
     // Publish after reconnect even when pinfall did not change, without a snapshot feedback loop.
     if (wasPaused !== paused || wasConnected !== connected) render(world!.getState());
     if (wasConnected !== connected) publishOptions();
+  } else if (data?.type === 'wee:checkpoint-request') {
+    if (world && data.gameId === gameId) { lastCheckpoint = ''; publishCheckpoint(); }
+  } else if (data?.type === 'wee:restore-checkpoint') {
+    let ok = false;
+    if (world && data.gameId === gameId && !restored && delivered.size === 0 && commands.size === 0) {
+      restoring = true;
+      ok = world.restoreCheckpoint(data.payload);
+      restoring = false;
+      if (ok) { restored = true; lastCheckpoint = JSON.stringify(world.exportCheckpoint()); publishOptions(); }
+    }
+    post({type: 'wee:restore-checkpoint-result', gameId, ok, ...(ok ? {} : {error: 'checkpoint-unavailable'})});
+  } else if (data?.type === 'wee:game-aim') {
+    const aim = data.event;
+    const sequence = aim?.seq ?? aim?.sequence;
+    const generation = aim?.inputGeneration ?? aim?.generation;
+    if (!world || paused || !connected || aim?.gameId !== gameId ||
+        world.getState().phase !== 'ready' || aim.player !== world.getState().currentPlayer ||
+        !Number.isFinite(aim.aim) || Math.abs(aim.aim) > 1 || typeof aim.locked !== 'boolean' ||
+        !Number.isSafeInteger(sequence) || sequence < 0 || sequence <= lastAimSequence ||
+        (inputGeneration !== undefined && generation !== inputGeneration) ||
+        (hostEpoch !== undefined && aim.hostEpoch !== hostEpoch)) return;
+    lastAimSequence = sequence;
+    world.setAim(aim.aim, aim.locked);
+    el('help').textContent = aim.locked ? 'Aim locked · swing forward to release.' : 'Live aim · arm your roll to lock this direction.';
   } else if (data?.type === 'wee:game-command') {
     const command = data.command;
     if (!command || typeof command.id !== 'string') return;
@@ -182,7 +236,11 @@ function receive(event: MessageEvent): void {
     else {
       commands.add(command.id);
       if (commands.size > 256) commands.delete(commands.values().next().value!);
-      newMatch(); result = {ok: true};
+      if (command.action === 'practice-start' || command.action === 'practice-stop') {
+        const ok = world.setPractice(command.action === 'practice-start');
+        result = ok ? {ok: true} : {ok: false, error: 'practice-requires-solo'};
+        if (ok) { callouts.reset(); clearCallout(); delivered.clear(); publishOptions(); }
+      } else { newMatch(); result = {ok: true}; }
     }
     post({type: 'wee:game-command-result', id: command.id, gameId, result});
   } else if (data?.type === 'wee:game-roll') {
@@ -211,6 +269,11 @@ el('roll').onclick = () => {
   world.roll({player, aim: value('aim'), spin: value('spin'), power: value('power')});
 };
 el('aim').oninput = () => world?.setAim(Number((el('aim') as HTMLInputElement).value));
+const practiceButton = document.getElementById('practice');
+if (practiceButton) practiceButton.onclick = () => {
+  if (!world || paused) return;
+  if (world.setPractice(!world.getState().practice)) { callouts.reset(); clearCallout(); publishOptions(); }
+};
 function syncWorldState(): void {
   paused = lobbyPaused || pageSuspended;
   sound?.setActive(!paused);

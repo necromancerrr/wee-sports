@@ -3,6 +3,18 @@
  * holding a phone needs to hear it. Pattern from gameboystudio's REJECTION_TEXT.
  */
 const TEXT = {
+  'recovery-in-use': 'This saved game is being opened on another display. Close that room or wait five minutes after an interrupted setup.',
+  'recovery-already-continued': 'This saved game already has a newer continuation. Open the latest saved game from your profile.',
+  'recovery-owner-required': 'This saved solo game belongs to a profile. Sign in to that profile on this phone, then join again.',
+  'recovery-unavailable': 'This game has no compatible saved point or settled roll.',
+  'not-signed-in': 'Sign in to your profile to continue a saved game.',
+  'too-many-players': 'This sport supports fewer players. Ask extra players to leave before switching.',
+  'return-to-lobby-first': 'Return to the lobby before switching sports.',
+  'unsupported-sport': 'This controller does not support that sport. Open the room in an updated browser.',
+  'bad-capabilities': 'The controller could not be identified. Reload the page.',
+  'wrong-generation': 'Controls were paused or changed. Send a fresh movement.',
+  'outcome-unknown': 'The roll may have reached the TV. Check the lane before rolling again.',
+  'stale-sequence': 'Waiting for a fresh movement.',
   'no-room': 'No game is using that code. Check the TV and try again.',
   'room-full': 'That lobby is full. Ask the host to open another game.',
   'bad-name': 'Type a name first.',

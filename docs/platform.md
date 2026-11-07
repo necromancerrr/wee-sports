@@ -13,7 +13,8 @@
 - If a phone does not return, its seat is released. Before play, readiness resets;
   during a match, losing either tennis player or any bowler ends the match and
   returns the remaining group to the lobby. Tennis has two playing seats and
-  bowling has four; there are no extra spectator seats. Reserved disconnected
+  bowling has four; Table Tennis has one controller against a bot. There are no
+  extra spectator seats. Reserved disconnected
   seats still count toward the limit until they expire.
   If the TV does not return, the lobby closes. Explicit **Leave game** and
   **Close lobby** still take effect immediately.
@@ -23,19 +24,48 @@
 
 **Integration scope:** tennis uses one phone against the bot or two phones
 playing each other. Bowling supports one to four players through ten frames,
-with turn validation and game acknowledgements; see [bowling details](bowling.md). Both controllers open before Play and stay loaded through the
+with turn validation and game acknowledgements; see [bowling details](bowling.md).
+Table Tennis adds solo practice and scored bot play through a continuous pose
+stream, with touch fallback. Controllers open before Play and stay loaded through the
 countdown. Each must report successful motion calibration or an explicit button-control
 choice before Ready. Reloading a controller clears its setup and pauses an active
 match until setup is completed again. A simple network reconnect keeps calibration. Embedded swings use the same lobby session; standalone prototypes
 retain their separate relay. The TV's game stays mounted and
-pauses during a lobby disconnect. TV refresh still resets its local game;
-score recovery and restarting the interrupted point remain future work.
+pauses during a lobby disconnect. Bowling and Table Tennis now checkpoint stable
+settled roll/point boundaries, including surviving pin transforms or table-tennis
+rules state. A live TV reload restores the available boundary under a new host
+epoch. A roll or point interrupted after that boundary restarts; exact mid-flight
+recovery is not attempted. Existing Tennis still restarts its local simulation
+on TV reload and has no durable score recovery.
 `tutorial-vote` remains separate. See the root README for the combined flow.
+
+The browser remains the default QR destination. Optional profiles/history use
+the server's SQLite store, and the optional Expo controller uses the same room
+contract. Account identity and room reconnect tokens are separate. Returning to
+the lobby allows the host or P1 to switch sport while retaining member identity;
+motion setup is rechecked when the grip changes. Current-seat authorization,
+host epochs, input generations and monotonic sequences prevent old continuous
+inputs from becoming fresh play.
+
+After a server restart, old room codes are not revived. An authenticated solo
+participant can continue an owned archived Bowling/Table Tennis boundary in a
+new room from Profile & history, then join from an authenticated phone. This
+requires an available persistent `WEE_PROFILE_DB` database. Party archive
+recovery is not offered. A source boundary remains read-only and allows one
+continuation; after continuation, further progress belongs to the new game.
+The UI reports saved/unsaved state; an in-memory room
+reconnect alone is not evidence of persistence. See the
+[current trial runbook](system-plan/README.md) and
+[acceptance evidence](system-plan/acceptance.md) for implementation checks and
+the still-open physical-device gates.
 
 ### Check the change
 
-Run `npm test` for the existing room tests plus reconnect and real Socket.io tests,
-and `npm run build` for the client build. The socket tests open local loopback ports.
+Run `npm test` for Vitest coverage and `npm --prefix server test` for the Node
+room/reconnect and real Socket.IO suite, then `npm run build` for the browser
+build. The socket tests open local loopback ports. The
+[testing manual](../manuals/TESTING.md) describes shared-package resolution and
+the recorded-motion replay runner.
 
 For a device check, install `cloudflared` once (macOS: `brew install cloudflared`;
 [other systems](https://developers.cloudflare.com/tunnel/downloads/)), then run
@@ -49,7 +79,7 @@ Start with one phone, then repeat with two separate phones for tennis and up to
 four for bowling. Record actual phone/browser results: automated sensor recordings
 do not verify physical hardware permissions or the feel of a live swing.
 
-1. Refresh a phone and the TV; verify the same room, names, and seats. Refinish controller setup after a reload. The TV starts a fresh world on reload.
+1. Refresh a phone and the TV; verify the same room, names, and seats. Refinish controller setup after a reload. Bowling/Table Tennis restore their supported stable boundary; verify the last settled score/rack or point. Existing Tennis starts a fresh world.
 2. Temporarily disable a phone's network; verify the waiting screen and reconnect.
 3. Disconnect during the five-second countdown; verify it resumes with time remaining.
 4. Stay disconnected for over 60 seconds; verify seat release or TV timeout closure.

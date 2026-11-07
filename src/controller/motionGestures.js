@@ -75,10 +75,11 @@ export function createBowlingMotionDetector() {
       const gap = previous === null ? 0 : sample.timeMs - previous;
       if (gap <= 0 || gap > 100) reset();
       previous = sample.timeMs;
-      // DeviceMotion rates are alpha=X (underhand pitch), beta=Y (wrist
-      // roll), gamma=Z. DeviceOrientation angle names use a different order.
-      // Screen up, top toward the TV: +X rotation lifts the top forward/up.
-      // A backswing has the opposite sign. It must neither arm a release nor
+      // Preserve the existing recognizer's alpha-forward/beta-twist convention.
+      // These are legacy input fields, not canonical X/Y/Z names: the standard
+      // browser axes are beta=X, gamma=Y, alpha=Z. A physical grip/direction
+      // trial is still required before remapping this established detector.
+      // A negative forward sample must neither arm a release nor
       // contribute power, angle or curve to the following forward delivery.
       if (sample.rotationAlpha < -35) { reset(); return null; }
       const pitch = Math.max(0, sample.rotationAlpha);

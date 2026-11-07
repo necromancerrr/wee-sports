@@ -1,3 +1,6 @@
+import {GuestResultClaim} from '../components/GuestResultClaim.jsx';
+import {createControllerCapabilities} from '../../../shared/controllerCapabilities.js';
+import {SportSwitcher} from '../components/SportSwitcher.jsx';
 /**
  * Placeholder phone join. Functional only: the phone display owner restyles
  * and owns this page. It covers Use Case 4 (scan, name, join) and Use Case 6
@@ -76,7 +79,7 @@ export default function JoinStub() {
     if (!canJoin) return;
     setJoining(true);
     setError(null);
-    const result = await request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code, name });
+    const result = await request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code, name, capabilities: createControllerCapabilities({motion: typeof DeviceMotionEvent !== "undefined", orientation: typeof DeviceOrientationEvent !== "undefined", haptics: typeof navigator.vibrate === "function"}) });
     setJoining(false);
     if (!result.ok) {
       setError(result.error);
@@ -99,6 +102,9 @@ export default function JoinStub() {
     const playing = phase === PHASES.GAME && !revealing;
     const lobbyOptions = (
       <>
+        {seat.slot === 0 ? <SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /> : null}
+        <GuestResultClaim lobby={lobby} />
+        <a className="btn btn--ghost" href="/profile">Profile & history</a>
         <h2>In this lobby</h2>
         <ul className="seats" aria-live="polite">
           {players.map((player) => (
@@ -158,7 +164,7 @@ export default function JoinStub() {
         {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} /> : null}
         {isController(seat.sport, seat.slot) ? (
           <>
-            <PrototypeFrame code={seat.code} controller player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState}
+            <PrototypeFrame code={seat.code} controller player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
               playing={phase === PHASES.GAME}
               paused={phase !== PHASES.GAME || reconnecting || seat.paused}
               manuallyPaused={Boolean(lobby.manuallyPaused && !reconnecting && !lobby.reconnecting?.length && !lobby.setupPending?.length)}

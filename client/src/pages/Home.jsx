@@ -1,3 +1,4 @@
+import {createControllerCapabilities} from '../../../shared/controllerCapabilities.js';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EVENTS, PROTOCOL_VERSION } from '@wee/shared/protocol.js';
@@ -30,7 +31,7 @@ export default function Home() {
     if (opening) return;
     setOpening(sport.id);
     setFailure(null);
-    const result = await request(EVENTS.HOST_CREATE, { v: PROTOCOL_VERSION, sport: sport.id });
+    const result = await request(EVENTS.HOST_CREATE, { v: PROTOCOL_VERSION, sport: sport.id, capabilities: createControllerCapabilities({buttons:true}) });
     setOpening(null);
     if (result?.ok) {
       saveToken('host', result.code, result.token);
@@ -56,6 +57,7 @@ export default function Home() {
           </span>
         </a>
         <div className="topbar__actions">
+          <a className="topbar__link" href="/profile">Profile & history</a>
           <a className="topbar__link" href="#how">How it works</a>
           <ThemeToggle />
         </div>

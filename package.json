@@ -46,5 +46,8 @@
     "cross-spawn": "^7.0.6",
     "rimraf": "^5.0.0",
     "@humanwhocodes/config-array": "npm:@eslint/config-array@^0.18.0"
-  }
+  },
+  "workspaces": [
+    "shared"
+  ]
 }

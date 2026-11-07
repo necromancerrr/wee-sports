@@ -1,5 +1,48 @@
 # Bowling and phone motion
 
+## Browser improvements and recovery
+
+The phone now publishes a replaceable aim preview up to 20 times per second.
+The room service authenticates the active player; the lane accepts only its
+current game, input generation, host epoch and increasing sequence. Arming
+stores an explicit immutable aim for the delivery and changes the TV line to
+gold. The preview never authorizes a roll or changes a rolling ball. Aim
+filtering uses elapsed time with an 84 ms time constant, approximately matching
+the old 0.18-per-sample response at 60 Hz. Identical sampled step responses at
+30, 60 and 100 Hz now agree. This is a cadence fix, not hardware feel evidence.
+
+Solo practice resets a fresh rack after each settled delivery. Select it in
+game options, or use **Practice a fresh rack** on the standalone bowling page.
+Switch back to a ten-frame game between deliveries; switching during a roll
+is rejected. Touch aim, curve and power remain available without sensors.
+
+The TV exports versioned checkpoints only before a delivery or after settlement.
+They contain the settled delivery history and full position/quaternion of every
+standing pin. Restore replays the rules to derive the score and next turn,
+checks the roster and pin transforms, and preserves off-spot pins. It refuses
+to restore moving balls or accept a late restore after local gameplay began.
+The service owns storage, revision and host-epoch authorization; raw movement
+is not included. An interrupted in-flight delivery resumes from the last
+accepted settled boundary, not from a fabricated mid-flight simulation.
+
+The new canonical adapter preserves legacy recognizer values through an
+explicit conversion. One pre-existing assumption remains a device gate:
+the old bowling recognizer calls raw `alpha` its forward signal and `beta` its
+twist signal, while the standard DeviceMotion axis names are `beta=X`,
+`gamma=Y`, `alpha=Z`. Synthetic release tests verify the retained convention;
+they do not establish that a real grip produces the intended signed signal.
+Perform the directional check on the target phone before claiming browser/native
+motion parity or retuning those thresholds. Cannon-es coefficients and the
+forward-segment release thresholds have not been changed without that evidence.
+
+Signed-in profile preferences can supply initial hand, motion response, vibration
+and button-mode defaults. Explicit choices on this device and an active setup
+take precedence over a late profile response. The local preference record is
+separate from calibration, contains no gyro bias or account credentials, and
+cannot grant sensor permission. Motion response changes the bounded aim/power
+mapping, not the release detector; touch power stays exactly as selected. Turning
+off vibration keeps visible confirmation and contact feedback available.
+
 ## Rules implemented
 
 One to four players complete ten frames in order. A frame normally has two
@@ -93,16 +136,16 @@ explicit Stop, hidden pages, pauses and disconnects discard partial gestures.
 
 Bowling arms one delivery at a time. Hold the phone screen up with its top toward
 the TV. Tilt left/right to aim; arming locks the aim so the swing cannot move it.
-A sustained X-axis underhand pitch (`rotationRate.alpha`) followed by deceleration
-releases once. Power comes from peak pitch speed, assisted by gravity-free linear
-acceleration when available. Integrated Y-axis wrist rotation (`rotationRate.beta`)
+A sustained positive forward signal in the legacy `rotationRate.alpha` channel
+followed by deceleration releases once. Power comes from its peak speed, assisted
+by gravity-free linear acceleration when available. Integrated legacy twist
+input (`rotationRate.beta`)
 sets left/right curve with a 10-degree dead zone, a progressive response and a
 55% cap on motion curve. Only the active forward swing contributes wrist turn;
 late follow-through does not add a surprise hook. Aim has a 4-degree center dead
-zone. The phone shows the measured power
-and curve while armed and briefly after release. Motion rates use a different
-axis order from DeviceOrientation angles; this follows the deployed
-[Chromium implementation](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/modules/device_orientation/device_motion_event_pump.cc).
+zone. The phone shows the measured power and curve while armed and briefly
+after release. See the explicit physical-axis validation gate above; the legacy
+classifier channel names must not be presented as canonical device axes.
 Unusable gravity readings restore manual aim. Explicit button mode retains aim,
 curve and power sliders. Tennis uses the team’s post-peak fast confirmation by default, retaining the
 physical motion window to avoid duplicate follow-through and missed repeat swings.

@@ -1575,3 +1575,7 @@
 .prototype-frame--phone iframe { box-shadow: none; border: 0; height: 1050px; }
 .prototype-frame__pause { border-radius: var(--radius-lg); }
 @media (max-width: 600px) { .host-lobby .stub__row { padding: 16px; justify-content: center; text-align: center; } .tennis-session { padding: 16px; } }
+
+.game-save-status { position: absolute; z-index: 2; bottom: .5rem; left: 1rem; margin: 0; font-size: .75rem; padding: .3rem .65rem; border-radius: .5rem; background: var(--surface); color: var(--text-muted); pointer-events: none; }
+.sport-switcher { margin-block: 1rem; }
+.sport-switcher select { margin-inline-start: .5rem; padding: .5rem; border-radius: .5rem; }
