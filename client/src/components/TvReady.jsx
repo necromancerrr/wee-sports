@@ -19,7 +19,7 @@ export function TvReady({ lobby }) {
   const counting = lobby.phase === PHASES.COUNTDOWN;
   const { players } = lobby;
   const readyCount = players.filter((player) => player.ready).length;
-  const title = counting ? 'Everyone’s ready!' : 'Press Ready on your phone';
+  const title = counting ? 'Everyone’s ready!' : 'Pick up your controller';
 
   return (
     <section className="ready" data-counting={counting}>
@@ -47,7 +47,7 @@ export function TvReady({ lobby }) {
             <span className="ready-card__name">{name}</span>
             <span className="ready-card__status">
               {ready ? <CheckIcon className="ready-card__icon" /> : null}
-              {ready ? 'Ready' : !isController(lobby.sport, slot) ? 'Watching' : setup === 'motion' ? 'Calibrated · press Ready' : setup === 'buttons' ? 'Buttons · press Ready' : 'Set up your controller'}
+              {ready ? 'Ready' : !isController(lobby.sport, slot) ? 'Watching' : setup ? 'Connected' : 'Connecting controller…'}
             </span>
           </li>
         ))}

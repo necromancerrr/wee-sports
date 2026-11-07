@@ -72,7 +72,7 @@ export default function Profile() {
     try {
       const data = await profileRequest('', {method: 'PATCH', body: {revision: profile.revision,
         displayName: editing.displayName, avatar: editing.avatar, preferences: editing.preferences}});
-      accept(data.profile); setNotice('Preferences saved. Check your grip on each device before motion play.');
+      accept(data.profile); setNotice('Preferences saved.');
     } catch (reason) { setError(message(reason)); }
     finally { setBusy(false); }
   }
@@ -126,7 +126,7 @@ export default function Profile() {
       </section>
       {recoverable.length > 0 && <section className="profile-card">
         <h2>Continue a solo game</h2>
-        <p>On your TV or laptop, open a new lobby from a saved boundary. Join it from a phone signed into this profile, check your grip, and get ready. The interrupted roll or point starts again.</p>
+        <p>On your TV or laptop, continue a saved game. Scan the new code with a phone signed into this profile and tap Play. The interrupted roll or point starts again.</p>
         <ul className="profile-history">{recoverable.map(game => <li key={game.matchId}>
           <strong>{sportName(game.sport)}</strong><span>{game.playerName} · saved {new Date(game.savedAt).toLocaleString()}</span>
           <button type="button" className="btn btn--primary" disabled={busy || connection !== 'online'} onClick={() => restore(game.matchId)}>{busy ? 'Opening…' : 'Continue on this screen'}</button>

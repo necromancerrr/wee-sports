@@ -7,7 +7,7 @@ import {SportSwitcher} from '../components/SportSwitcher.jsx';
  * (leave), with every failure said in plain words.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   CODE_LENGTH,
@@ -34,6 +34,7 @@ import { usePhoneLink } from '../lib/usePhoneLink.js';
 import { PhoneSoundToggle } from '../components/PhoneSoundToggle.jsx';
 import { ThemeToggle } from '../components/ThemeToggle.jsx';
 import { PhoneGameOptions } from '../components/PhoneGameOptions.jsx';
+import {requestControllerIntent, rememberControllerIntent, rememberedControllerIntent} from '../lib/controllerStart.js';
 
 const NAME_KEY = 'wee:name';
 
@@ -58,6 +59,22 @@ export default function JoinStub() {
   const [params, setParams] = useSearchParams();
   const [code, setCode] = useState(() => normalizeCode(params.get('code')));
   const [name, setName] = useState(loadName);
+  const [controllerIntent, setControllerIntent] = useState(rememberedControllerIntent);
+  const [prefersTouch, setPrefersTouch] = useState(false);
+  const [autoStart, setAutoStart] = useState(true);
+  const activeSport = useRef(null);
+  const controllerMode = useCallback(mode => {
+    const intent = {mode, permission: mode === 'motion' ? 'granted' : 'unavailable'};
+    rememberControllerIntent(intent);
+    setControllerIntent(previous => previous?.mode === mode ? previous : intent);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    fetch('/api/profile').then(response => response.ok ? response.json() : null).then(data => {
+      if (active) setPrefersTouch(data?.profile?.preferences?.touchControls === true);
+    }).catch(() => {});
+    return () => {active = false;};
+  }, []);
   const { url: secureUrl, loading: phoneLinkLoading, status: phoneLinkStatus } = usePhoneLink(code);
   const needsSecurePage = window.location.protocol === 'http:';
   const openingSecurePage = needsSecurePage && (phoneLinkLoading || Boolean(secureUrl) || ['connecting', 'reconnecting'].includes(phoneLinkStatus));
@@ -68,30 +85,54 @@ export default function JoinStub() {
   }, [needsSecurePage, phoneLinkLoading, secureUrl]);
   const { snapshot: seat, reconnecting, ended, storageWarning, accept, leave: leaveSession } = useReconnect('player', code);
   const lobby = seat;
+  useEffect(() => {
+    if (!seat) { activeSport.current = null; return; }
+    const changed = activeSport.current !== null && activeSport.current !== seat.sport;
+    activeSport.current = seat.sport;
+    // Returning to the lobby is a deliberate pause to choose the next game.
+    if (seat.phase === PHASES.GAME) setAutoStart(false);
+    else if (changed) setAutoStart(true);
+  }, [seat?.sport, seat?.phase]);
   // Holds the vote's reveal on screen for a moment; a cancelled vote has none.
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
   const [error, setError] = useState(null);
   const [joining, setJoining] = useState(false);
-  const canJoin = !openingSecurePage && isRoomCode(code) && cleanName(name) !== '' && !joining;
+  const canJoin = !openingSecurePage && isRoomCode(code) && !joining;
 
   async function join(event) {
     event.preventDefault();
     if (!canJoin) return;
     setJoining(true);
     setError(null);
-    const result = await request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code, name, capabilities: createControllerCapabilities({motion: typeof DeviceMotionEvent !== "undefined", orientation: typeof DeviceOrientationEvent !== "undefined", haptics: typeof navigator.vibrate === "function"}) });
+    // Start the browser permission prompt directly on this tap, before joining.
+    const permission = controllerIntent?.mode === 'touch' || prefersTouch
+      ? Promise.resolve({mode: 'touch', permission: 'unavailable'}) : requestControllerIntent();
+    const playerName = cleanName(name) || 'Player';
+    const [result, intent] = await Promise.all([
+      request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code, name: playerName, capabilities: createControllerCapabilities({motion: typeof DeviceMotionEvent !== "undefined", orientation: typeof DeviceOrientationEvent !== "undefined", haptics: typeof navigator.vibrate === "function"}) }),
+      permission,
+    ]);
     setJoining(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    saveName(cleanName(name));
+    saveName(playerName);
+    rememberControllerIntent(intent); setControllerIntent(intent);
+    setAutoStart(true);
     accept(result);
     setParams({ code }, { replace: true });
   }
 
   async function leave() {
     if (!(await leaveSession())) setError('disconnected');
+  }
+
+  async function waitForFriends() {
+    setAutoStart(false);
+    const result = await request(EVENTS.PLAYER_READY, {ready: false});
+    if (!result.ok) setAutoStart(true);
+    return result;
   }
 
   if (openingSecurePage) return <main className="stub"><p className="eyebrow">Wee Sports · phone controller</p><h1>Opening your controller…</h1><p className="stub__muted" role="status">Connecting your phone for motion play.</p></main>;
@@ -104,6 +145,7 @@ export default function JoinStub() {
       <>
         {seat.slot === 0 ? <SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /> : null}
         <GuestResultClaim lobby={lobby} />
+        <PhoneSoundToggle lobby={lobby} disabled={reconnecting} />
         <a className="btn btn--ghost" href="/profile">Profile & history</a>
         <h2>In this lobby</h2>
         <ul className="seats" aria-live="polite">
@@ -129,8 +171,7 @@ export default function JoinStub() {
       </>
     );
     return (
-      <main className={`stub phone-session${playing ? ' phone-session--playing' : ''}`}>
-        {!playing ? <p className="eyebrow">Homepage lobby · {seat.code}</p> : null}
+      <main className={`stub phone-session phone-session--simple${playing ? ' phone-session--playing' : ''}`}>
         {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your seat.</p> : null}
         {error ? <p className="alert" role="alert">{errorText(error)}</p> : null}
         <div className="you">
@@ -142,41 +183,39 @@ export default function JoinStub() {
             P{seat.slot + 1}
           </span>
           <div className="phone-session__name">
-            <h1>{playing ? seat.name : <>You&rsquo;re in, {seat.name}</>}</h1>
+            <h1>{sportName(seat.sport)}</h1>
             <p className="stub__muted">
-              {sportName(seat.sport)}{playing ? '' : ` · lobby ${seat.code}`}
+              {seat.name} · Connected
             </p>
           </div>
-          <PhoneSoundToggle lobby={lobby} disabled={reconnecting} />
           <PhoneGameOptions lobby={lobby} slot={seat.slot} disabled={reconnecting} />
         </div>
         {playing ? null : phase === PHASES.LOBBY ? (
           <p className="stub__status">Waiting for a player to join the P1 controller seat…</p>
         ) : phase === PHASES.VOTE || revealing ? (
           // Keyed by game, so a fresh vote forgets this phone's last pick.
-          <PhoneVote key={lobby.gameId} lobby={lobby} slot={seat.slot} />
+          <PhoneVote key={lobby.gameId} lobby={lobby} slot={seat.slot} automatic />
         ) : phase === PHASES.TUTORIAL ? (
           <PhoneTutorial key={lobby.tutorial.step} lobby={lobby} slot={seat.slot} />
         ) : (
-          <PhoneReady lobby={lobby} slot={seat.slot} disabled={reconnecting || lobby.paused} />
+          <PhoneReady lobby={lobby} slot={seat.slot} automatic allowStart={autoStart}
+            onStart={() => setAutoStart(true)} onHold={waitForFriends} disabled={reconnecting || lobby.paused} />
         )}
 
         {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} /> : null}
         {isController(seat.sport, seat.slot) ? (
           <>
-            <PrototypeFrame code={seat.code} controller player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
+            <PrototypeFrame code={seat.code} controller controllerIntent={controllerIntent} onControllerMode={controllerMode} player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
               playing={phase === PHASES.GAME}
               paused={phase !== PHASES.GAME || reconnecting || seat.paused}
               manuallyPaused={Boolean(lobby.manuallyPaused && !reconnecting && !lobby.reconnecting?.length && !lobby.setupPending?.length)}
               showPause={reconnecting} />
           </>
         ) : null}
-        {playing ? (
           <details className="phone-session__options">
-            <summary>Lobby options <span>{seat.code}</span></summary>
+            <summary>More <span>{seat.code}</span></summary>
             {lobbyOptions}
           </details>
-        ) : lobbyOptions}
       </main>
     );
   }
@@ -184,14 +223,14 @@ export default function JoinStub() {
   if (reconnecting) return <ReconnectNotice reconnecting />;
 
   return (
-    <main className="stub">
+    <main className="stub phone-join">
       <div className="session-heading"><p className="eyebrow">Wee Sports · phone controller</p><ThemeToggle /></div>
-      <h1>Join a game</h1>
+      <h1>Pick up.<br />Play.</h1>
       {ended ? <p className="alert" role="alert">{ended === 'replaced'
         ? 'This controller is active in another tab. Continue there or reload this page.'
         : ended === 'expired' ? 'Your reconnect window expired. Join again if the lobby is still open.'
         : 'This game has ended. Check the TV for a new lobby.'}</p> : null}
-      <p className="stub__muted">The code is on the TV, under the QR code.</p>
+      <p className="stub__muted">Your phone is the controller. Watch the TV and swing.</p>
 
       {error ? (
         <p className="alert" role="alert">
@@ -200,7 +239,7 @@ export default function JoinStub() {
       ) : null}
 
       <form onSubmit={join} noValidate>
-        <div className="field">
+        {!isRoomCode(normalizeCode(params.get('code'))) ? <div className="field">
           <label htmlFor="join-code">Lobby code</label>
           <input
             id="join-code"
@@ -215,9 +254,9 @@ export default function JoinStub() {
             autoCorrect="off"
             spellCheck={false}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="join-name">Your name</label>
+        </div> : <p className="phone-join__code">Game {code}</p>}
+        <details className="phone-join__name"><summary>{name ? `Playing as ${name}` : 'Add your name (optional)'}</summary><div className="field">
+          <label htmlFor="join-name">Your name (optional)</label>
           <input
             id="join-name"
             className="text-input"
@@ -226,19 +265,19 @@ export default function JoinStub() {
             maxLength={NAME_MAX}
             autoComplete="nickname"
             enterKeyHint="go"
-            // Arriving from the QR means the code is done; go straight to the name.
-            autoFocus={isRoomCode(code)}
+            placeholder="Player"
           />
-        </div>
+        </div></details>
         <div className="stub__actions">
           <button type="submit" className="btn btn--primary" disabled={!canJoin}>
-            {joining ? 'Joining…' : 'Join game'}
+            {joining ? 'Connecting…' : 'Play'}
           </button>
           <Link className="btn btn--ghost" to="/">
             Home
           </Link>
         </div>
       </form>
+      <p className="phone-join__hint">Allow motion if asked. Touch controls work too.</p>
     </main>
   );
 }

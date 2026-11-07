@@ -1513,6 +1513,21 @@
 .host-lobby .stub__row { background: var(--surface); padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
 .host-lobby .stub__qr { width: min(12rem, 60vw); }
 .phone-session { max-width: 42rem; }
+.phone-join { max-width: 30rem; padding-top: clamp(2rem, 12vh, 7rem); }
+.phone-join h1 { font-size: clamp(3.5rem, 15vw, 5.5rem); letter-spacing: -.055em; line-height: .98; }
+.phone-join__code { margin: 1.5rem 0 1rem; font-weight: 800; color: var(--text-muted); }
+.phone-join__name { margin: 1rem 0; }
+.phone-join__name summary { padding: .8rem 0; cursor: pointer; color: var(--text-muted); }
+.phone-join__name .field { margin-top: .5rem; }
+.phone-join .stub__actions { display: flex; flex-direction: column; align-items: stretch; }
+.phone-join .btn--primary { min-height: 3.6rem; font-size: 1.2rem; }
+.phone-join__hint { margin-top: 1rem; text-align: center; font-size: .88rem; color: var(--text-muted); }
+.phone-session--simple { max-width: 32rem; padding-top: 1rem; }
+.phone-session--simple .you { padding: .7rem .9rem; gap: .7rem; box-shadow: none; }
+.phone-session--simple .you h1 { font-size: 1.15rem; }
+.phone-session--simple .seat__badge--big { width: 2.4rem; height: 2.4rem; font-size: .9rem; }
+.phone-session--simple .phone-ready { padding: .4rem 0; }
+.phone-session--simple .prototype-frame { margin-top: .4rem; }
 .phone-session .you { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
 .phone-session__name { min-width: 0; flex: 1; }
 .phone-session .you h1 { font-size: 1.4rem; overflow-wrap: anywhere; }

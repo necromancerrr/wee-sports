@@ -72,7 +72,7 @@ export default function Home() {
             </h1>
             <p className="hero__lede">
               Pick a sport on the TV and join from your phone.
-              Calibrate, get ready, and swing together.
+              Tap Play, allow motion if asked, and swing together.
             </p>
           </div>
           <JoinBox />

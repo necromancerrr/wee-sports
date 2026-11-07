@@ -5,39 +5,58 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const { writeFileSync } = require('node:fs');
 const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
+async function touchContext(browser) {
+    const context = await browser.newContext({ viewport: { width: 430, height: 1000 } });
+    // An absent sensor must choose touch automatically, without a setup checklist.
+    await context.addInitScript(() => {
+        Object.defineProperty(window, 'DeviceMotionEvent', { configurable: true, value: undefined });
+        Object.defineProperty(window, 'DeviceOrientationEvent', { configurable: true, value: undefined });
+    });
+    return context;
+}
+async function joinPhone(page, code, name) {
+    await page.goto(base + '/join?code=' + code);
+    if (name) {
+        await page.locator('.phone-join__name summary').click();
+        await page.getByLabel('Your name (optional)', { exact: true }).fill(name);
+    }
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+}
+async function returnToLobby(host) {
+    await host.getByLabel('TV display controls').click();
+    await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
+    await host.getByRole('button', { name: 'End match and return', exact: true }).click();
+}
+
 (async () => {
     const browser = await chromium.launch({ executablePath: process.env.WEE_SMOKE_CHROMIUM || '/usr/bin/chromium', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
     const failures = [];
     const checks = [];
     const pass = text => { checks.push(text); console.log('PASS:', text); };
     try {
-        const hc = await browser.newContext({ viewport: { width: 1280, height: 900 } }), pc = await browser.newContext({ viewport: { width: 430, height: 1000 } });
+        const hc = await browser.newContext({ viewport: { width: 1280, height: 900 } }), pc = await touchContext(browser);
         const host = await hc.newPage(), phone = await pc.newPage();
         for (const [name, page] of [['host', host], ['phone', phone]])
             page.on('pageerror', e => failures.push(name + ': ' + e.message));
         await host.goto(base);
         await host.getByRole('button', { name: 'Play: Bowling', exact: true }).click();
         const code = await host.getByTestId('lobby-code').innerText();
-        await phone.goto(base + '/join?code=' + code);
-        await phone.getByLabel('Your name', { exact: true }).fill('Trial Player');
-        await phone.getByRole('button', { name: 'Join game', exact: true }).click();
+        await joinPhone(phone, code);
         const bc = phone.frameLocator('iframe[title="Bowling phone controller"]');
-        await bc.getByText('Controller help', { exact: true }).click();
-        await bc.getByRole('button', { name: 'Use button controls', exact: true }).click();
-        await phone.getByRole('button', { name: 'Ready', exact: true }).click();
+        assert.equal(await phone.getByRole('button', { name: 'Ready', exact: true }).count(), 0);
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
         const bg = host.frameLocator('iframe[title="Bowling game"]');
-        await bc.getByRole('button', { name: 'Roll ball', exact: true }).waitFor({ timeout: 10000 });
+        await bc.getByRole('button', { name: 'Roll', exact: true }).waitFor({ timeout: 10000 });
         const bf = host.frames().find(f => f.url().includes('/bowling.html'));
         await bf.evaluate(() => { window.__aims = []; window.addEventListener('message', e => { if (e.data?.type === 'wee:game-aim')
             window.__aims.push(e.data.event); }); });
         await bc.locator('#aim').fill('0.5');
         await bc.locator('#aim').dispatchEvent('input');
         await bf.waitForFunction(() => window.__aims.some(e => e.aim === .5), null, { timeout: 8000 });
-        pass('Bowling browser guest join, touch readiness and authenticated live aim');
-        await bc.getByRole('button', { name: 'Roll ball', exact: true }).click();
+        pass('Bowling one-tap guest Play without a name, automatic touch readiness and authenticated live aim');
+        await bc.getByRole('button', { name: 'Roll', exact: true }).click();
         await bc.getByText('Watch the lane', { exact: true }).waitFor({ timeout: 5000 });
-        await bc.getByRole('button', { name: 'Roll ball', exact: true }).waitFor({ timeout: 30000 });
+        await bc.getByRole('button', { name: 'Roll', exact: true }).waitFor({ timeout: 30000 });
         await host.getByText('Progress saved.', { exact: true }).waitFor({ timeout: 5000 });
         const before = await bg.locator('body').innerText();
         assert.match(before, /Ball 2|Frame 2/);
@@ -59,20 +78,19 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         await host.getByLabel('Next sport', { exact: true }).selectOption('table-tennis');
         await host.getByRole('heading', { name: 'Table Tennis lobby', exact: true }).waitFor();
         assert.equal(await host.getByTestId('lobby-code').innerText(), code);
-        await host.getByText('Trial Player', { exact: true }).waitFor();
+        await host.getByText('Player', { exact: true }).waitFor();
         const tc = phone.frameLocator('iframe[title="Table Tennis phone controller"]');
-        await tc.getByRole('button', { name: 'Use touch controls', exact: true }).click();
-        await phone.getByRole('button', { name: 'Ready', exact: true }).click();
+        await tc.locator('#tt-touchpad').waitFor();
         await host.getByRole('heading', { name: 'Table Tennis', exact: true }).waitFor({ timeout: 15000 });
         const tg = host.frameLocator('iframe[title="Table Tennis game"]');
         await tg.locator('canvas').waitFor();
         await tg.getByText('Friendly practice', { exact: true }).waitFor();
         pass('Same-room switch retains identity and starts solo Table Tennis practice with touch controls');
-        await tc.getByRole('button', { name: 'Feed / Serve', exact: true }).click();
-        await tc.getByRole('button', { name: 'Stroke', exact: true }).click();
-        await tc.getByRole('button', { name: 'Play bot', exact: true }).click();
+        await tc.locator('#tt-touch-stroke').click();
+        await tc.getByText('Options', { exact: true }).click();
+        await tc.locator('#tt-match-phone').click();
         await tg.getByText('First to 11 · win by 2', { exact: true }).waitFor({ timeout: 6000 });
-        pass('Table Tennis phone commands reach practice and scored bot modes');
+        pass('Table Tennis automatic touch setup, compact stroke and optional scored bot mode');
         if (process.env.WEE_SMOKE_SCREENSHOT)
             await host.screenshot({ path: process.env.WEE_SMOKE_SCREENSHOT });
         await host.getByLabel('TV display controls').click();
@@ -81,10 +99,10 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         await host.getByLabel('Next sport', { exact: true }).selectOption('tennis');
         await host.getByRole('heading', { name: 'Tennis lobby', exact: true }).waitFor();
         assert.equal(await host.getByTestId('lobby-code').innerText(), code);
-        await host.getByText('Trial Player', { exact: true }).waitFor();
+        await host.getByText('Player', { exact: true }).waitFor();
         pass('Existing Tennis remains available in the same room');
         await host.getByRole('button', { name: 'Close lobby', exact: true }).click();
-        await phone.getByRole('heading', { name: 'Join a game', exact: true }).waitFor();
+        await phone.getByRole('button', { name: 'Play', exact: true }).waitFor();
         pass('Room closure reaches the controller');
         await host.goto(base + '/profile');
         await host.getByRole('button', { name: 'Create a profile', exact: true }).click();
@@ -97,7 +115,7 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         await host.getByRole('heading', { name: 'Preferences', exact: true }).waitFor();
         await host.getByLabel('Playing hand', { exact: true }).selectOption('Left');
         await host.getByRole('button', { name: 'Save preferences', exact: true }).click();
-        await host.getByText('Preferences saved. Check your grip on each device before motion play.', { exact: true }).waitFor();
+        await host.getByText(/^Preferences saved/).waitFor();
         const profile = await host.evaluate(async () => await (await fetch('/api/profile')).json());
         assert.equal(profile.profile.preferences.hand, 'Left');
         const cas = await host.evaluate(async (revision) => {
@@ -116,7 +134,7 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         await host.getByRole('heading', { name: 'Recent games', exact: true }).waitFor();
         assert.equal(await host.getByLabel('Playing hand', { exact: true }).inputValue(), 'Left');
         pass('Profile sign-out/sign-in retains preferences and renders history');
-        const rc = await browser.newContext({ viewport: { width: 430, height: 1000 } });
+        const rc = await touchContext(browser);
         const resumePhone = await rc.newPage();
         resumePhone.on('pageerror', e => failures.push('recovery-phone: ' + e.message));
         await resumePhone.goto(base + '/profile');
@@ -127,17 +145,13 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         await host.goto(base);
         await host.getByRole('button', { name: 'Play: Bowling', exact: true }).click();
         const savedCode = await host.getByTestId('lobby-code').innerText();
-        await resumePhone.goto(base + '/join?code=' + savedCode);
-        await resumePhone.getByLabel('Your name', { exact: true }).fill('Saved Solo');
-        await resumePhone.getByRole('button', { name: 'Join game', exact: true }).click();
+        await joinPhone(resumePhone, savedCode, 'Saved Solo');
         const recoveryController = resumePhone.frameLocator('iframe[title="Bowling phone controller"]');
-        await recoveryController.getByText('Controller help', { exact: true }).click();
-        await recoveryController.getByRole('button', { name: 'Use button controls', exact: true }).click();
-        await resumePhone.getByRole('button', { name: 'Ready', exact: true }).click();
+        assert.equal(await resumePhone.getByRole('button', { name: 'Ready', exact: true }).count(), 0);
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
-        await recoveryController.getByRole('button', { name: 'Roll ball', exact: true }).click();
+        await recoveryController.getByRole('button', { name: 'Roll', exact: true }).click();
         await recoveryController.getByText('Watch the lane', { exact: true }).waitFor();
-        await recoveryController.getByRole('button', { name: 'Roll ball', exact: true }).waitFor({ timeout: 30000 });
+        await recoveryController.getByRole('button', { name: 'Roll', exact: true }).waitFor({ timeout: 30000 });
         await host.getByText('Progress saved.', { exact: true }).waitFor();
         const saved = await host.evaluate(async () => {
             const { history } = await (await fetch('/api/profile/history')).json();
@@ -156,11 +170,8 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         await host.getByRole('heading', { name: 'Bowling lobby', exact: true }).waitFor();
         const restoredCode = await host.getByTestId('lobby-code').innerText();
         assert.notEqual(restoredCode, savedCode);
-        await resumePhone.goto(base + '/join?code=' + restoredCode);
-        await resumePhone.getByLabel('Your name', { exact: true }).fill('Changed Name');
-        await resumePhone.getByRole('button', { name: 'Join game', exact: true }).click();
+        await joinPhone(resumePhone, restoredCode, 'Changed Name');
         await host.getByText('Saved Solo', { exact: true }).waitFor();
-        await resumePhone.getByRole('button', { name: 'Ready', exact: true }).click();
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
         await host.getByText(/Restored the last settled roll or point\.|Progress saved\./).waitFor({ timeout: 10000 });
         const restoredGame = host.frameLocator('iframe[title="Bowling game"]');
@@ -185,6 +196,15 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5180';
         if (process.env.WEE_SMOKE_REPORT)
             writeFileSync(process.env.WEE_SMOKE_REPORT, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
         console.log(JSON.stringify(report));
+    }
+    catch (error) {
+        for (const [contextIndex, context] of browser.contexts().entries()) {
+            for (const [pageIndex, page] of context.pages().entries()) {
+                console.error('PAGE_STATE', contextIndex, pageIndex, page.url(), await page.locator('body').innerText().catch(() => 'unavailable'));
+                for (const frame of page.frames().slice(1)) console.error('FRAME_STATE', frame.url(), await frame.locator('body').innerText().catch(() => 'unavailable'));
+            }
+        }
+        throw error;
     }
     finally {
         await browser.close();

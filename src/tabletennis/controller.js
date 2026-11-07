@@ -1,190 +1,169 @@
 import {createWebMotionAdapter} from '../controller/webMotionAdapter.js';
-import {createMotionCalibration, applyMotionCalibration, createPaddleIntentController} from '../../shared/motion.js';
+import {createTableTennisControllerSession} from './controllerSession.js';
 import './controller.css';
 
 const $ = id => document.getElementById(id);
 const embedded = window.parent !== window && new URLSearchParams(location.search).has('lobby');
 const post = message => { if (embedded) window.parent.postMessage(message, location.origin); };
-let gameId = null, connected = !embedded, playing = !embedded, paused = embedded;
-let setup = null, calibration = null, calibrator = null, latestSample = null, latestIntent = null;
-let sequence = 0, revision = 0, lastSent = 0, mode = null, strokeUntil = 0;
-let generation = null, phase = 'ready', pendingRecenter = null, setupPending = false, directionStage = 0;
-let haptics = true;
-let intent = createPaddleIntentController();
-const reach = {x: 0, y: 0};
-const status = message => { $('tt-phone-status').textContent = message; };
-const controls = ['tt-feed-phone', 'tt-recenter-phone', 'tt-practice-phone', 'tt-match-phone'];
-const enableControls = () => { for (const id of controls) $(id).disabled = !setup || !playing || paused || !connected; };
+let attempt = 0, lastParentIntent = null, pendingRecenter = null, commandSequence = 0;
+let haptics = true, notice = '', noticeUntil = 0, motionStartedAt = null, motionAcquired = false;
+let frameTime = 0;
+const session = createTableTennisControllerSession({send(message) {
+  post(message);
+  if (!embedded && message.type === 'wee:controller-setup') {
+    queueMicrotask(() => session.acknowledge(message.requestId, {ok: true}));
+  }
+}, onChange: render});
 
-function reportSetup(value) {
-  setupPending = true;
-  post({type: 'wee:controller-setup', setup: value});
-  if (!embedded) { setup = value; setupPending = false; }
-  enableControls();
+function render() {
+  const state = session.state;
+  if (state.mode === 'motion' && state.motionReady) motionAcquired = true;
+  let title = 'Ready to rally', cue = state.mode === 'touch' ? 'Slide to aim. Tap to return.' : 'Swing to return';
+  let label = state.mode === 'touch' ? 'Touch controls' : state.setup ? 'Motion on' : 'Getting ready…';
+  if (state.suspended) {title = 'See you in a moment'; cue = 'Your paddle pauses with this screen.'; label = 'Paused';}
+  else if (!state.connected && embedded) {title = 'Reconnecting…'; cue = 'Keep this page open.'; label = 'Connecting';}
+  else if (state.playing && state.paused) {title = 'Hang tight'; cue = 'Watch the TV. Play will resume here.'; label = 'Paused';}
+  else if (state.phase === 'complete') {title = 'Good game!'; cue = 'See the score on the TV.'; label = 'Finished';}
+  else if (!state.mode) {title = 'Your phone. Your paddle.'; cue = 'Tap Play, then watch the TV.'; label = 'Let’s play';}
+  else if (!state.setup) {title = 'Getting ready…'; cue = 'Pick up your phone. We’ll do the rest.';}
+  else if (!state.playing) {title = 'You’re in'; cue = 'Watch the TV. The game starts together.';}
+  if (state.setupError) {title = 'Let’s reconnect'; cue = 'Tap Play to try again, or use touch.'; label = 'Connection interrupted';}
+  $('tt-title').textContent = title;
+  $('tt-cue').textContent = cue;
+  $('tt-phone-status').textContent = label;
+  $('tt-enable-motion').hidden = Boolean(state.mode) && !state.setupError;
+  $('tt-use-touch').textContent = state.mode === 'touch' ? 'Use motion' : 'Use touch';
+  $('tt-use-touch').hidden = false;
+  $('tt-touch').hidden = state.mode !== 'touch';
+  $('tt-illustration').hidden = state.mode === 'touch';
+  $('tt-options').hidden = !state.mode;
+  $('tt-touch-stroke').disabled = !session.canSend;
+  for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) $(id).disabled = !session.canSend;
+  const showNotice = notice && performance.now() < noticeUntil;
+  $('tt-notice').textContent = showNotice ? notice : '';
+  $('tt-notice').hidden = !showNotice;
+  $('tt-touch-paddle').style.left = `${(state.reach.x + 1) * 50}%`;
+  $('tt-touch-paddle').style.top = `${(1 - state.reach.y) * 50}%`;
+  $('tt-touchpad').setAttribute('aria-valuenow', Math.round(state.reach.x * 100));
 }
+function showNotice(message, duration = 3500) {notice = message; noticeUntil = performance.now() + duration; render();}
 
 const adapter = createWebMotionAdapter({
-  calibrationRevision: () => revision,
-  onSample(sample) {
-    latestSample = sample;
-    if (calibrator) {
-      const result = calibrator.push(sample);
-      $('tt-calibration').value = result.progress;
-      if (result.state === 'done') {
-        calibration = result.calibration; calibrator = null;
-        intent.reset();
-        $('tt-calibration').hidden = true;
-        directionStage = 1;
-        status('Grip saved. Gently tilt one way, then the other to check paddle direction.');
-      } else status(result.state === 'moving' ? 'Hold still in your paddle grip…' : 'Checking your grip…');
-    }
-    if (!calibration) return;
-    const corrected = applyMotionCalibration(sample, calibration);
-    if (!corrected) { invalidate('Screen orientation changed. Check your grip again.'); return; }
-    latestIntent = intent.push(corrected);
-    if (latestIntent && directionStage) {
-      if (directionStage === 1 && Math.abs(latestIntent.reach.x) > .15) {
-        directionStage = latestIntent.reach.x > 0 ? 2 : 3;
-        status('Now tilt gently the other way.');
-      } else if ((directionStage === 2 && latestIntent.reach.x < -.15) ||
-        (directionStage === 3 && latestIntent.reach.x > .15)) {
-        directionStage = 0; reportSetup('motion');
-        status('Grip and direction checked. Press Ready above.');
-      }
-    }
-  },
+  onSample(sample) {session.sample(sample);},
   onReset(reason) {
-    intent.reset(); latestIntent = null;
-    if (['hidden', 'pagehide', 'screen-rotation'].includes(reason)) invalidate('Motion paused. Tap Enable motion to check your grip again.');
+    if (['hidden', 'pagehide'].includes(reason)) session.suspend();
+    else if (['visible', 'pageshow'].includes(reason)) session.resume();
+    else if (reason === 'screen-rotation') session.resetMotion();
   },
 });
 
-function invalidate(message) {
-  calibration = null; calibrator = null; setup = null; latestIntent = null; directionStage = 0;
-  post({type: 'wee:controller-setup', setup: null});
-  status(message); enableControls();
+function useTouch(message = '') {
+  attempt++; session.select('touch'); adapter.stop();
+  if (message) showNotice(message, 5000);
 }
-
-$('tt-enable-motion').onclick = async () => {
-  mode = 'motion';
-  revision++;
-  latestSample = null; directionStage = 0;
-  calibration = null;
-  calibrator = createMotionCalibration({revision});
-  intent.reset(); setup = null; latestIntent = null;
-  $('tt-calibration').hidden = false; $('tt-calibration').value = 0;
-  $('tt-touch').hidden = true;
-  status('Hold still in a comfortable paddle grip…');
+async function useMotion({requestPermission = true} = {}) {
+  const current = ++attempt;
+  motionAcquired = false; motionStartedAt = null; session.select('motion');
+  // Call start directly on a user's tap when a browser prompt is necessary.
   try {
-    await adapter.start();
-    window.setTimeout(() => {
-      if (mode === 'motion' && !latestSample && !calibration) status('No motion readings arrived. Try touch controls or check sensor permissions.');
-    }, 3000);
-  } catch (error) {
-    calibrator = null; $('tt-calibration').hidden = true;
-    status(error.message);
+    await adapter.start({requestPermission});
+    if (current !== attempt || session.state.mode !== 'motion') return;
+    motionStartedAt = performance.now();
+  } catch {
+    if (current === attempt) useTouch('Motion is off. You can play by touch.');
   }
-};
-$('tt-use-touch').onclick = () => {
-  adapter.stop(); mode = 'touch'; calibration = null; calibrator = null; directionStage = 0; intent.reset();
-  $('tt-calibration').hidden = true; $('tt-touch').hidden = false;
-  reportSetup('buttons'); status('Touch paddle ready. Press Ready above, then slide and stroke.');
-};
+}
+$('tt-enable-motion').onclick = () => session.state.mode === 'touch' ? useTouch() : useMotion();
+$('tt-use-touch').onclick = () => session.state.mode === 'touch' ? useMotion() : useTouch();
 
-function command(action, extras = {}) {
-  if (!gameId || !connected || !playing || paused) return null;
-  const id = `tt-${Date.now().toString(36)}-${sequence++}`;
-  post({type: 'wee:player-game-command', command: {id, gameId, action, ...extras}});
+function command(action) {
+  const state = session.state;
+  if (!state.gameId || !session.canSend) return null;
+  const id = `tt-${Date.now().toString(36)}-${commandSequence++}`;
+  post({type: 'wee:player-game-command', command: {id, gameId: state.gameId, action}});
   return id;
 }
-$('tt-feed-phone').onclick = () => command('feed');
 $('tt-practice-phone').onclick = () => command('practice-start');
-$('tt-match-phone').onclick = () => command('new-match');
+$('tt-match-phone').onclick = () => command('practice-stop');
 $('tt-recenter-phone').onclick = () => {
-  if (phase !== 'ready' && phase !== 'complete') { status('Recenter between points, after the ball stops.'); return; }
+  if (!['ready', 'complete'].includes(session.state.phase)) {showNotice('We can center your paddle after this point.'); return;}
   pendingRecenter = command('recenter');
-  if (!embedded && latestSample && calibration) intent.recenter(applyMotionCalibration(latestSample, calibration));
+  if (!embedded) session.recenter();
 };
-$('tt-touch-stroke').onclick = () => { strokeUntil = performance.now() + 240; };
+$('tt-touch-stroke').onclick = () => session.stroke(performance.now() / 1000);
 function moveTouch(event) {
   const rect = $('tt-touchpad').getBoundingClientRect();
-  reach.x = Math.max(-1, Math.min(1, (event.clientX - rect.left) / rect.width * 2 - 1));
-  reach.y = Math.max(-1, Math.min(1, 1 - (event.clientY - rect.top) / rect.height * 2));
-  renderTouch();
+  session.move((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2);
 }
-function renderTouch() {
-  $('tt-touch-paddle').style.left = `${(reach.x + 1) * 50}%`;
-  $('tt-touch-paddle').style.top = `${(1 - reach.y) * 50}%`;
-  $('tt-touchpad').setAttribute('aria-valuenow', Math.round(reach.x * 100));
-}
-$('tt-touchpad').onpointerdown = event => { $('tt-touchpad').setPointerCapture(event.pointerId); moveTouch(event); };
-$('tt-touchpad').onpointermove = event => { if ($('tt-touchpad').hasPointerCapture(event.pointerId)) moveTouch(event); };
+$('tt-touchpad').onpointerdown = event => {
+  $('tt-touchpad').setPointerCapture(event.pointerId); moveTouch(event);
+};
+$('tt-touchpad').onpointermove = event => {
+  if ($('tt-touchpad').hasPointerCapture(event.pointerId)) moveTouch(event);
+};
+$('tt-touchpad').onpointerup = event => {
+  if (!$('tt-touchpad').hasPointerCapture(event.pointerId)) return;
+  moveTouch(event); session.stroke(performance.now() / 1000);
+  $('tt-touchpad').releasePointerCapture(event.pointerId);
+};
+$('tt-touchpad').onpointercancel = event => {
+  if ($('tt-touchpad').hasPointerCapture(event.pointerId)) $('tt-touchpad').releasePointerCapture(event.pointerId);
+};
 $('tt-touchpad').onkeydown = event => {
+  if (event.key === ' ' || event.key === 'Enter') {event.preventDefault(); session.stroke(performance.now() / 1000); return;}
   if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
   event.preventDefault();
-  if (event.key === 'ArrowLeft') reach.x = Math.max(-1, reach.x - .1);
-  if (event.key === 'ArrowRight') reach.x = Math.min(1, reach.x + .1);
-  if (event.key === 'ArrowUp') reach.y = Math.min(1, reach.y + .1);
-  if (event.key === 'ArrowDown') reach.y = Math.max(-1, reach.y - .1);
-  renderTouch();
+  const {x, y} = session.state.reach;
+  session.move(x + (event.key === 'ArrowRight' ? .1 : event.key === 'ArrowLeft' ? -.1 : 0),
+    y + (event.key === 'ArrowUp' ? .1 : event.key === 'ArrowDown' ? -.1 : 0));
 };
 
 window.addEventListener('message', event => {
   if (!embedded || event.origin !== location.origin || event.source !== window.parent) return;
   const data = event.data;
-  if (data?.type === 'wee:lobby-state' && data.sport === 'table-tennis') {
-    if (gameId !== data.gameId || generation !== data.generation) {
-      latestIntent = null; intent.reset(); strokeUntil = 0;
-    }
-    gameId = data.gameId; generation = data.generation;
-    connected = data.connected; playing = data.playing; paused = data.paused;
-    if (!connected) status('Connection lost. Input stops until the session returns.');
-    else if (paused) status('Game paused. Your paddle will resume with fresh input.');
-    else if (setup && playing) status(mode === 'touch' ? 'Slide to aim. Tap Stroke as the ball reaches you.' : 'Tilt and use compact strokes.');
-    enableControls();
-  } else if (data?.type === 'wee:setup-ack') {
-    setupPending = false;
-    if (data.result?.ok) setup = mode === 'motion' && calibration ? 'motion' : mode === 'touch' ? 'buttons' : null;
-    else status('Controller setup was not accepted. Choose your controls again.');
-    enableControls();
-  } else if (data?.type === 'wee:table-tennis-state' && data.gameId === gameId) {
-    phase = data.phase;
+  if (data?.type === 'wee:lobby-state' && data.sport === 'table-tennis') session.lobby(data);
+  else if (data?.type === 'wee:controller-intent' && ['motion', 'touch'].includes(data.mode)) {
+    const key = `${data.mode}:${data.permission}`;
+    if (lastParentIntent === key) return;
+    lastParentIntent = key;
+    if (session.state.mode === data.mode) return;
+    if (data.mode === 'motion' && data.permission === 'granted') void useMotion({requestPermission: false});
+    else useTouch(data.permission === 'denied' ? 'Motion is off. You can play by touch.' : '');
+  } else if (data?.type === 'wee:setup-ack') session.acknowledge(data.requestId, data.result);
+  else if (data?.type === 'wee:table-tennis-state' && data.gameId === session.state.gameId) {
+    session.setPhase(data.phase); render();
   } else if (data?.type === 'wee:game-command-result' && data.id === pendingRecenter) {
-    if (data.result?.ok) {
-      if (latestSample && calibration) intent.recenter(applyMotionCalibration(latestSample, calibration));
-      reach.x = reach.y = 0; renderTouch(); latestIntent = null; status('Paddle centered.');
-    } else status('Wait until the point ends before recentering.');
+    if (data.result?.ok && session.recenter()) showNotice('Paddle centered.');
+    else showNotice('We can center your paddle after this point.');
     pendingRecenter = null;
-  } else if (data?.type === 'wee:profile-preferences' && !mode) {
-    const prefs = data.preferences;
-    if (!prefs || typeof prefs !== 'object') return;
-    intent = createPaddleIntentController({hand: prefs.hand === 'Left' ? 'Left' : 'Right',
-      sensitivity: Number.isFinite(prefs.sensitivity) ? Math.max(.25, Math.min(2, prefs.sensitivity)) : 1});
-    haptics = prefs.haptics !== false;
-    if (prefs.touchControls) status('Your saved preference is touch controls. Choose Use touch controls to get ready.');
+  } else if (data?.type === 'wee:profile-preferences') {
+    const preferences = data.preferences;
+    if (!preferences || typeof preferences !== 'object') return;
+    if (!session.state.mode) session.configure({hand: preferences.hand === 'Left' ? 'Left' : 'Right', sensitivity: preferences.sensitivity});
+    if (typeof preferences.haptics === 'boolean') haptics = preferences.haptics;
   } else if (data?.type === 'wee:game-hit' && data.kind === 'table-tennis') {
-    status('Ball contact — nice return');
+    showNotice('Nice contact!', 700);
     if (haptics) navigator.vibrate?.(12);
   }
 });
 
-function stream(now) {
-  if (setup && !setupPending && playing && connected && !paused && !document.hidden && now - lastSent >= 1000 / 30) {
-    let sample = latestIntent;
-    if (mode === 'touch') {
-      const tilt = Number($('tt-face').value);
-      const pulse = now < strokeUntil ? Math.sin((240 - strokeUntil + now) / 240 * Math.PI) : 0;
-      sample = {orientation: [0, Math.sin(tilt / 2), 0, Math.cos(tilt / 2)], angularVelocity: {x: pulse * 12, y: 0, z: 0}, reach: {...reach}, calibrationRevision: revision};
-    }
-    if (sample && (mode === 'touch' || now / 1000 - sample.sampleTime <= .15)) {
-      post({type: 'wee:player-pose', event: {seq: sequence++, orientation: sample.orientation,
-        angularVelocity: sample.angularVelocity, reach: sample.reach, calibrationRevision: sample.calibrationRevision}});
-      lastSent = now;
-    }
-  }
-  requestAnimationFrame(stream);
+document.addEventListener('visibilitychange', () => document.hidden ? session.suspend() : session.resume());
+window.addEventListener('pagehide', () => session.suspend());
+window.addEventListener('pageshow', () => session.resume());
+function frame(now) {
+  // rAF's frame timestamp can precede a sensor callback already delivered in
+  // this turn. Freshness must use the same receipt clock as the motion adapter.
+  session.frame(performance.now() / 1000);
+  if (session.state.mode === 'motion' && motionStartedAt !== null && !motionAcquired && !document.hidden &&
+      now - motionStartedAt > 3000) useTouch('Motion isn’t available here. Touch controls are ready.');
+  if (now - frameTime > 500) {frameTime = now; render();}
+  requestAnimationFrame(frame);
 }
-new ResizeObserver(() => post({type: 'wee:controller-height', height: document.documentElement.scrollHeight})).observe(document.body);
-window.addEventListener('pagehide', () => adapter.stop());
+if (typeof ResizeObserver !== 'undefined') {
+  const content = document.querySelector('.tt-phone');
+  new ResizeObserver(() => post({type: 'wee:controller-height', height: Math.ceil(content.getBoundingClientRect().height) + 2})).observe(content);
+}
+if (!embedded) session.lobby({connected: true, playing: true, paused: false, gameId: 'standalone', generation: 0});
+render();
 post({type: 'wee:bridge-ready'});
-requestAnimationFrame(stream);
+requestAnimationFrame(frame);

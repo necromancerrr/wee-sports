@@ -160,7 +160,11 @@ export function createBowlingDeliveryGate({quietMs = 250, quietSpeed = 45} = {})
 export function bowlingTiltAim(gravity, rotationSpeed) {
   if (!gravity || !['x', 'y', 'z'].every(axis => Number.isFinite(gravity[axis])) || !Number.isFinite(rotationSpeed) || rotationSpeed > 65) return null;
   const magnitude = Math.hypot(gravity.x, gravity.y, gravity.z);
-  if (magnitude < 7.5 || magnitude > 12 || gravity.z < 5) return null;
-  const angle = -Math.atan2(gravity.x, gravity.z) * 180 / Math.PI;
+  if (magnitude < 7.5 || magnitude > 12 || Math.abs(gravity.z) < 5) return null;
+  // Engines expose either support acceleration or downward gravity. For the
+  // screen-up playing pose the two vectors are opposites; their tilt ratio
+  // must produce the same lane direction, without browser-name detection.
+  const supportSign = Math.sign(gravity.z);
+  const angle = -Math.atan2(gravity.x * supportSign, Math.abs(gravity.z)) * 180 / Math.PI;
   return Math.sign(angle) * clamp((Math.abs(angle) - 4) / 31, 0, 1) || 0;
 }

@@ -27,9 +27,10 @@ playing each other. Bowling supports one to four players through ten frames,
 with turn validation and game acknowledgements; see [bowling details](bowling.md).
 Table Tennis adds solo practice and scored bot play through a continuous pose
 stream, with touch fallback. Controllers open before Play and stay loaded through the
-countdown. Each must report successful motion calibration or an explicit button-control
-choice before Ready. Reloading a controller clears its setup and pauses an active
-match until setup is completed again. A simple network reconnect keeps calibration. Embedded swings use the same lobby session; standalone prototypes
+countdown. Each must report live valid motion samples or active touch controls
+before readiness; the phone handles that exchange automatically after Play.
+Reloading a controller clears stale input and pauses an active match until fresh
+samples or touch controls are ready again. A simple network reconnect keeps the selected mode. Embedded swings use the same lobby session; standalone prototypes
 retain their separate relay. The TV's game stays mounted and
 pauses during a lobby disconnect. Bowling and Table Tennis now checkpoint stable
 settled roll/point boundaries, including surviving pin transforms or table-tennis
@@ -43,7 +44,8 @@ The browser remains the default QR destination. Optional profiles/history use
 the server's SQLite store, and the optional Expo controller uses the same room
 contract. Account identity and room reconnect tokens are separate. Returning to
 the lobby allows the host or P1 to switch sport while retaining member identity;
-motion setup is rechecked when the grip changes. Current-seat authorization,
+a fresh neutral is established from live samples when the sport changes, without
+a player-facing grip checklist. Current-seat authorization,
 host epochs, input generations and monotonic sequences prevent old continuous
 inputs from becoming fresh play.
 
@@ -73,19 +75,20 @@ For a device check, install `cloudflared` once (macOS: `brew install cloudflared
 built game. Open the laptop’s local homepage and scan its current QR. Keep the
 terminal open. `npm run dev:phone` is the same command; `npm run dev:local` runs
 Vite locally without a phone tunnel. Do not bypass certificate warnings. The
-phone still needs a direct **Calibrate** tap and the browser’s motion permission.
+phone needs a direct **Play** tap and the browser’s motion permission if asked.
+If motion is denied or unavailable, it selects touch controls automatically.
 
 Start with one phone, then repeat with two separate phones for tennis and up to
 four for bowling. Record actual phone/browser results: automated sensor recordings
 do not verify physical hardware permissions or the feel of a live swing.
 
-1. Refresh a phone and the TV; verify the same room, names, and seats. Refinish controller setup after a reload. Bowling/Table Tennis restore their supported stable boundary; verify the last settled score/rack or point. Existing Tennis starts a fresh world.
+1. Refresh a phone and the TV; verify the same room, names, and seats. Verify setup resumes automatically after fresh readings, with no old swing replayed. Bowling/Table Tennis restore their supported stable boundary; verify the last settled score/rack or point. Existing Tennis starts a fresh world.
 2. Temporarily disable a phone's network; verify the waiting screen and reconnect.
 3. Disconnect during the five-second countdown; verify it resumes with time remaining.
 4. Stay disconnected for over 60 seconds; verify seat release or TV timeout closure.
 5. Reopen the same controller in a second tab; verify only the new tab has control.
 6. Stop/restart the server; verify the old session reports that the game has ended.
-7. Try both playing hands, motion calibration, serving, returning and scoring.
+7. Try both playing hands, automatic setup, serving, returning and scoring.
    Verify P2 disables the bot, a third tennis phone is rejected, and either
    controller leaving returns everyone to the lobby.
 8. In bowling, test tilt aiming, swing power and wrist-twist curve with each hand;

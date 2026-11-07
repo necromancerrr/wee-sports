@@ -61,17 +61,25 @@ WEE_SMOKE_URL=http://127.0.0.1:5174 WEE_SMOKE_REPORT=/tmp/wee-sports-checks/brow
 `WEE_SMOKE_CHROMIUM` overrides the default `/usr/bin/chromium` executable;
 `WEE_SMOKE_SCREENSHOT` optionally saves a Table Tennis screenshot. The script
 creates a synthetic account in the selected database, joins rooms in separate
-browser contexts, uses touch controls, checks host reload and Profile Continue,
+browser contexts, uses Play and automatic touch fallback, checks host reload and Profile Continue,
 and closes its rooms on success. Use a test database. Report files are created
 without overwriting prior results. Playwright is an environment validation
 dependency and is not bundled with the game.
+
+The separate `scripts/browser-motion-smoke.cjs` accepts the same environment
+variables and generates deterministic sensor events through the real browser
+and authenticated room. It checks permission-call timing, automatic readiness,
+single bowling releases, curve direction, sensor gaps and visibility changes.
+Its sensor/permission mocks are software evidence, not real phone acceptance.
+See [the controller design and research](controller-simplicity.md).
 
 ## Owner trial: bowling
 
 1. Create a Bowling room on the display, scan its QR with the normal phone
    camera, and join as a guest. No account or native app is required.
-2. Choose the playing hand and perform the controller's motion/grip check.
-   Confirm left/center/right aim on the display before releasing.
+2. Tap Play and allow motion if asked. No name, grip checklist, Ready button or
+   per-roll Arm button is required. Confirm left/center/right aim on the display;
+   the line freezes when the forward swing begins.
 3. Try several backswing-only preparations: none should release. Compare gentle,
    medium and stronger forward deliveries. Aim should freeze during delivery.
 4. Finish ten frames, including normal second balls. Record missed or false
@@ -86,8 +94,9 @@ oracles complement a real game; neither substitutes for the other.
 ## Owner trial: table tennis
 
 1. From the same room, return to the lobby and choose Table Tennis. Check that
-   the player name and seat remain; complete the new grip check if needed.
-2. Start Practice and try repeated slow feeds. Compare a stationary block,
+   the player name and seat remain; fresh motion samples set up the paddle
+   automatically without another permission prompt or direction check.
+2. Practice feeds start automatically. Try repeated slow returns. Compare a stationary block,
    compact flat return, angled face, and upward/downward brushing.
 3. Try touch controls; use the standalone diagnostic view for keyboard controls
    to distinguish sensor mapping from simulation behavior. The ball should react at physical paddle contact,
@@ -117,7 +126,7 @@ before relying on a process restart.
 To continue a saved solo Bowling or Table Tennis game, sign into the owning
 profile on the display and choose **Continue on this screen** under Profile &
 history. Join the new code from a phone signed into the same profile, finish
-controller setup and press Ready. The original saved source remains read-only;
+tap Play. Sensor setup and readiness complete automatically. The original saved source remains read-only;
 progress continues under a new game identity. A source can have only one active
 continuation and disappears from available sources after continuation. Party
 archive recovery and existing Tennis score recovery are not implemented.

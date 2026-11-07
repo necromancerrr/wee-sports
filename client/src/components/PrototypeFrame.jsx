@@ -5,7 +5,7 @@ import { createInputId } from '../../../src/network/inputId.js';
 
 const NO_PLAYERS = [];
 /** Keep the game/controller alive while the outer page owns the lobby session. */
-export function PrototypeFrame({ code, controller = false, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
+export function PrototypeFrame({ code, controller = false, controllerIntent = null, onControllerMode, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
   const frame = useRef(null);
   const ready = useRef(false);
   const pending = useRef(new Map());
@@ -45,6 +45,7 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
     const post = message => frame.current?.contentWindow?.postMessage(message, window.location.origin);
     post({ type: 'wee:lobby-state', paused: paused || connection !== 'online' || (!controller && recovering.current), manuallyPaused, connected: connection === 'online', players, playing, sport, gameId, generation, inputGeneration: generation, hostEpoch });
     if (controller && profilePreferences) post({type:'wee:profile-preferences',preferences:profilePreferences});
+    if (controller && controllerIntent) post({type:'wee:controller-intent', ...controllerIntent});
     if (controller && sport === 'bowling') post({ type: 'wee:bowling-state', ...gameState,
       canRoll: playing && !paused && connection === 'online' && gameState?.phase === 'ready' && gameState.currentPlayer === player });
     if (controller && sport === 'table-tennis' && isTableTennisState(gameState)) post({type: 'wee:table-tennis-state', ...gameState, gameId});
@@ -193,7 +194,9 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
         if (delivery) { clearTimeout(delivery.timer); pending.current.delete(data.id); delivery.ack(data.result); }
       } else if (controller && data?.type === 'wee:controller-setup') {
         const result = await request(EVENTS.PLAYER_SETUP, { setup: data.setup });
-        post({ type: 'wee:setup-ack', result });
+        post({ type: 'wee:setup-ack', requestId: data.requestId, result });
+      } else if (controller && data?.type === 'wee:controller-mode' && ['motion', 'touch'].includes(data.mode)) {
+        onControllerMode?.(data.mode);
       } else if (controller && data?.type === 'wee:controller-height' && Number.isFinite(data.height)) {
         setHeight(Math.max(400, Math.min(2200, data.height)));
       }
@@ -263,7 +266,7 @@ export function PrototypeFrame({ code, controller = false, player = 1, players =
       socket.off(EVENTS.GAME_HIT, hit);
       socket.off(EVENTS.GAME_STROKE_RESULT, strokeResult);
     };
-  }, [paused, manuallyPaused, connection, src, controller, attempt, players, playing, sport, gameId, gameState, generation, hostEpoch, matchRound, profilePreferences, player, onAudio, onPauseToggle]);
+  }, [paused, manuallyPaused, connection, src, controller, controllerIntent, onControllerMode, attempt, players, playing, sport, gameId, gameState, generation, hostEpoch, matchRound, profilePreferences, player, onAudio, onPauseToggle]);
   return (
     <div className={`prototype-frame ${controller ? 'prototype-frame--phone' : ''}`}>
       {loading ? <p role="status">{failed ? 'Taking too long to load.' : `Loading ${controller ? 'controller' : sport}…`}

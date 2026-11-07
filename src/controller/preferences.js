@@ -29,10 +29,11 @@ export function createControllerPreferences(storage) {
     applyProfile(value, {active = false, protectedKeys = []} = {}) {
       if (profileApplied) return false;
       profileApplied = true;
-      if (active) return false;
       let changed = false;
       for (const [key, next] of Object.entries(fields(value))) {
-        if (Object.hasOwn(chosen, key) || protectedKeys.includes(key)) continue;
+        // A late response must not change a live gesture's mapping. Vibration
+        // preference can still be applied without interrupting the controller.
+        if (Object.hasOwn(chosen, key) || protectedKeys.includes(key) || active && key !== 'haptics') continue;
         chosen[key] = next; changed = true;
       }
       if (changed) save();

@@ -1,8 +1,9 @@
 # Acceptance evidence and remaining device gates
 
 Baseline source: `necromancerrr/wee-sports`,
-`1410caf713e7e6c27c16ab18339246d805b22e60`. Implementation work is a local change set
-on that baseline; an unchanged HEAD alone does not identify uncommitted source.
+`1410caf713e7e6c27c16ab18339246d805b22e60`. The initial platform implementation
+was committed as `031482f`; the simplified-controller follow-up has separate
+evidence below. Source hashes in retained reports identify their tested inputs.
 No deployment, native signing, or store distribution is part of this evidence.
 
 ## Baseline verified during cloud onboarding
@@ -46,9 +47,10 @@ both detector modes with their direct-recording baseline. All labels, peak times
 and online confirmation times match (floating-point tolerance: 0.000001 ms). This
 verifies extraction compatibility; it does not establish real-device axis signs.
 
-## Implementation validation
+## Initial platform validation
 
-The following integrated checks have run against the local implementation:
+The following checks ran against the initial platform implementation, before
+the simplified-controller follow-up:
 
 | Command | Observed result |
 | --- | --- |
@@ -66,16 +68,48 @@ Browser evidence uses headless Chromium with software rendering over local HTTP.
 It does not exercise a physical phone, a complete ten-frame game, or a complete
 scored bot game. The reusable runner is
 [`scripts/browser-platform-smoke.cjs`](../../scripts/browser-platform-smoke.cjs).
-The [retained browser report](browser-smoke.json) records all 12 successful
+The [initial browser report](browser-smoke-initial.json) records all 12 successful
 checks, runtime/browser versions and zero uncaught page errors. Its Continue
 flow closes a live room; the separate SQLite/socket restart regression covers
 closing and reopening the persistence service before restoration.
 
-Browser validation found and resolved production `/profile` routing, malformed
+Initial browser validation found and resolved production `/profile` routing, malformed
 Table Tennis options, the saved-status layout and the missing durable save after
 successful restore. The final run includes those fixes. The full root and Node
 suites, native checks and browser smoke are independent evidence; their test
 counts are not combined into a single coverage claim.
+
+## Simplified-controller follow-up
+
+The current flow removes the name requirement, grip/direction checklist,
+separate Ready action and per-roll Arm action. It retains actual sensor
+freshness checks, explicit browser permission when needed, and touch fallback.
+See [the design and primary-source research](controller-simplicity.md).
+
+| Check | Observed follow-up result |
+| --- | --- |
+| Root Vitest suite | 476/476 passed in 53 files (16.49 s) |
+| Standalone Node server suite | 161/161 passed |
+| TypeScript and production build | Passed; all six pages and required GLB assets verified |
+| Optional native controller | 24/24 tests passed; Android and iOS Metro/Hermes exports passed |
+| [Touch browser smoke](browser-smoke.json) | 12/12 checks passed: optional-name Play, automatic touch setup, live aim, settled-save/reload, pause, same-room switching, profile isolation/preferences and exact durable Profile Continue |
+| [Synthetic-motion browser smoke](browser-motion-smoke.json) | 11/11 checks passed: permission requests on the Play gesture, no duplicate iframe prompt, no Ready/Arm gate, backswing rejection, one-shot delivery and opposite curve, background/gap cancellation, automatic table-tennis startup and pose lifecycle, one-tap touch, denied/silent-sensor fallback and Wait for friends |
+| [Canonical replay](motion-roundtrip.json) | All 19 expected strokes in each mode retained identical labels and online confirmation timing; current source hashes recorded |
+| Narrow-screen visual review | Bowling and Table Tennis motion screens checked at 375×812; no horizontal overflow |
+
+Both browser runs finished with zero uncaught page errors. They ran separately
+to avoid software-rendering load distorting timing-sensitive sensor fixtures.
+The motion runner injects generated events and mocks the permission API; it
+verifies the real controller/room/host software path, not physical sensors or
+real iOS/Android permission dialogs. The touch Continue flow restores the exact
+persisted boundary and verifies the original source remains unchanged.
+
+Browser testing found a table-tennis clock mismatch: a requestAnimationFrame
+batch timestamp could precede a sensor's receipt timestamp and repeatedly erase
+fresh setup. The final controller uses the same performance clock for freshness
+as sensor receipt. Immediate hidden-page revocation and a three-second fallback
+for permission-granted but silent sensors were also covered in the final run.
+No physical-phone, installed-native, haptic or latency gate is marked complete.
 
 | Area | Required evidence |
 | --- | --- |

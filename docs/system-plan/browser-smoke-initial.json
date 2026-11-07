@@ -1,0 +1,27 @@
+{
+  "recordedAt": "2026-11-07T18:37:15.395Z",
+  "base": "http://127.0.0.1:5180",
+  "runtime": "v24.22.1",
+  "browser": "156.0.8078.79",
+  "rendering": "headless Chromium with software rendering",
+  "checks": [
+    "Bowling browser guest join, touch readiness and authenticated live aim",
+    "Bowling deliberate touch release settles once and saves a boundary",
+    "Shared pause and resume",
+    "TV reload restores the same settled bowling boundary",
+    "Same-room switch retains identity and starts solo Table Tennis practice with touch controls",
+    "Table Tennis phone commands reach practice and scored bot modes",
+    "Existing Tennis remains available in the same room",
+    "Room closure reaches the controller",
+    "Optional profile registration/preferences, revision conflicts and unauthorized history access",
+    "Profile sign-out/sign-in retains preferences and renders history",
+    "Profile Continue opens a fresh solo room, authenticates its owner and restores the exact saved bowling state",
+    "No uncaught page errors"
+  ],
+  "errors": [],
+  "limitations": [
+    "Touch controls and local HTTP only; no physical motion, sensor permission, haptics or latency evidence.",
+    "No complete ten-frame bowling game or complete scored table-tennis bot game.",
+    "Continue UI verified after closing a live room; process restart is covered separately by server/profileRecovery.test.js."
+  ]
+}

@@ -1,8 +1,30 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wee Sports · Table Tennis Controller</title></head><body>
-<main class="tt-phone"><header><span class="tt-phone-kicker">Your paddle</span><h1>Small moves. Great rallies.</h1><p>Tilt for angle. Use compact strokes. Your phone stays in your hand.</p></header>
-<div class="tt-phone-status" role="status" id="tt-phone-status">Choose motion or touch to get ready.</div>
-<section class="tt-phone-setup" aria-label="Controller setup"><button id="tt-enable-motion">Enable motion</button><button id="tt-use-touch" class="secondary">Use touch controls</button><progress id="tt-calibration" value="0" max="1" hidden></progress><p id="tt-calibration-help">For motion, hold your phone still in a comfortable paddle grip for a moment.</p></section>
-<section id="tt-touch" hidden aria-label="Touch paddle"><div id="tt-touchpad" role="slider" tabindex="0" aria-label="Paddle reach" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><span id="tt-touch-paddle"></span><span class="tt-touch-label">Slide to place your paddle</span></div><label>Paddle angle <input id="tt-face" type="range" min="-0.4" max="0.4" value="0" step="0.01"></label><button id="tt-touch-stroke">Stroke</button></section>
-<section class="tt-phone-actions" aria-label="Game controls"><button id="tt-feed-phone" disabled>Feed / Serve</button><button id="tt-recenter-phone" class="secondary" disabled>Recenter</button><button id="tt-practice-phone" class="secondary" disabled>Practice</button><button id="tt-match-phone" class="secondary" disabled>Play bot</button></section>
-<p class="tt-phone-help">Friendly assistance helps with reach; the ball still needs to meet the paddle. Touch controls provide the same game without sensor permission.</p>
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wee Sports · Table Tennis Controller</title></head>
+<body><main class="tt-phone">
+  <section class="tt-play" aria-labelledby="tt-title">
+    <p class="tt-phone-status" role="status" id="tt-phone-status">Let’s play</p>
+    <div class="tt-illustration" id="tt-illustration" aria-hidden="true">
+      <svg viewBox="0 0 280 260" fill="none"><defs><linearGradient id="paddle" x1="70" y1="50" x2="205" y2="170" gradientUnits="userSpaceOnUse"><stop stop-color="#4490ff"/><stop offset="1" stop-color="#1644d8"/></linearGradient><radialGradient id="ball"><stop stop-color="#ffd87a"/><stop offset="1" stop-color="#ffad27"/></radialGradient></defs>
+      <ellipse cx="142" cy="230" rx="83" ry="12" fill="#173d8d" opacity=".09"/>
+      <path d="m143 153-58 70a12 12 0 0 1-18-15l56-72" fill="#e6b16d" stroke="#bd8b50" stroke-width="3"/>
+      <ellipse cx="148" cy="106" rx="67" ry="88" transform="rotate(38 148 106)" fill="url(#paddle)" stroke="#c8ddff" stroke-width="6"/>
+      <path d="M105 89c9-31 31-45 55-45" stroke="white" stroke-opacity=".3" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="226" cy="83" r="23" fill="url(#ball)"/>
+      <path d="M170 208c35-10 58-28 63-52m-19 5 21-12 9 22" stroke="#c9ee41" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1 id="tt-title">Your phone. Your paddle.</h1>
+    <p id="tt-cue" class="tt-cue">Tap Play, then watch the TV.</p>
+    <p id="tt-notice" class="tt-notice" role="status" hidden></p>
+    <button id="tt-enable-motion" class="tt-primary">Play</button>
+    <section id="tt-touch" hidden aria-label="Touch paddle">
+      <div id="tt-touchpad" role="slider" tabindex="0" aria-label="Paddle position" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><span id="tt-touch-paddle"></span><span class="tt-touch-label">Slide to aim · lift to swing</span></div>
+      <button id="tt-touch-stroke" class="tt-primary" disabled>Return</button>
+    </section>
+    <button id="tt-use-touch" class="tt-link" hidden>Use touch</button>
+  </section>
+  <details id="tt-options" class="tt-options" hidden><summary>Options</summary>
+    <div class="tt-phone-actions"><button id="tt-recenter-phone" disabled>Center paddle</button><button id="tt-practice-phone" disabled>Practice</button><button id="tt-match-phone" disabled>Play bot</button></div>
+    <p>Small, comfortable swings work best. Keep hold of your phone.</p>
+  </details>
 </main><script type="module" src="/src/tabletennis/controller.js"></script></body></html>

@@ -167,6 +167,14 @@ test('tilt aims only from a still screen-up grip and clamps to the lane', () => 
   expect(bowlingTiltAim({ x: 0, y: 0, z: 9.8 }, 100)).toBeNull();
 });
 
+test('opposite gravity and support-acceleration conventions keep the same bowling aim', () => {
+  for (const x of [-5, -2, 0, 2, 5]) {
+    const support = {x, y: 0, z: Math.sqrt(9.81 ** 2 - x ** 2)};
+    const gravity = {x: -support.x, y: -support.y, z: -support.z};
+    expect(bowlingTiltAim(gravity, 0)).toBeCloseTo(bowlingTiltAim(support, 0), 12);
+  }
+});
+
 
 test('natural bowling gate freezes aim at forward onset and latches until a new authoritative turn', () => {
   const gate = createBowlingDeliveryGate();

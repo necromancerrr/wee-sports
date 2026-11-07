@@ -4,7 +4,7 @@ import {SPORTS} from '../lib/sports.js';
 import {request} from '../lib/socket.js';
 import {errorText} from '../lib/errors.js';
 
-/** Switching preserves the room and player identities; motion grips are checked again. */
+/** Switching preserves the room and player identities; motion restarts safely. */
 export function SportSwitcher({lobby, role = 'host', disabled = false}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -21,7 +21,7 @@ export function SportSwitcher({lobby, role = 'host', disabled = false}) {
       {SPORTS.filter(sport => sport.open).map(sport => <option key={sport.id} value={sport.id}
         disabled={lobby.players.some(player => player.slot >= playerCapacity(sport.id))}>{sport.name}</option>)}
     </select></label>
-    <p className="stub__muted">Keep this room and your players. Motion controls may need a new grip check.</p>
+    <p className="stub__muted">Same room. Same players. Your controller changes with the game.</p>
     {error ? <p role="alert">{error}</p> : null}
   </div>;
 }

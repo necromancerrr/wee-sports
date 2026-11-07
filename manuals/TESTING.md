@@ -29,3 +29,11 @@ axes, permission behavior, haptic output, grip feel or live physical latency.
 Follow the [owner trial runbook](../docs/system-plan/README.md) and record the
 [device matrix and acceptance evidence](../docs/system-plan/acceptance.md).
 Distinguish passing automated checks, unrun hardware gates, and measured results.
+
+Against a disposable built server, `scripts/browser-platform-smoke.cjs` checks
+one-tap Play with automatic touch fallback, same-room switching, profiles and
+recovery. `scripts/browser-motion-smoke.cjs` generates deterministic DeviceMotion
+events to check real controller/socket behavior, permission-call timing, curve
+direction and lifecycle cancellation. Both require an environment-provided
+Playwright and Chromium; commands are in the owner trial runbook. Neither
+runner exercises a physical sensor or a real permission dialog.

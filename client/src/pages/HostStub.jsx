@@ -185,7 +185,7 @@ export default function HostStub() {
       <p className="stub__muted">{lobby.sport === 'table-tennis' ? 'One player, one phone. Practise returns or play a scored game against the bot.' : lobby.sport === 'bowling' ? 'One to four players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
       {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your session.</p> : null}
       {url ? <>
-        <p className="stub__muted">Scan with your phone camera to join and calibrate.</p>
+        <p className="stub__muted">Scan with your phone camera, tap Play, and allow motion if asked.</p>
         <div className="stub__row">
           <QrCode value={url} className="stub__qr" label={`Scan to join lobby ${code}`} />
           <div>

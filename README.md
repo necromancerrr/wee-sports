@@ -8,8 +8,8 @@ installation is required.
 ## Games and controls
 
 - **Bowling:** one to four players, ten-frame scoring and solo practice. Aim on
-  the phone and watch the live TV indicator; arming a forward delivery freezes
-  aim. Button controls provide aim, power, curve and a deliberate roll.
+  the phone and watch the live TV indicator; beginning a forward delivery freezes
+  aim automatically. Button controls provide aim, power, curve and a deliberate roll.
 - **Table Tennis:** one player, repeatable practice feeds or a scored bot game
   to 11 with a two-point lead. Use compact motion or the touch paddle. The
   standalone diagnostic view also supports pointer/arrow movement, click/Space
@@ -29,8 +29,10 @@ Tennis keyboard controls:
 ## Features
 
 - Browser guest pairing, readiness, shared pause and private reconnect tokens.
-- Same-room sport switching preserves player identities; changed motion grips
-  are checked again. Touch setup remains usable across sports.
+- Scan, tap Play, and allow motion if asked. Setup and readiness are automatic;
+  no grip checklist or per-roll Arm button. Touch controls remain one tap away.
+- Same-room sport switching preserves player identities and the selected control
+  mode; fresh sensor samples establish the next sport’s neutral position.
 - Shared SI-unit motion adapters and capability negotiation; continuous
   table-tennis pose and bowling aim are distinct from deliberate actions.
 - Optional [Expo controller](apps/controller/README.md) with scanner, native
@@ -39,7 +41,8 @@ Tennis keyboard controls:
   SQLite. Bowling and Table Tennis save settled roll/point boundaries; they
   never promise exact mid-flight recovery.
 
-See the [trial runbook](docs/system-plan/README.md) and
+See [the simple-controller design and research](docs/system-plan/controller-simplicity.md),
+the [trial runbook](docs/system-plan/README.md) and
 [acceptance evidence](docs/system-plan/acceptance.md) for what was checked and
 which physical-device trials remain open.
 
@@ -132,8 +135,8 @@ a 120 Hz step; Bowling retains cannon-es at 240 Hz; Table Tennis uses its own
 fixed-step ball/paddle simulation with swept contacts. The room service
 authenticates players and routes inputs; the phone cannot award itself a score.
 
-The normal phone-camera QR opens the browser controller. Motion permission and
-calibration are explicit, with touch controls when sensors are unavailable.
+The normal phone-camera QR opens the browser controller. The Play tap requests motion permission when needed. Sensor setup runs in the
+background, with automatic touch fallback when sensors are unavailable.
 Players can return to the lobby and choose another sport without recreating
 their identities. Profiles and the optional native client remain independent
 of this guest journey.
@@ -190,7 +193,7 @@ Host first chooses to create the room
 1. The host creates a room, and the system/website displays a QR code
 2. Players scan the QR code, enter their names, and join the room.
 3. The system displays the connected players on the host's lobby screen, host selects a game.
-4. Players grant motion permission, complete controller calibration instructions, and mark themselves ready.
+4. Players tap Play and grant motion permission if asked. Real sensor readings complete setup automatically; denied or unavailable motion uses touch controls. No separate Ready tap is required.
 5. Once all players are ready, host starts the game.
 6. Players move their phones to perform actions in selected game.
 7. The system responds to player input, displays corresponding game actions, and updates scores. Steps 6 - 7 repeated until the game is finished.
@@ -220,13 +223,12 @@ Host first chooses to create the room
 2.1b. Return to step 2, or player chooses to leave and their participation ends
 
 4.1. Motion permission denied or sensors unavailable
-4.1a. The system explains the issue and offers a retry
-4.1b. Return to step 4 or follow variation 4.1
-4.1c. If neither option succeeds, the player cannot become ready. They may retry or choose to leave.
+4.1a. The system selects touch controls and explains that motion is off.
+4.1b. The player can play immediately or choose Use motion later.
 
-4.2 Calibration fails
-4.2a. System provides instructions and asks player to calibrate.
-4.2b. Return to step 4. Player cannot be ready until controller setup succeeds.  
+4.2 Motion samples are interrupted
+4.2a. The system discards the unfinished gesture and waits for fresh readings.
+4.2b. Setup resumes automatically, or the player can use touch controls.
 
 5.1. A required player is not ready
 5.1a. The system keeps the game in the lobby and identifies players who are not ready.
@@ -234,7 +236,7 @@ Host first chooses to create the room
 
 6.1. Player disconnects
 6.1a. System pauses the game.
-6.1b. The player reconnects and restores controller readiness, recalibrating if needed.
+6.1b. The player reconnects and the controller resumes after fresh samples; old gestures are discarded.
 6.1c. Resume step 6 only after connection and controller readiness are reachieved.
 6.1d. If connection period expires, system applies the 60-second session-expiration policy where their seat is removed,, and the room closes.  
 

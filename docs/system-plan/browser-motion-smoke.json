@@ -1,0 +1,25 @@
+{
+  "recordedAt": "2026-11-07T20:48:07.350Z",
+  "base": "http://127.0.0.1:5180",
+  "runtime": "v24.22.1",
+  "browser": "156.0.8078.79",
+  "sensorSource": "Deterministic synthetic DeviceMotion/DeviceOrientation events at 16 ms in browser pages",
+  "checks": [
+    "One Play tap requests sensors during user activation and starts bowling without setup, Ready or Arm buttons",
+    "A backswing and return to rest do not release a bowling ball",
+    "A forward swing and wrist twist produce one bounded, authenticated roll; extra motion cannot duplicate it",
+    "Backgrounding cancels an unfinished swing and foreground requires fresh motion, without another permission prompt",
+    "Sensor gaps discard partial deliveries; a fresh opposite wrist turn produces the opposite curve",
+    "Same-room table tennis starts automatically, routes fresh synthetic sensor samples and stops/restarts safely on visibility changes",
+    "Touch controls remain one tap away during motion play",
+    "Denied sensor access falls back automatically to playable touch controls",
+    "Wait for friends cancels automatic entry until the player taps Play again",
+    "Granted permission without real gyro readings falls back to touch instead of leaving the player in setup",
+    "No uncaught page errors"
+  ],
+  "errors": [],
+  "limitations": [
+    "Sensor permission API is mocked; real iOS/Android permission dialogs are not tested.",
+    "No physical phone axis/grip quality, haptics, motion-to-display timing or full game acceptance is established."
+  ]
+}

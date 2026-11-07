@@ -58,6 +58,7 @@ let savedSetup = calibrationMemory.read();
 const controllerPreferences = createControllerPreferences(setupStorage ?? fallbackSetupStorage);
 let motionSensitivity = controllerPreferences.values.sensitivity;
 let automaticSetupPending = true;
+let motionAcquired = false;
 const automaticMotion = createAutomaticMotionSetup();
 element('hand').value = savedSetup?.hand ?? controllerPreferences.values.hand;
 let strengthProfile = null;
@@ -148,7 +149,7 @@ const screenAwake = createScreenAwake({ navigator: globalThis.navigator, documen
 
 function recentReadings() { return lastReading !== null && performance.now() - lastReading < 1500; }
 function publishSetup() {
-  const setup = buttonMode ? 'buttons' : bias && !rehearsal ? 'motion' : null;
+  const setup = !pageActive || document.hidden ? null : buttonMode ? 'buttons' : bias && !rehearsal ? 'motion' : null;
   element('setup-status').textContent = setup === 'motion' ? 'Motion ready' : setup === 'buttons' ? 'Touch controls ready' : 'Connecting motion';
   if (embedded && setup !== lastSetup) {
     lastSetup = setup;
@@ -575,6 +576,7 @@ function motion(event) {
     bias = {alpha: setup.calibration.bias.x * degrees, beta: setup.calibration.bias.y * degrees, gamma: setup.calibration.bias.z * degrees};
     sample = toLegacyMotionSample(setup.sample, {timeOriginSeconds: (rehearsal ? rehearsalStarted : started) / 1000});
     if (setup.justReady) {
+      motionAcquired = true;
       if (!userPaused) motionWanted = true;
       element('motion').textContent = 'Motion ready. Watch the TV.';
       controls(); startMotion();
@@ -689,6 +691,7 @@ async function activateMotion(reusePermission = false) {
   controllerPreferences.update({touchControls: false});
   buttonMode = false;
   automaticSetupPending = true;
+  motionAcquired = false;
   automaticMotion.reset();
   calibration = null; bias = null;
   element('calibration-progress').hidden = true;
@@ -698,7 +701,9 @@ async function activateMotion(reusePermission = false) {
     if (!currentSetupIntent(intent)) return;
     motionWanted = true;
     controls();
-  } catch (error) { if (currentSetupIntent(intent)) showMotionError(error); }
+  } catch (error) {
+    if (currentSetupIntent(intent)) { element('use-buttons').onclick(); showMotionError(error); }
+  }
 }
 element('enable').onclick = () => activateMotion();
 element('calibrate').onclick = async () => {
@@ -762,6 +767,11 @@ function sensorStatus(now) {
 }
 setInterval(() => {
   const now = performance.now();
+  if (automaticSetupPending && enabled && !buttonMode && !motionAcquired && !permissionPending &&
+      pageActive && !document.hidden && now - permissionAt >= 3000) {
+    element('use-buttons').onclick();
+    playNotice = 'Motion isn’t available here. Touch controls are ready.';
+  }
   if (automaticSetupPending && !buttonMode && bias && !automaticMotion.read(now / 1000).ready) {
     bias = null; stop('Waiting for fresh motion readings…');
   }
@@ -816,6 +826,7 @@ document.addEventListener('visibilitychange', () => {
   }
   setupIntent++;
   automaticMotion.reset();
+  if (automaticSetupPending && !buttonMode) bias = null;
   stop('Motion paused while the page is hidden. Return to this page to continue.');
   if (rehearsal) finishRehearsal('Rehearsal stopped because the page was hidden. Keep it open and try again.');
   if (calibration) {
@@ -831,6 +842,7 @@ window.addEventListener('pagehide', () => {
   setupIntent++;
   pageActive = false;
   automaticMotion.reset();
+  if (automaticSetupPending && !buttonMode) bias = null;
   stop('Motion paused.');
   if (rehearsal) finishRehearsal('Rehearsal stopped. Start again when you return.');
   screenAwake.setActive(false); phoneFeedback.setActive(false);

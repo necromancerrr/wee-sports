@@ -65,14 +65,14 @@ test('trusted profile preferences provide initial UI defaults without granting s
   expect(elements.get('setup-panel').hidden).toBe(true);
 });
 
-test('late profile preferences cannot replace an active chosen controller session', async () => {
+test('late profile preferences keep the active control mapping and honor vibration opt-out', async () => {
   await import('../src/controller/main.js');
   elements.get('use-buttons').onclick();
   emit('message', {source: parent, origin: location.origin, data: {type: 'wee:profile-preferences', preferences: {
     hand: 'Left', sensitivity: 2, haptics: false, touchControls: false,
   }}});
   expect(elements.get('hand').value).toBe('Right');
-  expect(elements.get('haptics').checked).toBe(true);
+  expect(elements.get('haptics').checked).toBe(false);
   expect(elements.get('motion-sensitivity').value).toBe('1');
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
 });
@@ -85,6 +85,44 @@ test('initial touch preference selects a playable fallback without fabricating m
   expect(permission).not.toHaveBeenCalled();
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
   expect(elements.get('setup-status').textContent).toContain('Touch');
+});
+
+test.each(['hidden', 'pagehide'])('background %s revokes readiness immediately without waiting for a timer', async reason => {
+  await import('../src/controller/main.js');
+  emit('message', {source: parent, origin: location.origin, data: {type: 'wee:controller-intent', mode: 'motion', permission: 'granted'}});
+  await Promise.resolve();
+  for (let index = 0; index < 20; index++) tick();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  if (reason === 'hidden') {document.hidden = true; documentListeners.get('visibilitychange')();}
+  else emit('pagehide', {});
+  // Hidden documents may have their timers suspended indefinitely.
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  if (reason === 'hidden') {document.hidden = false; documentListeners.get('visibilitychange')();}
+  else emit('pageshow', {});
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  for (let index = 0; index < 20; index++) tick();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+});
+
+test('a granted API without gyro samples falls back automatically, but an established sensor gap does not change modes', async () => {
+  await import('../src/controller/main.js');
+  await elements.get('enable').onclick();
+  tick(3100, null);
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
+  await elements.get('enable').onclick();
+  for (let index = 0; index < 20; index++) tick();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  tick(3100, null);
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  expect(elements.get('use-buttons').hidden).toBe(false);
+});
+
+test('a denied manual motion attempt returns directly to playable touch controls', async () => {
+  await import('../src/controller/main.js');
+  permission.mockResolvedValue('denied');
+  await elements.get('enable').onclick();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
+  expect(elements.get('play-help').textContent).not.toContain('calibrat');
 });
 
 test('phone diagnostics keep delivery and contact separate and ignore unrelated or replayed results', async () => {
