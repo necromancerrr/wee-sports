@@ -12,6 +12,7 @@ beforeAll(async () => {
   for (const name of ['index', 'game', 'bowling', 'controller', 'table-tennis', 'table-tennis-controller']) await writeFile(join(root, `${name}.html`), name);
   await mkdir(join(root, 'assets'));
   await writeFile(join(root, 'assets', 'player.glb'), 'model');
+  for (const format of ['webp', 'avif', 'jpeg']) await writeFile(join(root, 'assets', `island.${format}`), 'image');
   handler = await createStaticHandler(root);
 });
 afterAll(async () => { await rm(root, { recursive: true, force: true }); });
@@ -29,8 +30,10 @@ async function request(url, method = 'GET') {
   return { status: response.status, headers, body };
 }
 
-test('production routes host/join to the homepage and serves game/model files', async () => {
-  for (const path of ['/', '/host/ABCD', '/join?code=ABCD', '/profile', '/profile/']) expect((await request(path)).body).toBe('index');
+test('production deep links use the application entry while game/model files remain separate', async () => {
+  for (const path of ['/', '/home', '/home/', '/home?region=resort', '/host/ABCD', '/join?code=ABCD', '/profile', '/profile/']) {
+    expect(await request(path)).toMatchObject({status: 200, body: 'index', headers: {'cache-control': 'no-cache'}});
+  }
   expect((await request('/controller.html?room=lobby-ABCD')).body).toBe('controller');
   expect((await request('/table-tennis.html')).body).toBe('table-tennis');
   expect((await request('/table-tennis-controller.html')).body).toBe('table-tennis-controller');
@@ -38,6 +41,20 @@ test('production routes host/join to the homepage and serves game/model files', 
   expect(model.body).toBe('model');
   expect(model.headers['content-type']).toBe('model/gltf-binary');
   expect((await request('/game.html')).headers['cache-control']).toBe('no-cache');
+});
+
+test('optimized island images have image MIME types and normal asset caching', async () => {
+  for (const format of ['webp', 'avif', 'jpeg']) {
+    const response = await request(`/assets/island.${format}`);
+    expect(response).toMatchObject({status: 200, body: 'image', headers: {
+      'content-type': `image/${format}`, 'content-length': 5,
+      'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff',
+    }});
+  }
+  expect(await request('/home', 'HEAD')).toMatchObject({status: 200, body: '', headers: {'content-length': 5}});
+  for (const path of ['/home/missing', '/assets/missing.webp', '/home/%2e%2e/.env']) {
+    expect((await request(path)).status).toBe(404);
+  }
 });
 
 test('HEAD returns metadata without a body; unknown paths never serve source', async () => {

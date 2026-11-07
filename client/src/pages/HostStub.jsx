@@ -140,7 +140,7 @@ export default function HostStub() {
           {ended === 'replaced' ? 'This lobby was opened in another tab. Continue there or reload to take control.' : 'This game has ended or the reconnect window expired. Start a new lobby from the homepage.'}
         </p>
         <div className="stub__actions">
-          <Link className="btn btn--primary" to="/">
+          <Link className="btn btn--primary" to="/home">
             Back to sports
           </Link>
         </div>
@@ -155,7 +155,7 @@ export default function HostStub() {
     onPauseToggle={togglePause} pauseDisabled={reconnecting || pausing || returning || (lobby.gameState?.phase === 'complete' && !lobby.manuallyPaused)}
     immersive={immersive} fullscreen={fullscreen} onToggleView={immersive ? leaveGameView : enterGameView}
     paused={reconnecting || lobby.paused} error={startError ? errorText(startError) : null} onClose={async () => {
-      if (await leave()) navigate('/');
+      if (await leave()) navigate('/home');
       else setStartError('disconnected');
     }} />;
 
@@ -238,7 +238,7 @@ export default function HostStub() {
       <TvCountdown lobby={lobby} onTick={audio.onCountdown} />
 
       <div className="stub__actions">
-        <button type="button" className="btn btn--ghost" onClick={async () => { if (await leave()) navigate('/'); else setStartError('disconnected'); }}>
+        <button type="button" className="btn btn--ghost" onClick={async () => { if (await leave()) navigate('/home'); else setStartError('disconnected'); }}>
           Close lobby
         </button>
       </div>

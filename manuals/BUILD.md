@@ -12,7 +12,8 @@ Build the three games, lobby/profile shell and both browser controllers with:
 npm run build
 ```
 
-The build verifies all six built page entries and the required GLB models.
+The build verifies all six built page entries, the required GLB models and the
+island artwork. The landing screen is `/`; `/home` opens the sport selector.
 The optional [Expo project](../apps/controller/README.md) has its own lockfile
 and build instructions; it is not required for either browser controller.
 

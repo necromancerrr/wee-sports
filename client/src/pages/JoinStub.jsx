@@ -272,7 +272,7 @@ export default function JoinStub() {
           <button type="submit" className="btn btn--primary" disabled={!canJoin}>
             {joining ? 'Connecting…' : 'Play'}
           </button>
-          <Link className="btn btn--ghost" to="/">
+          <Link className="btn btn--ghost" to="/home">
             Home
           </Link>
         </div>

@@ -4,7 +4,8 @@ import { extname, resolve, sep } from 'node:path';
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.glb': 'model/gltf-binary',
-  '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp', '.avif': 'image/avif', '.ico': 'image/x-icon',
   '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
 
 /** Serve only the production bundle. No development server or tunnel required. */
@@ -28,7 +29,7 @@ export async function createStaticHandler(directory) {
         path.split('/').some(part => part === '..' || part.startsWith('.'))) {
       end(404, 'Not found'); return;
     }
-    const home = path === '/' || /^\/(join|profile)\/?$/.test(path) || /^\/host\/[A-Z0-9]{4}\/?$/.test(path);
+    const home = path === '/' || /^\/(home|join|profile)\/?$/.test(path) || /^\/host\/[A-Z0-9]{4}\/?$/.test(path);
     const file = resolve(root, home ? 'index.html' : `.${path}`);
     if (!file.startsWith(`${root}${sep}`)) { end(404, 'Not found'); return; }
     try {

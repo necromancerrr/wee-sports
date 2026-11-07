@@ -1,0 +1,174 @@
+{
+  "recordedAt": "2026-11-07T23:27:20.214Z",
+  "base": "http://127.0.0.1:5197",
+  "runtime": "v24.22.1",
+  "browser": "156.0.8078.79",
+  "checks": [
+    "Landing Play supports keyboard navigation and opens the island without room creation, sensors or fullscreen",
+    "Production /home opens and refreshes directly",
+    "Golf remains informational and does not request a room",
+    "All open sports remain readable and reachable at desktop, large TV, ultrawide, tablet and portrait sizes",
+    "A 32px browser default-font preference enlarges labels and remains usable on desktop and portrait",
+    "The Games list exposes every playable sport and restores focus after Escape",
+    "Menu supports keyboard focus, help, persisted theme/motion preferences and system reduced motion without darkening the art",
+    "Optional profile access and its return path work without replaying the landing screen",
+    "Manual joining normalizes lowercase codes and direct /join refresh bypasses the landing screen",
+    "Every playable venue creates its correct authenticated lobby once, resumes on refresh and closes back to the island",
+    "Offline play is unavailable while scenery remains visible; reconnect does not replay a room request",
+    "A rejected host request displays its reason and a deliberate retry opens the correct real lobby",
+    "No uncaught browser errors"
+  ],
+  "layouts": [
+    {
+      "viewport": {
+        "width": 1672,
+        "height": 941
+      },
+      "targets": [
+        {
+          "name": "Tennis",
+          "x": 334.3046875,
+          "y": 440.21875,
+          "width": 217.546875,
+          "height": 88.78125
+        },
+        {
+          "name": "Bowling",
+          "x": 1211.421875,
+          "y": 256.71875,
+          "width": 218.90625,
+          "height": 88.78125
+        },
+        {
+          "name": "Table Tennis",
+          "x": 882.984375,
+          "y": 162.625,
+          "width": 273.84375,
+          "height": 88.78125
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 3840,
+        "height": 2160
+      },
+      "targets": [
+        {
+          "name": "Tennis",
+          "x": 853.609375,
+          "y": 1045.8984375,
+          "width": 328.90625,
+          "height": 132.984375
+        },
+        {
+          "name": "Bowling",
+          "x": 2867.46875,
+          "y": 624.6953125,
+          "width": 331.03125,
+          "height": 132.984375
+        },
+        {
+          "name": "Table Tennis",
+          "x": 2134.828125,
+          "y": 408.6953125,
+          "width": 414.65625,
+          "height": 132.984375
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1080
+      },
+      "targets": [
+        {
+          "name": "Tennis",
+          "x": 704.4375,
+          "y": 505.5390625,
+          "width": 249.15625,
+          "height": 101.296875
+        },
+        {
+          "name": "Bowling",
+          "x": 1711.140625,
+          "y": 294.9453125,
+          "width": 250.6875,
+          "height": 101.296875
+        },
+        {
+          "name": "Table Tennis",
+          "x": 1334.1796875,
+          "y": 186.9453125,
+          "width": 313.765625,
+          "height": 101.296875
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "targets": [
+        {
+          "name": "Tennis",
+          "x": 203.9609375,
+          "y": 359.625,
+          "width": 134.796875,
+          "height": 66
+        },
+        {
+          "name": "Bowling",
+          "x": 741.1484375,
+          "y": 247.25,
+          "width": 135.609375,
+          "height": 66
+        },
+        {
+          "name": "Table Tennis",
+          "x": 540,
+          "y": 189.625,
+          "width": 169.25,
+          "height": 66
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "targets": [
+        {
+          "name": "Tennis",
+          "x": 16,
+          "y": 341.828125,
+          "width": 358,
+          "height": 71.59375
+        },
+        {
+          "name": "Bowling",
+          "x": 16,
+          "y": 423.421875,
+          "width": 358,
+          "height": 71.59375
+        },
+        {
+          "name": "Table Tennis",
+          "x": 16,
+          "y": 505.015625,
+          "width": 358,
+          "height": 71.59375
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Synthetic browser controls and local HTTP; no physical phone or hardware latency measurement.",
+    "One host:create rejection is simulated at the WebSocket boundary; successful rooms use the real server.",
+    "Visual screenshots require human comparison with the supplied concepts; automated geometry checks do not judge art fidelity."
+  ]
+}

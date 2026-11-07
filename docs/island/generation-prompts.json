@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-11-07",
+  "tool": "Built-in image-generation tool",
+  "homepage": {
+    "references": [
+      "reference/approved-modern-homepage.png"
+    ],
+    "output": "source/homepage.png",
+    "prompt": "Edit the attached approved image into a clean runtime background for the exact same polished stylized 3D coastal sports resort. This is a fidelity-preserving edit, not a redesign. Keep the exact same 16:9 composition, camera framing, buildings, material quality, foliage, blue sky, sea, curved island coastline, central waterfall/stream/timber bridge, Golf green on upper left, two Tennis courts on lower left, modern curved white-and-timber Bowling pavilion on right, grassy central hill and lighthouse on upper right. Remove ALL text and interface: Wee Sports top left, Choose a sport top center, Golf/Tennis/Bowling cards and icons, connector lines, anchor circles, Back button, every cyan selected outline around tennis. Inpaint only the exposed scenery correctly, with detailed sky/trees/court/water continuing naturally. No labels, letters, text, logos, borders, marker dots or controls anywhere. Add one modest open-front white-and-pale-timber Table Tennis garden pavilion in place of the small lowest cabin on the central-right terrace, behind the bridge and just left of Bowling, around x=.627 y=.36. It must visibly contain two BLUE ping-pong tables with short white nets and slim legs, true tabletop proportions, different from the full-size tennis courts. Keep pavilion smaller than Bowling, discreet and naturally connected to existing path, without moving any other venue. All other details should remain extremely close to the original reference. Preserve crisp detailed high-quality lighting and textures, no blur, no outlines, no change to illustrated 3D art style. Output the largest faithful landscape 16:9 render available. This is background art only."
+  },
+  "landing": {
+    "references": [
+      "reference/approved-modern-landing.png",
+      "source/homepage.png"
+    ],
+    "output": "source/landing.png",
+    "prompt": "Edit FIRST attached image (the approved farther-back landing composition) into a clean no-UI runtime scenery plate. FIRST image controls the camera, composition, geography, framing and every untouched detail. Preserve its exact16:9 wide distant resort view, generous blue sky above, island horizontally across middle, foreground turquoise water and beach/flower corners, two tennis courts lower-left, golf green upper-left of island, waterfall+bridge center, Bowling curved pavilion right, grassy hill and lighthouse. Remove ONLY the big baked 'Wee Sports' wordmark and the small white Play pill, reconstructing continuous blue sky and calm detailed turquoise water under them with no seams or blur. No words, letters, logos, buttons, boxes, dots, connectors or selection outlines anywhere. SECOND image is the newly cleaned closer view of the SAME island and is provided ONLY to match its added Table Tennis pavilion: replace the corresponding little cabin on the center-right terrace behind the bridge and left of Bowling (in FIRST image around x=.64 y=.50) with the SAME modest open-front white-and-pale-timber pavilion containing two recognizable blue ping-pong tables with short nets. Match the garden-pavilion roof, timber columns, small proportions and paths of that second image, but rendered at the FIRST image's farther distance. Do not copy second image's camera or enlarge island. Keep everything else, including sailboats, pristine beaches, glass, pale timber, trees, sky and water, extremely faithful to FIRST image. Detailed polished stylized3D lighting and materials, warm bright daylight, same texture quality, crisp scenery. Output largest faithful landscape16:9 available. Background only."
+  }
+}

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ISLAND_REGIONS } from '../client/src/lib/island.js';
 
 const buildDir = resolve(fileURLToPath(new URL('../', import.meta.url)), process.env.WEE_BUILD_DIR || 'dist');
 
@@ -20,3 +21,16 @@ for (const page of ['index', 'game', 'controller', 'bowling', 'table-tennis', 't
   if (!html.includes('type="module"')) throw new Error(`Missing built entry point: ${page}`);
 }
 console.log('Verified all six built pages');
+
+// Scenery is loaded by URL at runtime, so bundling alone cannot catch its loss.
+for (const region of Object.values(ISLAND_REGIONS)) {
+  for (const image of [region.image, region.landing]) {
+    const path = resolve(buildDir, image.src.replace(/^\/+/, ''));
+    const bytes = readFileSync(path);
+    if (bytes.length < 20 || bytes.toString('ascii', 0, 4) !== 'RIFF' ||
+      bytes.toString('ascii', 8, 12) !== 'WEBP' || bytes.readUInt32LE(4) + 8 !== bytes.length) {
+      throw new Error(`Missing or invalid built island artwork: ${path}`);
+    }
+    console.log(`Verified ${image.src} (${bytes.length} bytes)`);
+  }
+}

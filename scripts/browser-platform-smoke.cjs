@@ -59,7 +59,7 @@ async function waitForRoll(controller, host) {
         const host = await hc.newPage(), phone = await pc.newPage();
         for (const [name, page] of [['host', host], ['phone', phone]])
             page.on('pageerror', e => failures.push(name + ': ' + e.message));
-        await host.goto(base);
+        await host.goto(base + '/home');
         await host.getByRole('button', { name: 'Play: Bowling', exact: true }).click();
         const code = await host.getByTestId('lobby-code').innerText();
         await joinPhone(phone, code);
@@ -163,7 +163,7 @@ async function waitForRoll(controller, host) {
         await resumePhone.getByLabel('Password', { exact: true }).fill(password);
         await resumePhone.getByRole('button', { name: 'Sign in', exact: true }).click();
         await resumePhone.getByRole('heading', { name: 'Recent games', exact: true }).waitFor();
-        await host.goto(base);
+        await host.goto(base + '/home');
         await host.getByRole('button', { name: 'Play: Bowling', exact: true }).click();
         const savedCode = await host.getByTestId('lobby-code').innerText();
         await joinPhone(resumePhone, savedCode, 'Saved Solo');

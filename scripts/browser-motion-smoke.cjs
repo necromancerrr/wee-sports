@@ -72,7 +72,7 @@ async function createGame(browser, permission, sport = 'Bowling', errors = [], s
   const host = await hostContext.newPage(), phone = await phoneContext.newPage();
   host.on('pageerror', error => errors.push('host: ' + error.message));
   phone.on('pageerror', error => errors.push('phone: ' + error.message));
-  await host.goto(base);
+  await host.goto(base + '/home');
   await host.getByRole('button', {name: `Play: ${sport}`, exact: true}).click();
   const code = await host.getByTestId('lobby-code').innerText();
   await phone.goto(`${base}/join?code=${code}`);

@@ -5,6 +5,15 @@ Tennis, or the existing Tennis game as a guest. Scan the room QR with your
 normal camera, choose motion or touch controls, and play; no account or app
 installation is required.
 
+The opening **Play** button leads to the island. Choose Tennis, Bowling or
+Table Tennis to open a room, then scan its QR with your phone. **Menu** keeps
+manual joining, profiles, help, appearance and motion preferences nearby.
+Phones also get a compact games list. The island opens directly at `/home`;
+QR join links still go straight to the controller.
+
+See the [island implementation and checks](docs/island/README.md) for the
+reference artwork, responsive behavior and validation evidence.
+
 ## Games and controls
 
 - **Bowling:** one to four players, ten-frame scoring and solo practice. Aim on

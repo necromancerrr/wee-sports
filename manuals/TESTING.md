@@ -38,6 +38,11 @@ direction and lifecycle cancellation. Both require an environment-provided
 Playwright and Chromium; commands are in the owner trial runbook. Neither
 runner exercises a physical sensor or a real permission dialog.
 
+`scripts/browser-island-smoke.cjs` checks landing/map navigation, actual room
+creation, offline/retry handling, utility access and responsive controls.
+See the [island implementation](../docs/island/README.md) for its reference art
+and browser evidence. The existing platform and motion runners enter `/home`.
+
 The [game-quality follow-up](../docs/game-quality.md) explains the repeatable
 shot matrix, 12-point/deuce rules, three-set tennis, aim feedback, 60 Hz input
 scheduling and current Expo checks. Root tests cap worker concurrency at four

@@ -96,7 +96,7 @@ export default function Profile() {
   const completed = history.filter(game => game.status === 'complete');
   const bowlingScores = completed.filter(game => game.sport === 'bowling').map(game => game.score);
   return <main className="profile-page page">
-    <header className="profile-heading"><Link className="btn btn--ghost" to="/">Back to games</Link><h1>Your profile</h1></header>
+    <header className="profile-heading"><Link className="btn btn--ghost" to="/home">Back to games</Link><h1>Your profile</h1></header>
     <p>Keep your preferences and match history across your controllers. Playing as a guest always stays available.</p>
     {error && <p className="alert" role="alert">{error}</p>}
     {notice && <p className="profile-notice" role="status">{notice}</p>}
