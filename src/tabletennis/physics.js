@@ -3,7 +3,7 @@ export const TABLE = Object.freeze({width: 1.525, length: 2.74, height: .76, net
 export const BALL = Object.freeze({radius: .02, mass: .0027});
 export const FIXED_STEP = 1 / 120;
 export const MATERIAL = Object.freeze({tableRestitution: .88, paddleRestitution: .8,
-  drag: .045, magnus: .00055, maxSpeed: 15, maxSpin: 180});
+  paddleTangentialRetention: .88, drag: .045, magnus: .00055, maxSpeed: 15, maxSpin: 180});
 
 export const v3 = (x = 0, y = 0, z = 0) => ({x, y, z});
 export const add = (a, b) => v3(a.x + b.x, a.y + b.y, a.z + b.z);
@@ -74,8 +74,13 @@ export class TableTennisPhysics {
     this.droppedSeconds += seconds - accepted;
     this.accumulator += accepted;
     while (this.accumulator >= FIXED_STEP) {
-      beforeStep(FIXED_STEP);
-      this.step(FIXED_STEP);
+      if (beforeStep(FIXED_STEP) !== false) this.step(FIXED_STEP);
+      else for (const paddle of this.paddles) {
+        // Safe input resynchronization may move a non-contact paddle while
+        // play is frozen. Do not turn that relocation into a later impulse.
+        paddle.previous = {...paddle.position};
+        paddle.previousNormal = {...paddle.normal};
+      }
       this.accumulator -= FIXED_STEP;
     }
   }
@@ -137,8 +142,9 @@ export class TableTennisPhysics {
         const normalSpeed = dot(relative, hit.normal);
         if (normalSpeed < 0) {
           const tangent = sub(relative, scale(hit.normal, normalSpeed));
-          ball.velocity = add(surface, add(scale(hit.normal, -normalSpeed * MATERIAL.paddleRestitution), scale(tangent, .88)));
-          ball.spin = bounded(add(scale(ball.spin, .5), scale(cross(hit.normal, tangent), -18)), MATERIAL.maxSpin);
+          ball.velocity = add(surface, add(scale(hit.normal, -normalSpeed * MATERIAL.paddleRestitution), scale(tangent, MATERIAL.paddleTangentialRetention)));
+          const brushTorque = 2.5 * (1 - MATERIAL.paddleTangentialRetention) / BALL.radius;
+          ball.spin = bounded(add(scale(ball.spin, .5), scale(cross(hit.normal, tangent), brushTorque)), MATERIAL.maxSpin);
           ball.velocity = bounded(ball.velocity, MATERIAL.maxSpeed);
           this.emit('hit', {player: hit.paddle.player, position: {...ball.position}});
         }
@@ -147,8 +153,18 @@ export class TableTennisPhysics {
         const slip = add(ball.velocity, surface);
         const friction = v3(-slip.x * .12, 0, -slip.z * .12);
         ball.velocity = add(v3(ball.velocity.x, -ball.velocity.y * MATERIAL.tableRestitution, ball.velocity.z), friction);
-        ball.spin = bounded(add(ball.spin, scale(cross(v3(0, -BALL.radius, 0), friction), -2.5 / (BALL.radius * BALL.radius))), MATERIAL.maxSpin);
+        // friction is the change in linear velocity. The contact impulse acts
+        // at r=(0,-radius,0), so angular velocity changes by +(r × dv)/I.
+        // Reversing this sign increases surface slip and injects energy on
+        // every later bounce instead of approaching rolling contact.
+        ball.spin = bounded(add(ball.spin, scale(cross(v3(0, -BALL.radius, 0), friction), 2.5 / (BALL.radius * BALL.radius))), MATERIAL.maxSpin);
         this.emit('bounce', {side: hit.side, position: {...ball.position}});
+        // A resting ball is a terminal play state. The separation epsilon must
+        // not keep recycling gravity into an endless series of tiny bounces.
+        if (ball.active && ball.velocity.y < .18 && Math.hypot(ball.velocity.x, ball.velocity.z) < .2) {
+          ball.velocity = v3(); ball.spin = v3(); ball.active = false;
+          this.emit('out', {reason: 'settled-on-table'});
+        }
       } else {
         if (hit.grazesTop) {
           ball.velocity.y = Math.abs(ball.velocity.y) * .25;

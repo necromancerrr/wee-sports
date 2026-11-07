@@ -1,7 +1,7 @@
 import {describe, test, expect} from 'vitest';
 import {TableTennisPhysics, TABLE, BALL, FIXED_STEP, v3, makePaddle, sweepPaddle, unit} from '../src/tabletennis/physics.js';
 import {TableTennisRules} from '../src/tabletennis/rules.js';
-import {TableTennisGame} from '../src/tabletennis/game.js';
+import {TableTennisGame, advanceStroke, receivePlane} from '../src/tabletennis/game.js';
 
 const stepFor = (physics, seconds) => { for (let i = 0; i < seconds / FIXED_STEP; i++) physics.step(); };
 const pose = overrides => ({orientation: [0, 0, 0, 1], angularVelocity: v3(), reach: {x: 0, y: 0}, calibrationRevision: 1, ...overrides});
@@ -80,6 +80,32 @@ describe('table-tennis flight and collision', () => {
     expect(p.time).toBeLessThanOrEqual(.101);
     expect(p.droppedSeconds).toBeCloseTo(.9);
   });
+  test('table friction reduces surface slip instead of spinning the ball against its travel', () => {
+    const p = new TableTennisPhysics(); p.paddles.forEach(paddle => {paddle.enabled = false;});
+    let slip;
+    p.onEvent = e => {if (e.kind === 'bounce') slip = p.ball.velocity.z - p.ball.spin.x * BALL.radius;};
+    p.launch(v3(0, .781, .4), v3(0, -1, 2)); p.step();
+    expect(p.ball.spin.x).toBeGreaterThan(0);
+    expect(Math.abs(slip)).toBeLessThan(2);
+  });
+  test('a paddle brush applies the contact torque in the friction direction', () => {
+    const p = new TableTennisPhysics(), paddle = p.paddles[0];
+    paddle.normal = paddle.previousNormal = v3(0, 0, -1);
+    paddle.position = paddle.previous = v3(0, 1, 1.1);
+    p.launch(v3(0, 1, 1.06), v3(1, 0, 5)); p.step();
+    expect(p.ball.spin.y).toBeLessThan(0);
+    expect(p.ball.velocity.x).toBeLessThan(1);
+  });
+  test('a resting ball terminates once instead of looping on the contact epsilon', () => {
+    const p = new TableTennisPhysics(), events = [];
+    p.paddles.forEach(paddle => {paddle.enabled = false;});
+    p.onEvent = e => events.push(e);
+    p.launch(v3(0, .781, .4), v3(0, -.1, 0)); stepFor(p, 5);
+    expect(p.ball.active).toBe(false);
+    expect(p.ball.velocity).toEqual(v3());
+    expect(events.filter(e => e.kind === 'bounce')).toHaveLength(1);
+    expect(events.filter(e => e.kind === 'out')).toHaveLength(1);
+  });
 });
 
 describe('singles scoring', () => {
@@ -119,6 +145,54 @@ describe('singles scoring', () => {
 });
 
 describe('solo controls and persistence', () => {
+  test('angular deceleration never reverses a forward stroke; recovery is a separate phase', () => {
+    const stroke = {phase: 'ready', offset: 0, speed: 0, power: 0, started: 0,
+      until: 0, rearmed: true, lowFor: 0};
+    advanceStroke(stroke, {rate: 4, dt: FIXED_STEP, time: 0, nearBall: true});
+    const first = stroke.offset;
+    for (let i = 1; i < 15; i++) {
+      const previous = stroke.offset;
+      advanceStroke(stroke, {rate: 0, dt: FIXED_STEP, time: i * FIXED_STEP, nearBall: true});
+      expect(stroke.offset).toBeGreaterThanOrEqual(previous);
+    }
+    expect(stroke.offset).toBeGreaterThan(first);
+    for (let i = 15; i < 30; i++) advanceStroke(stroke, {rate: 0, dt: FIXED_STEP, time: i * FIXED_STEP, nearBall: true});
+    expect(stroke.phase).toBe('recovery');
+  });
+  test('short incoming balls select bounded forward reach before the second bounce', () => {
+    const ball = {active: true, position: v3(0, .8, .35), velocity: v3(0, 1.2, 1.5)};
+    const plane = receivePlane(ball, 1, true);
+    expect(plane).toBeGreaterThanOrEqual(.56);
+    expect(plane).toBeLessThan(.8);
+    expect(receivePlane({...ball, position: v3(0, .8, -.35), velocity: v3(0, 1.2, -1.5)}, 2, true)).toBeCloseTo(-plane);
+  });
+  test('Friendly produces legal returns across compact-stroke timing, speed and duration', () => {
+    let successful = 0;
+    for (const amplitude of [1.5, 2, 4, 6, 8, 12]) for (const atZ of [.3, .5, .65, .8, .9, 1]) for (const duration of [.12, .24, .36]) {
+      const g = new TableTennisGame(); g.feed(); let started = null;
+      for (let i = 0; i < 600 && g.physics.ball.active; i++) {
+        if (started === null && g.physics.ball.velocity.z > 0 && g.physics.ball.position.z >= atZ) started = g.time;
+        const phase = started === null ? -1 : (g.time - started) / duration;
+        const x = phase >= 0 && phase <= 1 ? amplitude * Math.sin(phase * Math.PI) : 0;
+        g.setInput(pose({angularVelocity: v3(x, 0, 0)})); g.update(FIXED_STEP);
+      }
+      if (g.practiceReturns > 0) successful++;
+    }
+    // 108 deterministic inputs, counting an opponent-table bounce, not contact.
+    expect(successful).toBeGreaterThanOrEqual(100);
+  });
+  test('both compact stroke directions can return a feed without double-hit counts', () => {
+    for (const sign of [-1, 1]) {
+      const g = new TableTennisGame(); g.feed(); let started = null;
+      for (let i = 0; i < 500 && g.physics.ball.active; i++) {
+        if (started === null && g.physics.ball.position.z > .5) started = g.time;
+        const phase = started === null ? -1 : (g.time - started) / .24;
+        g.setInput(pose({angularVelocity: v3(phase >= 0 && phase <= 1 ? sign * 4 * Math.sin(phase * Math.PI) : 0, 0, 0)}));
+        g.update(FIXED_STEP);
+      }
+      expect(g.practiceReturns).toBeGreaterThan(0);
+    }
+  });
   test('feed seeds and fixed stepping are deterministic', () => {
     const run = () => {
       const g = new TableTennisGame({seed: 42}); g.feed();
@@ -137,13 +211,44 @@ describe('solo controls and persistence', () => {
   test('one player can finish a scored bot game and checkpoint the final result', () => {
     const g = new TableTennisGame(); g.startMatch();
     for (let i = 0; i < 24000 && g.rules.phase !== 'complete'; i++) {
-      if (!g.physics.ball.active && g.rules.server === 1) g.serve();
       g.update(FIXED_STEP);
     }
     expect(g.rules.phase).toBe('complete');
     expect(Math.max(...g.rules.score)).toBeGreaterThanOrEqual(11);
     expect(Math.abs(g.rules.score[0] - g.rules.score[1])).toBeGreaterThanOrEqual(2);
     expect(g.checkpoint().rules.winner).toBe(g.rules.winner);
+  });
+  test('repeated compact strokes produce real rallies and points against the physical bot', () => {
+    const g = new TableTennisGame(); g.startMatch(); let started = null, incoming = false, returns = 0, lastHitter = 0;
+    const collision = g.physics.onEvent;
+    g.physics.onEvent = event => {
+      if (event.kind === 'hit') lastHitter = event.player;
+      if (event.kind === 'bounce' && event.side === 2 && lastHitter === 1) returns++;
+      collision(event);
+    };
+    for (let i = 0; i < 24000 && g.rules.phase !== 'complete'; i++) {
+      const ball = g.physics.ball;
+      if (!ball.active || ball.velocity.z < 0) {started = null; incoming = false;}
+      if (!incoming && ball.active && ball.velocity.z > 0 && ball.position.z > .5) {started = g.time; incoming = true;}
+      const phase = started === null ? -1 : (g.time - started) / .24;
+      g.setInput(pose({angularVelocity: v3(phase >= 0 && phase <= 1 ? 4 * Math.sin(phase * Math.PI) : 0, 0, 0)}));
+      g.update(FIXED_STEP);
+    }
+    expect(g.rules.phase).toBe('complete');
+    expect(g.rules.score[0]).toBeGreaterThanOrEqual(3);
+    expect(returns).toBeGreaterThan(20);
+  });
+  test('automatic serves wait for fresh remote control and stale input freezes the ball', () => {
+    const g = new TableTennisGame(); g.remote = true; g.startMatch();
+    for (let i = 0; i < 200; i++) g.update(FIXED_STEP);
+    expect(g.physics.ball.active).toBe(false);
+    for (let i = 0; i < 60; i++) {g.setInput(pose(), {remote: true}); g.update(FIXED_STEP);}
+    expect(g.rules.pointId).toBeGreaterThan(0);
+    for (let i = 0; i < 40; i++) g.update(FIXED_STEP);
+    const frozen = {...g.physics.ball.position};
+    for (let i = 0; i < 120; i++) g.update(FIXED_STEP);
+    expect(g.physics.ball.position).toEqual(frozen);
+    expect(g.remoteStale).toBe(true);
   });
   test('stale remote poses disable contact and fresh input settles before enabling it', () => {
     const g = new TableTennisGame(); g.nextFeed = Infinity;

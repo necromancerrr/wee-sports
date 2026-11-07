@@ -68,6 +68,9 @@ export function createWebMotionAdapter({target = globalThis.window, document = t
       }
       if (disposed || attempt !== intent) return;
       active = true;
+      // A pagehide handler may stop/remove pageshow listeners before BFCache
+      // restore. Starting again belongs to the current page lifecycle.
+      pageActive = true;
       target.addEventListener('devicemotion', motion);
       target.addEventListener('deviceorientation', rotation);
       target.addEventListener('pagehide', hide);

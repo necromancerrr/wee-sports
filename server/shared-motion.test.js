@@ -13,7 +13,7 @@ const native = (time, reading = {x: 0, y: 0, z: 0}, more = {}) => normalizeNativ
 
 test('browser/native gyro units and all three axes agree without changing legacy rates', () => {
   const web = normalizeWebMotion({rotationRate: {alpha: 180, beta: 90, gamma: -45}}, options(1));
-  const app = native(1, {x: Math.PI / 2, y: -Math.PI / 4, z: Math.PI});
+  const app = native(1, {x: Math.PI, y: Math.PI / 2, z: -Math.PI / 4});
   expect(web).toEqual(app);
   expect(toLegacyMotionSample(web)).toEqual({timeMs: 1000, rotationAlpha: 180, rotationBeta: 90, rotationGamma: -45});
   expect(readLegacyWebMotion({rotationRate: {alpha: 180, beta: 90, gamma: -45}},
@@ -60,7 +60,7 @@ test('native/browser equivalent bowling traces reject backswing and preserve for
   for (let ms = 0; ms <= 1000; ms += 20) {
     const alpha = ms < 200 ? -500 : ms < 400 ? 0 : ms < 700 ? 300 : 0;
     const web = normalizeWebMotion({rotationRate: {alpha, beta: 0, gamma: 0}}, options(ms / 1000));
-    const app = native(ms / 1000, {x: 0, y: 0, z: alpha * DEG_TO_RAD});
+    const app = native(ms / 1000, {x: alpha * DEG_TO_RAD, y: 0, z: 0});
     const a = webDetector.push(toLegacyMotionSample(web)), b = appDetector.push(toLegacyMotionSample(app));
     if (a) webResults.push({ms, ...a}); if (b) appResults.push({ms, ...b});
   }
@@ -99,19 +99,34 @@ test('calibration needs continuous stillness; moving, missing and rotated sample
   expect(calibration.push(native(3)).progress).toBe(0);
 });
 
-test('screen rotation and handedness are explicit; paddle gaps and recenter never create a stroke', () => {
+test('paddle screen coordinates are independent of hand; gaps and recenter never create a stroke', () => {
   const rotated = rotateVectorToScreen({x: 1, y: 0, z: 0}, 90);
   expect(rotated.x).toBeCloseTo(0); expect(rotated.y).toBeCloseTo(-1);
   const right = createPaddleIntentController(), left = createPaddleIntentController({hand: 'Left'});
   const first = native(0, {x: 0, y: 5, z: 0});
   expect(right.push(first).angularVelocity).toEqual({x: 0, y: 0, z: 0}); left.push(first);
   const second = native(.01, {x: 0, y: 5, z: 0});
-  expect(right.push(second).reach.x).toBeCloseTo(-left.push(second).reach.x);
+  expect(right.push(second)).toEqual(left.push(second));
   expect(right.push(second)).toBeNull();
   expect(right.push(native(1, {x: 0, y: 5, z: 0})).angularVelocity).toEqual({x: 0, y: 0, z: 0});
   right.recenter();
   expect(right.push(native(1.01, {x: 0, y: 5, z: 0})).orientation).toEqual([0, 0, 0, 1]);
   expect(right.push(native(1.02, {x: 0, y: 5, z: 0}, {calibrationRevision: 1})).angularVelocity).toEqual({x: 0, y: 0, z: 0});
+});
+
+test('the same measured relative pose has identical paddle intent for either hand', () => {
+  const right = createPaddleIntentController({hand: 'Right'});
+  const left = createPaddleIntentController({hand: 'Left'});
+  const initial = native(0, {x: 0, y: 0, z: 0}, {
+    orientation: orientationFromWebEvent({alpha: 35, beta: 25, gamma: -10}), screenAngle: 90,
+  });
+  right.push(initial); left.push(initial);
+  const movement = native(.02, {x: .5, y: 1, z: -.25}, {
+    orientation: orientationFromWebEvent({alpha: 38, beta: 32, gamma: -15}), screenAngle: 90,
+  });
+  const pose = right.push(movement);
+  expect(pose).toEqual(left.push(movement));
+  expect(Math.hypot(pose.reach.x, pose.reach.y)).toBeGreaterThan(.01);
 });
 
 test('relative orientation crosses 360 degrees without an Euler discontinuity', () => {
@@ -174,4 +189,91 @@ test('capability negotiation keeps legacy clients on supported sports and haptic
   expect(negotiateControllerCapabilities({...offer, protocol: {major: 100, minor: 0}}).ok).toBe(false);
   expect(negotiateControllerCapabilities({...offer, sports: {'future-game': 1}}).error).toBe('unsupported-sport');
   expect(negotiateControllerCapabilities({...offer, sports: {'table-tennis': 0}}).ok).toBe(false);
+});
+
+test('native physical X pitch releases bowling; pure Y wrist rotation and Z yaw do not masquerade as pitch', () => {
+  const run = axis => {
+    const detector = createBowlingMotionDetector(); const releases = [];
+    for (let ms = 0; ms <= 800; ms += 20) {
+      const rate = ms >= 100 && ms < 500 ? 300 * DEG_TO_RAD : 0;
+      const reading = {x: 0, y: 0, z: 0}; reading[axis] = rate;
+      const result = detector.push(toLegacyMotionSample(native(ms / 1000, reading)));
+      if (result) releases.push(result);
+    }
+    return releases;
+  };
+  expect(run('x')).toHaveLength(1);
+  expect(run('y')).toHaveLength(0);
+  expect(run('z')).toHaveLength(0);
+});
+
+test('automatic setup becomes ready from real samples without requiring a stationary pose', async () => {
+  const {createAutomaticMotionSetup} = await import('../shared/motion.js');
+  const setup = createAutomaticMotionSetup();
+  let result;
+  for (let i = 0; i <= 8; i++) result = setup.push(native(i * .02, {x: 2, y: .5, z: 0}));
+  expect(result.ready).toBe(true); expect(result.justReady).toBe(true);
+  expect(result.biasSource).toBe('provisional'); expect(result.calibration.bias).toEqual({x: 0, y: 0, z: 0});
+  expect(result.sample.angularVelocity).toEqual({x: 2, y: .5, z: 0});
+  const tooFew = createAutomaticMotionSetup();
+  expect(tooFew.push(native(0)).ready).toBe(false);
+  expect(tooFew.push(native(.2)).ready).toBe(false);
+  expect(tooFew.push(null).state).toBe('no-readings');
+});
+
+test('automatic bias refinement only uses a quiet safe boundary and never rebases during a stroke', async () => {
+  const {createAutomaticMotionSetup} = await import('../shared/motion.js');
+  const setup = createAutomaticMotionSetup();
+  let result;
+  for (let i = 0; i <= 50; i++) result = setup.push(native(i * .02, {x: .02, y: -.01, z: 0}), {safeBoundary: false, recenter: true});
+  expect(result.biasSource).toBe('provisional');
+  const before = result.calibration.revision;
+  for (let i = 51; i <= 90; i++) result = setup.push(native(i * .02, {x: .02, y: -.01, z: 0}), {safeBoundary: true, recenter: true});
+  expect(result.biasSource).toBe('stationary'); expect(result.calibration.revision).toBeGreaterThan(before);
+  expect(result.sample.angularVelocity.x).toBeCloseTo(0);
+  const settled = result.calibration;
+  for (let i = 91; i <= 140; i++) result = setup.push(native(i * .02, {x: .04, y: .02, z: 0}), {safeBoundary: false, recenter: true});
+  expect(result.calibration).toEqual(settled);
+});
+
+test('automatic setup discards stale/interrupted streams and never learns acceleration as stationary bias', async () => {
+  const {createAutomaticMotionSetup} = await import('../shared/motion.js');
+  const setup = createAutomaticMotionSetup();
+  let result;
+  for (let i = 0; i <= 50; i++) result = setup.push({...native(i * .02, {x: .02, y: 0, z: 0}),
+    acceleration: {x: 3, y: 0, z: 0}}, {safeBoundary: true});
+  expect(result.ready).toBe(true); expect(result.biasSource).toBe('provisional');
+  const revision = result.calibration.revision;
+  result = setup.push(native(2)); expect(result.ready).toBe(false);
+  for (let i = 1; i <= 8; i++) result = setup.push(native(2 + i * .02));
+  expect(result.ready).toBe(true); expect(result.calibration.revision).toBeGreaterThan(revision);
+  setup.reset(); expect(setup.ready).toBe(false);
+  result = setup.push(native(3)); expect(result.ready).toBe(false);
+  result = setup.push(native(3.02, {x: 0, y: 0, z: 0}, {screenAngle: 90})); expect(result.ready).toBe(false);
+});
+
+test('automatic readiness watchdog notices silent sensors without replaying a sample', async () => {
+  const {createAutomaticMotionSetup} = await import('../shared/motion.js');
+  const setup = createAutomaticMotionSetup();
+  for (let i = 0; i <= 8; i++) setup.push(native(i * .02, {x: 1, y: 0, z: 0}));
+  expect(setup.read(.2).ready).toBe(true);
+  expect(setup.read(.2).sample).toBeNull();
+  expect(setup.read(.5).ready).toBe(false);
+  expect(setup.push(native(.52)).ready).toBe(false);
+});
+
+test('browser adapter can resume after pagehide plus stop without requiring a new permission prompt', async () => {
+  const target = new EventTarget(), document = new EventTarget();
+  const permission = vi.fn(async () => 'granted');
+  Object.assign(target, {isSecureContext: true, DeviceMotionEvent: {requestPermission: permission}, screen: {orientation: {angle: 0}}});
+  document.hidden = false;
+  let time = 0; const samples = [];
+  const adapter = createWebMotionAdapter({target, document, clock: () => time, onSample: sample => samples.push(sample)});
+  await adapter.start();
+  target.dispatchEvent(new Event('pagehide')); adapter.stop();
+  await adapter.start({requestPermission: false});
+  time = 1;
+  target.dispatchEvent(Object.assign(new Event('devicemotion'), {rotationRate: {alpha: 1, beta: 0, gamma: 0}}));
+  expect(samples).toHaveLength(1); expect(permission).toHaveBeenCalledTimes(1);
+  adapter.dispose();
 });

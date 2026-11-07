@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { createSimpleSwingStream, createBowlingMotionDetector, bowlingTiltAim } from '../src/controller/motionGestures.js';
+import { createSimpleSwingStream, createBowlingMotionDetector, createBowlingDeliveryGate, bowlingTiltAim } from '../src/controller/motionGestures.js';
 
 const sample = (timeMs, beta, alpha = 0, gamma = 0) => ({ timeMs,
   rotationAlpha: alpha, rotationBeta: beta, rotationGamma: gamma });
@@ -113,18 +113,19 @@ test('wrist twist curves in either direction, ignores jitter and stays bounded',
   const twist = gamma => delivery(400, value => ({ ...value, rotationBeta: gamma }))[0];
   expect(twist(0).spin).toBe(0);
   expect(twist(5).spin).toBe(0);
-  expect(twist(20).spin).toBe(0);
+  expect(twist(20).spin).toBeGreaterThan(0);
   expect(twist(70).spin).toBeGreaterThan(0);
-  expect(twist(70).spin).toBeLessThan(.15);
+  expect(twist(70).spin).toBeLessThan(.3);
   expect(twist(-70).spin).toBeCloseTo(-twist(70).spin);
   expect(twist(150).spin).toBeLessThanOrEqual(.55);
   expect(twist(150).spin).toBeGreaterThan(twist(70).spin);
 });
 
-test('wrist movement after the forward swing does not add curve', () => {
+test('wrist rotation through release adds curve but later follow-through cannot', () => {
   const lateTurn = delivery(400, value => ({ ...value, rotationBeta: value.timeMs > 340 ? 100 : 0 }));
   expect(lateTurn).toHaveLength(1);
-  expect(lateTurn[0].spin).toBe(0);
+  expect(lateTurn[0].spin).toBeGreaterThan(0);
+  expect(delivery(400, value => ({...value, rotationBeta: value.timeMs > 600 ? 250 : 0}))[0].spin).toBe(0);
 });
 
 test('power can use linear acceleration but works without it and never uses gravity', () => {
@@ -164,4 +165,49 @@ test('tilt aims only from a still screen-up grip and clamps to the lane', () => 
     expect(bowlingTiltAim(gravity, 0)).toBeNull();
   }
   expect(bowlingTiltAim({ x: 0, y: 0, z: 9.8 }, 100)).toBeNull();
+});
+
+
+test('natural bowling gate freezes aim at forward onset and latches until a new authoritative turn', () => {
+  const gate = createBowlingDeliveryGate();
+  let time = 0, key = 'turn-1', aim = .35;
+  const push = (pitch = 0, twist = 0, active = true) => gate.push(bowlSample(time += 20, pitch, twist), {active, turnKey: key, aim});
+  for (let i = 0; i < 20; i++) expect(push(400)).toBeNull(); // Joining during motion cannot bowl.
+  for (let i = 0; i < 16; i++) push();
+  expect(gate.phase).toBe('ready');
+  expect(gate.lockedAim).toBeNull();
+  for (let i = 0; i < 15; i++) push(-500); // Backswing does not lock aim or charge power.
+  expect(gate.preview.power).toBe(0);
+  aim = -.4;
+  push(400);
+  expect(gate.phase).toBe('forward');
+  expect(gate.lockedAim).toBe(-.4);
+  aim = .8;
+  const rolls = [];
+  for (let i = 0; i < 35; i++) { const result = push(i < 15 ? 400 : 0, i < 20 ? 100 : 0); if (result) rolls.push(result); }
+  expect(rolls).toHaveLength(1);
+  expect(rolls[0].aim).toBe(-.4);
+  expect(rolls[0].spin).toBeGreaterThan(0);
+  gate.suspend();
+  for (let i = 0; i < 60; i++) expect(push(i > 20 && i < 40 ? 400 : 0, 0, i > 5)).toBeNull();
+  expect(gate.phase).toBe('finished'); // ACK/reconnect/timeouts are not a new delivery.
+  key = 'turn-2';
+  for (let i = 0; i < 16; i++) push();
+  for (let i = 0; i < 35; i++) { const result = push(i < 15 ? 400 : 0); if (result) rolls.push(result); }
+  expect(rolls).toHaveLength(2);
+});
+
+test('natural gate drops partial swings on a sensor gap, hidden page or turn loss', () => {
+  for (const interruption of ['gap', 'suspend', 'turn']) {
+    const gate = createBowlingDeliveryGate();
+    let time = 0;
+    const push = (pitch = 0, active = true) => gate.push(bowlSample(time += 20, pitch), {active, turnKey: 1, aim: 0});
+    for (let i = 0; i < 16; i++) push();
+    for (let i = 0; i < 10; i++) push(400);
+    if (interruption === 'gap') time += 300;
+    if (interruption === 'suspend') gate.suspend();
+    if (interruption === 'turn') push(400, false);
+    for (let i = 0; i < 8; i++) expect(push()).toBeNull();
+    expect(gate.phase).toBe('rest');
+  }
 });

@@ -62,7 +62,7 @@ test('trusted profile preferences provide initial UI defaults without granting s
   expect(elements.get('motion-sensitivity').value).toBe('1.5');
   expect(permission).not.toHaveBeenCalled();
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
-  expect(elements.get('setup-panel').hidden).toBe(false);
+  expect(elements.get('setup-panel').hidden).toBe(true);
 });
 
 test('late profile preferences cannot replace an active chosen controller session', async () => {
@@ -84,7 +84,7 @@ test('initial touch preference selects a playable fallback without fabricating m
   }}});
   expect(permission).not.toHaveBeenCalled();
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('buttons');
-  expect(elements.get('setup-status').textContent).toContain('Button');
+  expect(elements.get('setup-status').textContent).toContain('Touch');
 });
 
 test('phone diagnostics keep delivery and contact separate and ignore unrelated or replayed results', async () => {
@@ -193,8 +193,8 @@ test('live sport switching keeps motion setup and permission while discarding th
   emit('message', { source: parent, origin: location.origin, data: {
     type: 'wee:bowling-state', phase: 'ready', currentPlayer: 1, canRoll: true,
   } });
-  elements.get('arm-roll').onclick();
-  expect(elements.get('arm-roll').hidden).toBe(true);
+  for (let i = 0; i < 16; i++) tick();
+  tick(20, {alpha: 300, beta: 0, gamma: 0});
   state({ playing: true, paused: false, sport: 'tennis', gameId: 'tennis-two' });
   for (let i = 0; i < 40; i++) tick();
   expect(elements.get('controller-title').textContent).toBe('Your racket');
@@ -331,7 +331,7 @@ test.each(['hand', 'hidden', 'pagehide'])('pending permission cannot begin calib
   resolvePermission('granted');
   await pending;
   for (let i = 0; i < 30; i++) tick();
-  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe(change === 'hand' ? 'motion' : null);
   expect(elements.get('calibrate').textContent).not.toMatch(/Checking|Calibrating/);
 });
 
@@ -368,13 +368,13 @@ test('resuming while moving retains the saved stationary zero and its original e
   expect(createCalibrationMemory(window.sessionStorage).read().strength).toBeNull();
 });
 
-test('changing the selected hand before verification prevents restoring the previous hand profile', async () => {
+test('changing the optional hand preserves automatic startup but discards the previous hand profile', async () => {
   savedMotionSetup();
   await import('../src/controller/main.js');
   elements.get('hand').value = 'Right'; elements.get('hand').onchange();
   for (let i = 0; i < 30; i++) tick();
-  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
-  expect(elements.get('calibrate').textContent).toBe('Enable motion');
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  expect(elements.get('tune-strength').textContent).toBe('Tune power');
   expect(window.sessionStorage.getItem(CALIBRATION_STORAGE_KEY)).toBeNull();
 });
 
@@ -472,15 +472,15 @@ test('tennis phone shows whose serve it is and stops input after a match', async
 test('Calibrate itself requests permission; only real still readings unlock setup and play starts automatically', async () => {
   await import('../src/controller/main.js');
   expect(elements.get('calibrate').disabled).toBe(false);
-  expect(elements.get('setup-panel').hidden).toBe(false);
-  expect(elements.get('play-panel').hidden).toBe(true);
+  expect(elements.get('setup-panel').hidden).toBe(true);
+  expect(elements.get('play-panel').hidden).toBe(false);
   state({});
   await calibrate();
   expect(permission).toHaveBeenCalledTimes(1);
   expect(messages).toContainEqual({ type: 'wee:controller-setup', setup: 'motion' });
   expect(elements.get('setup-panel').hidden).toBe(true);
   expect(elements.get('play-panel').hidden).toBe(false);
-  expect(elements.get('play-title').textContent).toBe('You’re ready');
+  expect(elements.get('play-title').textContent).toBe('You’re in');
   expect(elements.get('stop').disabled).toBe(true); // Lobby cannot send strokes.
   state({ playing: true, paused: false });
   expect(elements.get('play-title').textContent).toBe('Swing to play');
@@ -548,10 +548,10 @@ test('a rejected setup save remains visible on the calibrated waiting screen', a
   emit('message', { source: parent, origin: location.origin,
     data: { type: 'wee:setup-ack', result: { ok: true } } });
   expect(elements.get('play-notice').hidden).toBe(true);
-  expect(elements.get('play-title').textContent).toBe('You’re ready');
+  expect(elements.get('play-title').textContent).toBe('You’re in');
 });
 
-test('bowling presents the other player, own turn, armed roll, delivery and persistent completion states', async () => {
+test('bowling presents the other player, natural swing, delivery and completion states', async () => {
   location.search += '&sport=bowling';
   await import('../src/controller/main.js');
   await calibrate();
@@ -562,30 +562,21 @@ test('bowling presents the other player, own turn, armed roll, delivery and pers
   expect(elements.get('play-title').textContent).toBe('P2 is bowling');
   expect(elements.get('bowling-controls').hidden).toBe(true);
   bowlingState({ currentPlayer: 1 });
-  expect(elements.get('play-title').textContent).toBe('Your turn');
-  expect(elements.get('bowling-controls').hidden).toBe(false);
-  expect(elements.get('bowling-buttons').hidden).toBe(true);
-  elements.get('arm-roll').onclick();
-  expect(elements.get('play-title').textContent).toBe('Swing forward');
+  expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
+  expect(elements.get('play-help').textContent).toBe('Turn your wrist to curve');
   expect(elements.get('shot-adjustments').hidden).toBe(true);
-  expect(elements.get('cancel-roll').hidden).toBe(false);
-  elements.get('cancel-roll').onclick();
-  for (let i = 0; i < 40; i++) tick(20, { alpha: i < 20 ? 400 * Math.sin(Math.PI * i / 20) : 0, beta: 0, gamma: 0 });
-  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
-  expect(elements.get('shot-adjustments').hidden).toBe(false);
-  expect(elements.get('play-title').textContent).toBe('Your turn');
-  elements.get('arm-roll').onclick();
+  expect(elements.has('arm-roll')).toBe(false);
+  for (let i = 0; i < 16; i++) tick();
+  tick(20, {alpha: 400, beta: 0, gamma: 0});
   elements.get('toggle-settings').onclick();
   elements.get('toggle-settings').onclick();
-  expect(elements.get('play-title').textContent).toBe('Your turn');
+  for (let i = 0; i < 40; i++) tick(20, {alpha: i < 20 ? 400 : 0, beta: 0, gamma: 0});
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
-  elements.get('arm-roll').onclick();
-  for (let i = 0; i < 40; i++) tick(20, { alpha: i < 20 ? 400 * Math.sin(Math.PI * i / 20) : 0, beta: 0, gamma: 0 });
+  for (let i = 0; i < 40; i++) tick(20, {alpha: i < 20 ? 400 : 0, beta: 0, gamma: 0});
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
   expect(elements.get('play-title').textContent).toBe('Watch the lane');
   expect(elements.get('bowling-controls').hidden).toBe(true);
   bowlingState({ currentPlayer: 1, canRoll: false, phase: 'complete' });
-  expect(elements.get('play-title').textContent).toBe('Nice bowling!');
   tick(2000, null);
   expect(elements.get('play-title').textContent).toBe('Nice bowling!');
   expect(elements.get('bowling-controls').hidden).toBe(true);
@@ -661,7 +652,7 @@ test('bowling sends bounded aim, spin and power for its own turn and blocks repe
   expect(elements.get('bowling-controls').hidden).toBe(false);
   expect(elements.get('bowling-buttons').hidden).toBe(false);
   expect(elements.get('bowling-buttons').open).toBe(true);
-  expect(elements.get('arm-roll').hidden).toBe(true);
+  expect(elements.has('arm-roll')).toBe(false);
   elements.get('aim').value = '-0.3';
   elements.get('spin').value = '0.2';
   elements.get('roll').onclick();
@@ -672,7 +663,7 @@ test('bowling sends bounded aim, spin and power for its own turn and blocks repe
   expect(relay.sendSwing).not.toHaveBeenCalled();
 });
 
-test('calibrated bowling motion only rolls when explicitly armed on the current turn', async () => {
+test('bowling waits for quiet on the current turn and then bowls without an Arm button', async () => {
   location.search += '&sport=bowling';
   await import('../src/controller/main.js');
   await calibrate();
@@ -682,13 +673,12 @@ test('calibrated bowling motion only rolls when explicitly armed on the current 
   const bowl = () => { for (let i = 0; i < 40; i++) tick(20, { alpha: i < 20 ? 400 * Math.sin(Math.PI * i / 20) : 0, beta: 0, gamma: 0 }); };
   bowl();
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
-  elements.get('arm-roll').onclick();
   bowl();
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
   expect(relay.sendSwing).not.toHaveBeenCalled();
 });
 
-test('bowling tilt aims before arming, locks during delivery and sends measured power and twist', async () => {
+test('bowling tilt aims before the forward swing, locks during delivery and sends measured power and twist', async () => {
   location.search += '&sport=bowling';
   await import('../src/controller/main.js');
   await calibrate();
@@ -698,10 +688,9 @@ test('bowling tilt aims before arming, locks during delivery and sends measured 
   for (let i = 0; i < 35; i++) tick(20, undefined, { accelerationIncludingGravity: { x: -3, y: 0, z: 9.3 } });
   const aim = Number(elements.get('aim').value);
   expect(aim).toBeGreaterThan(.3);
-  expect(elements.get('aim').hidden).toBe(true);
+  expect(elements.get('shot-adjustments').hidden).toBe(true);
   expect(elements.get('curve-buttons').hidden).toBe(true);
   elements.get('spin').value = '-1'; // A stale button preference must not override the wrist.
-  elements.get('arm-roll').onclick();
   for (let i = 0; i < 40; i++) tick(20, { alpha: (i < 20 ? 400 * Math.sin(Math.PI * i / 20) : 0) + .1, beta: 69.9, gamma: .2 }, {
     accelerationIncludingGravity: { x: 3, y: 0, z: 9.3 }, acceleration: { x: 0, y: 12, z: 0 },
   });
@@ -727,11 +716,12 @@ test('bowling live aim streams only on the active turn, announces aim lock, and 
   turn(1);
   elements.get('aim').value = '.35'; elements.get('aim').oninput();
   expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event).toMatchObject({aim: .35, locked: false});
-  elements.get('arm-roll').onclick();
+  for (let i = 0; i < 16; i++) tick();
+  tick(20, {alpha: 400, beta: 0, gamma: 0});
   expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event).toMatchObject({aim: .35, locked: true});
   elements.get('aim').value = '-.8'; // Even a stray UI mutation cannot steer an armed delivery.
   for (let index = 0; index <= 60; index++) {
-    const pitch = index < 20 ? 500 * Math.sin(Math.PI * index / 20) : 0;
+    const pitch = index < 20 ? 500 : 0;
     tick(20, {alpha: pitch + .1, beta: -.1, gamma: .2});
   }
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
@@ -741,7 +731,7 @@ test('bowling live aim streams only on the active turn, announces aim lock, and 
   expect(messages.filter(message => message.type === 'wee:player-aim')).toHaveLength(sent);
 });
 
-test('losing usable gravity restores manual aim while gyro motion remains live', async () => {
+test('losing usable gravity preserves the last line and keeps touch controls available', async () => {
   location.search += '&sport=bowling';
   await import('../src/controller/main.js');
   await calibrate();
@@ -749,10 +739,12 @@ test('losing usable gravity restores manual aim while gyro motion remains live',
   emit('message', { source: parent, origin: location.origin,
     data: { type: 'wee:bowling-state', canRoll: true, currentPlayer: 1, phase: 'ready' } });
   for (let i = 0; i < 30; i++) tick(20, undefined, { accelerationIncludingGravity: { x: -3, y: 0, z: 9.3 } });
-  expect(elements.get('aim').hidden).toBe(true);
+  expect(elements.get('shot-adjustments').hidden).toBe(true);
+  const line = elements.get('aim').value;
   for (let i = 0; i < 40; i++) tick();
-  expect(elements.get('aim').hidden).toBe(false);
-  expect(elements.get('play-title').textContent).toBe('Your turn');
+  expect(elements.get('aim').value).toBe(line);
+  expect(elements.get('use-buttons').hidden).toBe(false);
+  expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
 });
 
 const teamRecordings = [
@@ -776,7 +768,7 @@ test('phone stays awake from calibrated lobby into play and haptics only accept 
   state({});
   expect(request).not.toHaveBeenCalled();
   await calibrate();
-  expect(elements.get('play-title').textContent).toBe('You’re ready');
+  expect(elements.get('play-title').textContent).toBe('You’re in');
   expect(request).toHaveBeenCalledExactlyOnceWith('screen');
   expect(locks[0].release).not.toHaveBeenCalled();
   const hit = { type: 'wee:game-hit', kind: 'tennis', player: 1 };
@@ -840,3 +832,44 @@ for (const [name, hand, expected] of teamRecordings) {
     expect(messages).toContainEqual({ type: 'wee:controller-setup', setup: 'motion' });
   });
 }
+
+
+test('granted parent intent is idempotent and only fresh real readings report motion ready', async () => {
+  location.search += '&sport=bowling';
+  await import('../src/controller/main.js');
+  const intent = () => emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:controller-intent', mode: 'motion', permission: 'granted'}});
+  intent(); await Promise.resolve();
+  tick(500, null);
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  for (let i = 0; i < 10; i++) {intent(); tick(20, {alpha: 100, beta: 70, gamma: -40});}
+  expect(permission).not.toHaveBeenCalled();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  expect(window.sessionStorage.getItem(CALIBRATION_STORAGE_KEY)).toBeNull();
+  tick(300, null);
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  for (let i = 0; i < 10; i++) tick();
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+});
+
+test('natural motion sends one roll, never retries after ACK or timeout, and waits for the next real turn', async () => {
+  location.search += '&sport=bowling';
+  await import('../src/controller/main.js');
+  for (let i = 0; i < 10; i++) tick();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'auto-bowl', generation: 1});
+  const bowlingState = (phase, currentPlayer = 1) => emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', phase, currentPlayer, canRoll: phase === 'ready'}});
+  const rest = () => {for (let i = 0; i < 16; i++) tick();};
+  const bowl = () => {for (let i = 0; i < 35; i++) tick(20, {alpha: i < 15 ? 400 : 0, beta: i < 20 ? 100 : 0, gamma: 0});};
+  const rolls = () => messages.filter(message => message.type === 'wee:player-roll');
+  bowlingState('ready', 2); rest(); bowl(); expect(rolls()).toHaveLength(0);
+  bowlingState('ready'); rest(); bowl(); expect(rolls()).toHaveLength(1);
+  emit('message', {source: parent, origin: location.origin, data: {type: 'wee:roll-ack', result: {id: rolls()[0].event.id, ok: true, receivers: 1}}});
+  rest(); bowl(); expect(rolls()).toHaveLength(1);
+  state({playing: true, paused: true, connected: false, gameId: 'auto-bowl', generation: 1});
+  state({playing: true, paused: false, gameId: 'auto-bowl', generation: 1});
+  rest(); bowl(); expect(rolls()).toHaveLength(1);
+  bowlingState('rolling'); bowlingState('ready'); rest(); bowl(); expect(rolls()).toHaveLength(2);
+  tick(4500, null); rest(); bowl(); expect(rolls()).toHaveLength(2);
+  expect(permission).not.toHaveBeenCalled();
+});

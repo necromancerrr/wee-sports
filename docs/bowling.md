@@ -4,7 +4,7 @@
 
 The phone now publishes a replaceable aim preview up to 20 times per second.
 The room service authenticates the active player; the lane accepts only its
-current game, input generation, host epoch and increasing sequence. Arming
+current game, input generation, host epoch and increasing sequence. Forward swing onset
 stores an explicit immutable aim for the delivery and changes the TV line to
 gold. The preview never authorizes a roll or changes a rolling ball. Aim
 filtering uses elapsed time with an 84 ms time constant, approximately matching
@@ -25,15 +25,14 @@ The service owns storage, revision and host-epoch authorization; raw movement
 is not included. An interrupted in-flight delivery resumes from the last
 accepted settled boundary, not from a fabricated mid-flight simulation.
 
-The new canonical adapter preserves legacy recognizer values through an
-explicit conversion. One pre-existing assumption remains a device gate:
-the old bowling recognizer calls raw `alpha` its forward signal and `beta` its
-twist signal, while the standard DeviceMotion axis names are `beta=X`,
-`gamma=Y`, `alpha=Z`. Synthetic release tests verify the retained convention;
-they do not establish that a real grip produces the intended signed signal.
-Perform the directional check on the target phone before claiming browser/native
-motion parity or retuning those thresholds. Cannon-es coefficients and the
-forward-segment release thresholds have not been changed without that evidence.
+The canonical adapter uses the W3C DeviceMotion rotationRate convention:
+`alpha=X`, `beta=Y`, `gamma=Z`, in degrees per second at the browser boundary.
+Canonical motion uses radians per second; conversion back to the recognizer
+preserves browser signals. With screen up and the phone top toward the TV,
+positive X is the expected forward pitch, and positive Y requests a curve right
+on the TV. Physical iOS/Android grip trials remain required to verify native
+sensor signs and comfort; synthetic tests establish deterministic signal mapping,
+not hardware feel. Cannon-es coefficients and forward release thresholds are unchanged.
 
 Signed-in profile preferences can supply initial hand, motion response, vibration
 and button-mode defaults. Explicit choices on this device and an active setup
@@ -126,31 +125,31 @@ on reset. Speaker balance and real-phone delivery feel remain device checks.
 
 ## Motion setup and delivery
 
-A direct Calibrate tap requests motion permission while the browser still has
-user activation. Permission alone is not success. Calibration ignores 800 ms of
-settling and then requires a fresh continuous 1.2-second still window, with a
-10-second timeout and explicit failure reason. Missing/null gyroscope readings
-cannot pass. Live diagnostics distinguish denied access, absent data, movement
-and insecure HTTP. Motion starts automatically once calibrated and playing;
-explicit Stop, hidden pages, pauses and disconnects discard partial gestures.
+The initial motion choice requests browser permission from a tap; an embedded
+controller reuses that granted intent without a second prompt. Permission alone
+cannot make it ready: five real gyro readings covering at least 150 ms are required.
+This allows immediate provisional zero bias while moving. A quiet safe boundary
+refines bias without interrupting play. Missing readings for more than 250 ms
+revoke automatic readiness. Provisional values are never saved as verified
+stationary calibration. Optional Reset motion in Settings retains the explicit
+stationary calibration workflow for drift diagnosis; it is not a play requirement.
 
-Bowling arms one delivery at a time. Hold the phone screen up with its top toward
-the TV. Tilt left/right to aim; arming locks the aim so the swing cannot move it.
-A sustained positive forward signal in the legacy `rotationRate.alpha` channel
-followed by deceleration releases once. Power comes from its peak speed, assisted
-by gravity-free linear acceleration when available. Integrated legacy twist
-input (`rotationRate.beta`)
-sets left/right curve with a 10-degree dead zone, a progressive response and a
-55% cap on motion curve. Only the active forward swing contributes wrist turn;
-late follow-through does not add a surprise hook. Aim has a 4-degree center dead
-zone. The phone shows the measured power and curve while armed and briefly
-after release. See the explicit physical-axis validation gate above; the legacy
-classifier channel names must not be presented as canonical device axes.
-Unusable gravity readings restore manual aim. Explicit button mode retains aim,
-curve and power sliders. Tennis uses the team’s post-peak fast confirmation by default, retaining the
-physical motion window to avoid duplicate follow-through and missed repeat swings.
-The automatic classifier still offers
-explicit simple shot mappings for devices/grips that cannot satisfy it.
+Bowling needs no Arm button. On the current player's ready turn, 250 ms of quiet
+fresh readings prepares one delivery. Hold the phone screen up with its top toward
+the TV; tilt left/right to aim. Aim locks only when a positive X forward segment
+starts. The existing pitch dominance, travel, peak and 80 ms deceleration checks
+release once. Power uses forward peak speed with gravity-free acceleration assist.
+Backswing never charges a shot. A release stays latched through acknowledgements,
+timeouts and reconnects until an authoritative new delivery boundary.
+
+Y wrist rotation through that same forward and deceleration window sets curve:
+6 degrees of dead zone, then a linear response capped at 55% spin after another
+45 degrees. Positive requests TV-right, negative TV-left, independent of hand.
+Movement after release cannot alter the ball. The brief result readout shows
+curve direction and strength relative to this bounded motion range. Touch controls
+keep aim and Roll visible, with optional curve and power adjustments. Hand selection,
+sensor diagnostics and power tuning stay in Settings. Tennis keeps its existing
+post-peak classifier and optional simple shot mapping.
 
 - [MDN: motion permission and transient activation](https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/requestPermission_static)
 - [W3C Device Orientation and Motion](https://www.w3.org/TR/orientation-event/)

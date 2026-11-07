@@ -43,3 +43,16 @@
 @media (prefers-reduced-motion: reduce) {
   .controller-page .motion-object { transition: none; transform: none; }
 }
+
+/* A single, spacious play surface; diagnostics stay in Settings. */
+.controller-page .play-state { border-radius: var(--radius-lg); padding: 26px 20px 24px; background: linear-gradient(180deg, var(--accent-soft), var(--surface) 72%); }
+.controller-page .play-state h2 { max-width: 13ch; margin: 22px auto 12px; color: var(--accent-ink); }
+.controller-page .play-state #play-help { font-size: 1.1rem; color: var(--text); }
+.controller-page .play-state[data-state="playing"] .play-pill { background: #dbf48b; color: #2e4516; }
+.controller-page .grip-cue { max-width: 29ch; margin: 14px auto 0; color: var(--text-muted); font-size: .78rem; line-height: 1.6; }
+.controller-page #enable { width: 100%; margin-top: 20px; }
+.controller-page #use-buttons { color: var(--accent-ink); font-weight: 800; }
+.controller-page .motion-visual[data-sport="bowling"] { width: 220px; height: 208px; margin-top: 28px; }
+.controller-page .motion-visual[data-sport="bowling"] .motion-object { width: 140px; height: 180px; left: calc(50% - 70px); filter: drop-shadow(0 14px 10px rgb(10 100 153 / .16)); }
+.controller-page .motion-readout { background: var(--surface); border: 1px solid var(--border); }
+.controller-page #bowling-buttons { margin-top: 12px; }

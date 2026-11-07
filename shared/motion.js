@@ -50,8 +50,8 @@ function sampleBase({timeSeconds, sequence, screenAngle = 0, calibrationRevision
   if (normalized) sample.orientation = normalized;
   return sample;
 }
-/** Browser rotationRate follows beta=X, gamma=Y, alpha=Z.
- * This is distinct from Expo DeviceMotion rotationRate naming; native uses Gyroscope.
+/** Browser rotationRate follows alpha=X, beta=Y, gamma=Z (W3C + Chromium/WebKit).
+ * DeviceOrientation Euler angles use a different Z/X/Y naming convention.
  * Missing axes remain absent; missing sensor data is never a zero measurement.
  */
 export function normalizeWebMotion(event, options) {
@@ -59,7 +59,7 @@ export function normalizeWebMotion(event, options) {
   if (!sample) return null;
   const rate = event?.rotationRate;
   if (rate && ['alpha', 'beta', 'gamma'].every(axis => Number.isFinite(rate[axis]))) {
-    sample.angularVelocity = {x: rate.beta * DEG_TO_RAD, y: rate.gamma * DEG_TO_RAD, z: rate.alpha * DEG_TO_RAD};
+    sample.angularVelocity = {x: rate.alpha * DEG_TO_RAD, y: rate.beta * DEG_TO_RAD, z: rate.gamma * DEG_TO_RAD};
   }
   const acceleration = vector(event?.acceleration), total = vector(event?.accelerationIncludingGravity);
   if (acceleration) sample.acceleration = acceleration;
@@ -98,9 +98,9 @@ export function toLegacyMotionSample(sample, {timeOriginSeconds = 0, bias} = {})
       (bias && !['alpha', 'beta', 'gamma'].every(axis => Number.isFinite(bias[axis])))) return null;
   const rate = sample.angularVelocity;
   const legacy = {timeMs: (sample.timeSeconds - timeOriginSeconds) * 1000,
-    rotationAlpha: rate.z / DEG_TO_RAD - (bias?.alpha ?? 0),
-    rotationBeta: rate.x / DEG_TO_RAD - (bias?.beta ?? 0),
-    rotationGamma: rate.y / DEG_TO_RAD - (bias?.gamma ?? 0)};
+    rotationAlpha: rate.x / DEG_TO_RAD - (bias?.alpha ?? 0),
+    rotationBeta: rate.y / DEG_TO_RAD - (bias?.beta ?? 0),
+    rotationGamma: rate.z / DEG_TO_RAD - (bias?.gamma ?? 0)};
   if (sample.acceleration) legacy.acceleration = {...sample.acceleration};
   return legacy;
 }
@@ -175,7 +175,7 @@ function gyroStep(angularVelocity, dt) {
  * A gap, rotation or revision change cancels the current stroke. First resumed
  * input has zero angular velocity, avoiding a synthetic recenter hit.
  */
-export function createPaddleIntentController({hand = 'Right', sensitivity = 1, maxGapSeconds = .15} = {}) {
+export function createPaddleIntentController({sensitivity = 1, maxGapSeconds = .15} = {}) {
   let previous = null, neutral = null, orientation = identityQuaternion();
   const gain = clamp(Number.isFinite(sensitivity) ? sensitivity : 1, .25, 2);
   const reset = sample => {previous = null; neutral = sample?.orientation ? {...sample.orientation} : null; orientation = identityQuaternion();};
@@ -198,8 +198,9 @@ export function createPaddleIntentController({hand = 'Right', sensitivity = 1, m
         orientation = normalizeQuaternion(multiplyQuaternions(orientation, gyroStep(angularVelocity, sample.timeSeconds - previous.timeSeconds)));
       }
       previous = sample;
-      // Roll/tilt supply bounded virtual reach. No acceleration integration.
-      const reach = {x: clamp(orientation.y * 2 * gain * (hand === 'Left' ? -1 : 1), -1, 1),
+      // Roll/tilt supply bounded virtual reach. A hand preference does not
+      // change the phone's coordinate frame. No acceleration integration.
+      const reach = {x: clamp(orientation.y * 2 * gain, -1, 1),
         y: clamp(-orientation.x * 2 * gain, -1, 1)};
       return {orientation: [orientation.x, orientation.y, orientation.z, orientation.w],
         angularVelocity: Object.fromEntries(axes.map(axis => [axis, clamp(angularVelocity[axis] * gain, -30, 30)])),
@@ -226,5 +227,77 @@ export function createMotionRecorder({maxSamples = 6000, sport = 'tennis', adapt
     export() {return {schemaVersion: 1, adapterVersion: String(adapterVersion).slice(0, 50),
       sport: ['tennis', 'bowling', 'table-tennis'].includes(sport) ? sport : 'unknown', samples: JSON.parse(JSON.stringify(samples))};},
     clear() {samples.length = 0;},
+  };
+}
+
+/** Automatic readiness is separate from a verified stationary gyro estimate.
+ * A short continuous stream can play with provisional zero bias; it never has
+ * to finish a hold-still checklist. Quiet refinement is allowed only at a
+ * caller-declared safe boundary, never during a delivery or rally.
+ */
+export function createAutomaticMotionSetup({warmupSeconds = .15, minimumSamples = 5,
+  maxGapSeconds = .25, quietWindowSeconds = .6} = {}) {
+  if (![warmupSeconds, maxGapSeconds, quietWindowSeconds].every(value => Number.isFinite(value) && value > 0) ||
+      !Number.isSafeInteger(minimumSamples) || minimumSamples < 2) throw new RangeError('Invalid automatic motion timing');
+  let first = null, previous = null, count = 0, calibration = null, revision = 0;
+  let bias = {x: 0, y: 0, z: 0}, biasSource = 'provisional', quiet = [], centeredAtBoundary = false;
+  const clear = () => {first = null; previous = null; count = 0; calibration = null; quiet = []; centeredAtBoundary = false;};
+  const status = (sample, justReady = false) => ({state: calibration ? 'ready' : 'warming', ready: Boolean(calibration),
+    justReady, calibration: calibration ? {...calibration, bias: {...calibration.bias},
+      ...(calibration.neutralOrientation ? {neutralOrientation: {...calibration.neutralOrientation}} : {})} : null,
+    sample: calibration ? applyMotionCalibration(sample, calibration) : null, biasSource});
+  return {
+    push(sample, {safeBoundary = false, recenter = false} = {}) {
+      if (!isMotionSample(sample) || !sample.angularVelocity) {
+        clear(); return {...status(null), state: 'no-readings'};
+      }
+      if (previous && (sample.timeSeconds <= previous.timeSeconds || sample.sequence <= previous.sequence ||
+          sample.timeSeconds - previous.timeSeconds > maxGapSeconds || sample.screenAngle !== previous.screenAngle)) clear();
+      first ??= sample.timeSeconds;
+      previous = sample; count++;
+      let justReady = false;
+      if (!calibration && count >= minimumSamples && sample.timeSeconds - first >= warmupSeconds - 1e-9) {
+        calibration = {revision: ++revision, bias: {...bias}, screenAngle: sample.screenAngle};
+        if (sample.orientation) calibration.neutralOrientation = {...sample.orientation};
+        justReady = true;
+      }
+      if (!safeBoundary) {quiet = []; centeredAtBoundary = false; return status(sample, justReady);}
+      const rate = sample.angularVelocity;
+      const lowRate = Math.hypot(rate.x, rate.y, rate.z) <= 5 * DEG_TO_RAD;
+      // A large linear acceleration or non-gravity total rejects bias fitting.
+      const linearQuiet = !sample.acceleration || Math.hypot(...axes.map(axis => sample.acceleration[axis])) <= 1;
+      const total = sample.accelerationIncludingGravity;
+      const totalQuiet = !total || Math.abs(Math.hypot(total.x, total.y, total.z) - 9.80665) <= 1.5;
+      if (!lowRate || !linearQuiet || !totalQuiet) {quiet = []; return status(sample, justReady);}
+      quiet.push(sample);
+      while (quiet.length > 1 && quiet[1].timeSeconds <= sample.timeSeconds - quietWindowSeconds) quiet.shift();
+      if (quiet.length > 1000) quiet.shift();
+      if (!calibration || quiet.length < minimumSamples || sample.timeSeconds - quiet[0].timeSeconds < quietWindowSeconds - 1e-9) return status(sample, justReady);
+      const candidate = Object.fromEntries(axes.map(axis => [axis, quiet.reduce((sum, s) => sum + s.angularVelocity[axis], 0) / quiet.length]));
+      const variation = Math.sqrt(quiet.reduce((sum, s) => sum + axes.reduce((total, axis) => total +
+        (s.angularVelocity[axis] - candidate[axis]) ** 2, 0), 0) / quiet.length);
+      if (variation > 3 * DEG_TO_RAD) return status(sample, justReady);
+      const changedBias = axes.some(axis => Math.abs(candidate[axis] - bias[axis]) > 1e-5);
+      const changeNeutral = recenter && !centeredAtBoundary;
+      if (changedBias || biasSource === 'provisional' || changeNeutral) {
+        bias = candidate; biasSource = 'stationary';
+        calibration = {...calibration, revision: ++revision, bias: {...bias}};
+        if (changeNeutral) {
+          if (sample.orientation) calibration.neutralOrientation = {...sample.orientation};
+          else delete calibration.neutralOrientation;
+          centeredAtBoundary = true;
+        }
+      }
+      return status(sample, justReady);
+    },
+    /** Watchdog for a silent sensor stream. Reading status never replays input. */
+    read(timeSeconds) {
+      if (!Number.isFinite(timeSeconds) || !previous || timeSeconds < previous.timeSeconds ||
+          timeSeconds - previous.timeSeconds > maxGapSeconds) clear();
+      return {...status(null), sample: null};
+    },
+    /** Interruptions discard partial movement but retain a bounded bias estimate. */
+    reset() {clear();},
+    get ready() {return Boolean(calibration);},
   };
 }

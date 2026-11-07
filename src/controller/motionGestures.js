@@ -42,7 +42,7 @@ export function createSimpleSwingStream(label = 'Forehand') {
 }
 
 /** A bowling delivery is a forward underhand pitch followed by deceleration.
- * The UI explicitly arms one delivery, so repositioning between turns cannot roll.
+ * The turn gate below admits one delivery after a brief rest.
  * Power is a bounded game input, not an estimate of real ball speed.
  */
 export function createBowlingMotionDetector() {
@@ -63,8 +63,8 @@ export function createBowlingMotionDetector() {
     const power = peak ? clamp(Math.max(gyroPower, gyroPower * .8 + accelerationPower * .2), .2, 1) : 0;
     // Normal grip changes should stay straight. Deliberate wrist turns ramp
     // gently, with less than full side spin even at the end of the range.
-    const turn = clamp((Math.abs(twist) - 10) / 60, 0, 1);
-    const spin = Math.sign(twist) * Math.pow(turn, 1.5) * .55 || 0;
+    const turn = clamp((Math.abs(twist) - 6) / 45, 0, 1);
+    const spin = Math.sign(twist) * turn * .55 || 0;
     return { power, spin, peakRotation: peak };
   }
   function reset() { started = null; peak = 0; rotation = 0; pitchRotation = 0; slowSince = null; twist = 0; accelerationPeak = 0; }
@@ -75,10 +75,9 @@ export function createBowlingMotionDetector() {
       const gap = previous === null ? 0 : sample.timeMs - previous;
       if (gap <= 0 || gap > 100) reset();
       previous = sample.timeMs;
-      // Preserve the existing recognizer's alpha-forward/beta-twist convention.
-      // These are legacy input fields, not canonical X/Y/Z names: the standard
-      // browser axes are beta=X, gamma=Y, alpha=Z. A physical grip/direction
-      // trial is still required before remapping this established detector.
+      // DeviceMotion rotationRate uses alpha=X, beta=Y, gamma=Z (W3C).
+      // With screen up and the phone top toward the TV, +X is forward pitch;
+      // +Y wrist rotation requests curve to the right as seen on the TV.
       // A negative forward sample must neither arm a release nor
       // contribute power, angle or curve to the following forward delivery.
       if (sample.rotationAlpha < -35) { reset(); return null; }
@@ -96,9 +95,11 @@ export function createBowlingMotionDetector() {
       peak = Math.max(peak, pitch);
       rotation += speed * dt;
       pitchRotation += pitch * dt;
-      // Wrist movement after the forward delivery must not add extra hook.
+      // Include wrist rotation as the swing slows into release. The detector
+      // closes after the same 80 ms deceleration window; later movement cannot
+      // change the delivery. Backswing samples were excluded above.
       const forwardPower = pitch >= Math.max(100, peak * .45);
-      if (forwardPower) twist += sample.rotationBeta * dt;
+      twist += sample.rotationBeta * dt;
       const acceleration = sample.acceleration;
       if (forwardPower && acceleration && ['x', 'y', 'z'].every(axis => Number.isFinite(acceleration[axis]))) {
         accelerationPeak = Math.max(accelerationPeak, Math.min(30, Math.hypot(acceleration.x, acceleration.y, acceleration.z)));
@@ -114,6 +115,42 @@ export function createBowlingMotionDetector() {
       return null;
     },
     get preview() { return values(); },
+    get phase() { return finished ? 'finished' : started === null ? 'ready' : 'forward'; },
+  };
+}
+
+/** Natural swing entry: fresh quiet samples prepare the current player's turn.
+ * A release stays latched until an authoritative turnKey changes. Pausing,
+ * reconnecting, a local timeout or an acknowledgement cannot create a new turn.
+ */
+export function createBowlingDeliveryGate({quietMs = 250, quietSpeed = 45} = {}) {
+  let key, previous = null, quietSince = null, detector = null, aim = null, released = false;
+  const suspend = () => { previous = null; quietSince = null; detector = null; aim = null; };
+  return {
+    push(sample, {active = false, turnKey, aim: liveAim = 0} = {}) {
+      if (turnKey !== key) { key = turnKey; released = false; suspend(); }
+      if (!active || released || !finiteSample(sample)) { suspend(); return null; }
+      const gap = previous === null ? 0 : sample.timeMs - previous;
+      if (gap <= 0 || gap > 100) suspend();
+      previous = sample.timeMs;
+      if (!detector) {
+        const speed = Math.hypot(sample.rotationAlpha, sample.rotationBeta, sample.rotationGamma);
+        quietSince = speed <= quietSpeed ? quietSince ?? sample.timeMs : null;
+        if (quietSince === null || sample.timeMs - quietSince < quietMs) return null;
+        detector = createBowlingMotionDetector();
+      }
+      const before = detector.phase;
+      const delivery = detector.push(sample);
+      if (before !== 'forward' && detector.phase === 'forward') aim = clamp(Number.isFinite(liveAim) ? liveAim : 0, -1, 1);
+      if (detector.phase === 'ready') aim = null;
+      if (!delivery) return null;
+      released = true;
+      return {...delivery, aim: aim ?? clamp(liveAim, -1, 1)};
+    },
+    suspend,
+    get phase() { return released ? 'finished' : detector?.phase ?? 'rest'; },
+    get lockedAim() { return aim; },
+    get preview() { return detector?.preview ?? {power: 0, spin: 0, peakRotation: 0}; },
   };
 }
 
