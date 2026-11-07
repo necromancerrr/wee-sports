@@ -3,6 +3,11 @@
 The scan → Play → allow motion flow remains automatic. This follow-up focuses
 on repeatable table-tennis placement, visible contact, scoring and feedback.
 
+The subsequent [input and contact repair](table-tennis-research.md) addresses
+missed phone gestures, accidental idle contacts and inconsistent spin response.
+It includes primary-source research and new complete-motion-path regressions;
+the earlier selected-contact checks below did not establish phone hit accuracy.
+
 ## Table tennis
 
 Friendly mode captures a table-relative landing target when a stroke starts.
@@ -24,8 +29,8 @@ checks, not phone recognition accuracy measurements.
 The TV shows a landing ring before the shot and a marker at the actual contact
 position. The rendered paddle matches the collider's position, face and size,
 and remains visible while recovering even when contact is disabled. Simple
-avatars and connected hands make the paddle's ownership clear. The garden
-court uses static geometry, one net mesh and bounded pixel density. Score,
+avatars and connected hands make the paddle's ownership clear. The quiet
+court keeps the table and floor, one net mesh and bounded pixel density. Score,
 serve, deuce, game-point and winner banners accompany short local sound cues.
 Muted, paused and hidden sessions remain silent. The TV's activated audio
 context now survives sport changes.
@@ -39,8 +44,9 @@ two-point lead; service alternates after every point from 11–11. Existing
 Bowling now has a filled, outlined arrow that follows accepted live aim,
 turns gold when locked, hides during delivery and resets for the next turn.
 Its projection uses the physical ball's release origin and direction. The
-active lane, TV aim readout, tennis court and avatar colours have clearer
-contrast. Static backgrounds keep attention on the ball and court.
+active lane and TV aim readout have clearer contrast. Tennis now renders only
+the rackets, retaining the invisible animation rig for swing and collision
+poses. Both racket sports have plain backgrounds without garden props.
 
 `GameFrame.jsx` names the existing production bridge accurately: it owns the
 authenticated iframe messages, pause/reconnect gating and saved-game recovery.
@@ -69,7 +75,7 @@ the app QR followed by the TV room QR, and iPhone development builds from
 Windows, Linux or Mac. `npm run expo:install` and `npm run expo` are the root
 entry points. Bundle exports are not signed installable apps.
 
-Automated validation for this follow-up:
+Automated validation recorded for the earlier placement follow-up (`1e56d66`):
 
 - 505 root tests in 56 files, using four workers to avoid shared-executor CPU
   contention in rigid-body simulations.
@@ -87,6 +93,14 @@ Automated validation for this follow-up:
   table-tennis setup and pose continuity, and denied/silent-sensor fallback.
 
 Both browser runs completed with zero uncaught page errors.
+
+The subsequent input/contact repair passed 528 root tests in 59 files,
+TypeScript, the six-page production build and [eight focused production browser
+checks](system-plan/table-tennis-repair-browser.json). Those browser checks
+include actual legal returns from generated Y- and Z-axis phone motion, idle
+input, and hidden/silent sensor recovery. Tennis avatar removal and both quiet
+court scenes were also reviewed in Chromium. Native packaging was unchanged;
+the earlier Expo export results were not repeated for this repair.
 
 The functional browser harness uses software WebGL. A measured bowling run
 rendered 97 frames in 35.6 seconds on this shared executor; its bounded physics

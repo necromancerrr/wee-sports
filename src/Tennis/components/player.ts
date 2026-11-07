@@ -44,7 +44,7 @@ export function createPlayer(
     x: number = 0,
     y: number = 0,
     z: number = 0,
-    color: number = 0x00ff00,
+    _color: number = 0x00ff00,
     options: PlayerOptions = {}
 ): PlayerController {
     const group = new THREE.Group();
@@ -201,30 +201,17 @@ export function createPlayer(
                     return;
                 }
 
-                child.castShadow = true;
-                child.receiveShadow = true;
-
-                const recolor = (material: THREE.Material) => {
-                    const cloned = material.clone();
-
-                    if ('color' in cloned) {
-                        // The shipped GLB has unpainted Head, Hand and Body
-                        // meshes. Keep skin readable instead of tinting the
-                        // whole avatar one metallic team colour.
-                        const painted = cloned as THREE.MeshStandardMaterial;
-                        painted.color.setHex(/^(Head|Hand)$/i.test(child.name) ? 0xf0be91 : color);
-                        painted.metalness = 0;
-                        painted.roughness = .82;
-                    }
-
-                    return cloned;
+                // Keep the invisible animation rig: HandSocket still supplies
+                // the racket's exact swing pose and collision geometry.
+                child.castShadow = false;
+                child.receiveShadow = false;
+                const hide = (material: THREE.Material) => {
+                    const hidden = material.clone();
+                    hidden.visible = false;
+                    return hidden;
                 };
-
-                if (Array.isArray(child.material)) {
-                    child.material = child.material.map(recolor);
-                } else {
-                    child.material = recolor(child.material);
-                }
+                child.material = Array.isArray(child.material)
+                    ? child.material.map(hide) : hide(child.material);
             });
 
             group.add(model);

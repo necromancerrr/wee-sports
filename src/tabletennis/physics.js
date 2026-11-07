@@ -1,9 +1,10 @@
 /** Metres, seconds, kg, radians. No DOM or renderer dependencies. */
 export const TABLE = Object.freeze({width: 1.525, length: 2.74, height: .76, netHeight: .1525});
-export const BALL = Object.freeze({radius: .02, mass: .0027});
+// A hollow table-tennis ball is approximated as a thin spherical shell.
+export const BALL = Object.freeze({radius: .02, mass: .0027, inertiaFactor: 2 / 3});
 export const FIXED_STEP = 1 / 120;
 export const MATERIAL = Object.freeze({tableRestitution: .88, paddleRestitution: .8,
-  paddleTangentialRetention: .88, drag: .045, magnus: .00055, maxSpeed: 15, maxSpin: 180});
+  tableFriction: .12, paddleFriction: .45, drag: .045, magnus: .00055, maxSpeed: 15, maxSpin: 180});
 
 export const v3 = (x = 0, y = 0, z = 0) => ({x, y, z});
 export const add = (a, b) => v3(a.x + b.x, a.y + b.y, a.z + b.z);
@@ -20,6 +21,26 @@ const bounded = (a, max) => length(a) > max ? scale(unit(a), max) : a;
 /** Live force law; the contact-time planner uses its allocation-free equivalent. */
 export const flightAcceleration = (velocity, spin) => add(v3(0, -9.81, 0),
   add(scale(velocity, -MATERIAL.drag * length(velocity)), scale(cross(spin, velocity), MATERIAL.magnus)));
+
+/** Impulse against an infinite-mass surface, evaluated at the ball's contact
+ * point. Coulomb friction is limited by normal impulse and cannot reverse slip.
+ * The same impulse changes both linear velocity and shell angular momentum. */
+export function sphereContact(velocity, spin, normal, surface, restitution, friction) {
+  const relative = sub(velocity, surface);
+  const closing = dot(relative, normal);
+  if (closing >= 0) return {velocity: {...velocity}, spin: {...spin}};
+  const normalImpulse = -(1 + restitution) * closing;
+  const radius = scale(normal, -BALL.radius);
+  const contactVelocity = add(relative, cross(spin, radius));
+  const slip = sub(contactVelocity, scale(normal, dot(contactVelocity, normal)));
+  const slipSpeed = length(slip);
+  const tangentialImpulse = Math.min(slipSpeed / (1 + 1 / BALL.inertiaFactor), friction * normalImpulse);
+  const tangent = slipSpeed > 1e-9 ? scale(slip, -tangentialImpulse / slipSpeed) : v3();
+  return {
+    velocity: bounded(add(velocity, add(scale(normal, normalImpulse), tangent)), MATERIAL.maxSpeed),
+    spin: bounded(add(spin, scale(cross(radius, tangent), 1 / (BALL.inertiaFactor * BALL.radius ** 2))), MATERIAL.maxSpin),
+  };
+}
 
 export function makePaddle(player) {
   const sign = player === 1 ? 1 : -1;
@@ -42,7 +63,9 @@ export function sweepPaddle(start, end, paddle, from = 0, to = 1) {
   const normal = unit(mix(n0, n1, t));
   const center = mix(a, b, t);
   const point = mix(start, end, t);
-  const tangentX = unit(cross(v3(0, 1, 0), normal));
+  // Near-horizontal faces need a different reference axis; a zero cross
+  // product would otherwise make the finite ellipse an infinite plane.
+  const tangentX = unit(cross(Math.abs(normal.y) > .98 ? v3(0, 0, 1) : v3(0, 1, 0), normal));
   const tangentY = unit(cross(normal, tangentX));
   const delta = sub(point, center);
   const x = dot(delta, tangentX) / (paddle.radiusX + BALL.radius);
@@ -131,7 +154,10 @@ export class TableTennisPhysics {
         }
       }
       for (const paddle of this.paddles) {
-        const hit = sweepPaddle(start, end, paddle, from, to);
+        // A preceding table/net contact consumes part of this interval. Do not
+        // sweep the paddle through that elapsed movement for a second time.
+        const cursor = to - (to - from) * remaining / dt;
+        const hit = sweepPaddle(start, end, paddle, cursor, to);
         if (hit) hits.push(hit);
       }
       hits.sort((a, b) => a.t - b.t);
@@ -147,11 +173,10 @@ export class TableTennisPhysics {
         const normalSpeed = dot(relative, hit.normal);
         if (normalSpeed < 0) {
           const incomingVelocity = {...ball.velocity};
-          const tangent = sub(relative, scale(hit.normal, normalSpeed));
-          ball.velocity = add(surface, add(scale(hit.normal, -normalSpeed * MATERIAL.paddleRestitution), scale(tangent, MATERIAL.paddleTangentialRetention)));
-          const brushTorque = 2.5 * (1 - MATERIAL.paddleTangentialRetention) / BALL.radius;
-          ball.spin = bounded(add(scale(ball.spin, .5), scale(cross(hit.normal, tangent), brushTorque)), MATERIAL.maxSpin);
-          ball.velocity = bounded(ball.velocity, MATERIAL.maxSpeed);
+          const physical = sphereContact(ball.velocity, ball.spin, hit.normal, surface,
+            MATERIAL.paddleRestitution, MATERIAL.paddleFriction);
+          ball.velocity = physical.velocity;
+          ball.spin = physical.spin;
           const response = this.resolvePaddleContact?.({player: hit.paddle.player, position: {...ball.position},
             incomingVelocity, velocity: {...ball.velocity}, spin: {...ball.spin}});
           let assisted = false;
@@ -165,15 +190,10 @@ export class TableTennisPhysics {
             velocity: {...ball.velocity}, assisted});
         }
       } else if (hit.kind === 'bounce') {
-        const surface = cross(ball.spin, v3(0, -BALL.radius, 0));
-        const slip = add(ball.velocity, surface);
-        const friction = v3(-slip.x * .12, 0, -slip.z * .12);
-        ball.velocity = add(v3(ball.velocity.x, -ball.velocity.y * MATERIAL.tableRestitution, ball.velocity.z), friction);
-        // friction is the change in linear velocity. The contact impulse acts
-        // at r=(0,-radius,0), so angular velocity changes by +(r × dv)/I.
-        // Reversing this sign increases surface slip and injects energy on
-        // every later bounce instead of approaching rolling contact.
-        ball.spin = bounded(add(ball.spin, scale(cross(v3(0, -BALL.radius, 0), friction), 2.5 / (BALL.radius * BALL.radius))), MATERIAL.maxSpin);
+        const physical = sphereContact(ball.velocity, ball.spin, hit.normal, v3(),
+          MATERIAL.tableRestitution, MATERIAL.tableFriction);
+        ball.velocity = physical.velocity;
+        ball.spin = physical.spin;
         this.emit('bounce', {side: hit.side, position: {...ball.position}});
         // A resting ball is a terminal play state. The separation epsilon must
         // not keep recycling gravity into an endless series of tiny bounces.

@@ -29,7 +29,7 @@ function announce(event) {
   $('tt-announcement').hidden = false;
   announcementUntil = performance.now() + (state.winner ? 7000 : event.type === 'serve' ? 1150 : 1600);
 }
-const game = new TableTennisGame({onEvent: event => {
+const game = new TableTennisGame({now: () => performance.now() / 1000, onEvent: event => {
   if (event.type === 'hit') {
     if (gameId) post({type: 'wee:game-hit', gameId, player: event.player});
     audioEvent('paddle-hit');
@@ -139,12 +139,18 @@ $('tt-action').onclick = action;
 $('tt-recenter').onclick = () => { if (game.recenter()) { pointer.x = 0; pointer.y = 0; } else game.lastReason = 'Recenter between points'; };
 $('tt-pause').onclick = () => {
   if (embedded) post({type: 'wee:pause-toggle', gameId});
-  else { localPaused = !localPaused; game.paused = localPaused; sound?.setActive(!localPaused); }
+  else {
+    localPaused = !localPaused;
+    game.paused = localPaused;
+    game.clearStrokeInput();
+    sound?.setActive(!localPaused);
+  }
 };
 $('tt-assistance').onchange = () => { game.configure({assistance: $('tt-assistance').value}); publish(); };
 $('tt-sensitivity').oninput = () => { game.configure({sensitivity: Number($('tt-sensitivity').value)}); publish(); };
 $('tt-feed').onchange = () => game.startPractice($('tt-feed').value);
 if (embedded) {
+  document.body.classList.add('tt-embedded');
   $('tt-help').textContent = 'Point the paddle to aim. Make a compact swing after the bounce.';
   // Embedded matches change rounds through authenticated P1 commands. The
   // standalone diagnostic controls must not reset a durable room locally.

@@ -43,6 +43,7 @@ Tennis keyboard controls:
   never promise exact mid-flight recovery.
 
 See [consistent shots and TV feedback](docs/game-quality.md),
+[the table-tennis motion and physics repair](docs/table-tennis-research.md),
 [the simple-controller design and research](docs/system-plan/controller-simplicity.md),
 the [trial runbook](docs/system-plan/README.md) and
 [acceptance evidence](docs/system-plan/acceptance.md) for what was checked and

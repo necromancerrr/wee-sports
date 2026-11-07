@@ -5,8 +5,8 @@ import {TABLE, BALL} from './physics.js';
  * the simulation; the scene never smooths or predicts a contact separately. */
 export function createTableTennisScene(container, game, {onMove, onAction, labels = []} = {}) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#d8e5df');
-  scene.fog = new THREE.Fog('#d8e5df', 8, 20);
+  scene.background = new THREE.Color('#dce5e1');
+  scene.fog = new THREE.Fog('#dce5e1', 8, 20);
   const camera = new THREE.PerspectiveCamera(42, 1, .05, 35);
   camera.position.set(0, 3.25, 5.3);
   camera.lookAt(0, .72, -.10);
@@ -41,27 +41,12 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     const item = mesh(new THREE.SphereGeometry(radius, 16, 12), color, parent);
     item.position.set(...position); return item;
   }
-  box([24, .08, 24], [0, -.055, 0], '#dad8c7');
+  box([24, .08, 24], [0, -.055, 0], '#c8d6cf');
   box([4.6, .012, 6], [0, -.005, 0], '#95b4a4');
   for (const x of [-2.25, 2.25]) box([.025, .014, 5.85], [x, .004, 0], '#dfe6d2');
   for (const z of [-2.93, 2.93]) box([4.5, .014, .025], [0, .004, z], '#dfe6d2');
-  box([12, 1.8, .16], [0, .9, -4.2], '#476d65');
-  box([12, .10, .22], [0, 1.83, -4.2], '#c5d8c6');
-  // Fixed architectural details, with no animation competing with the ball.
-  for (const x of [-4.7, -3.1, 3.1, 4.7]) {
-    box([.10, 2.4, .10], [x, 1.2, -4.05], '#c5bca4');
-    box([1.35, .04, .08], [x + .65, 2.38, -4.05], '#c5bca4');
-  }
-  for (const side of [-1, 1]) {
-    const x = side * 2.95;
-    box([.8, .34, 1.25], [x, .17, -2.75], '#e6dfc9');
-    for (let i = 0; i < 3; i++) {
-      const plant = sphere(.35, [x + (i % 2) * .18 - .08, .6 + i * .15, -2.95 + i * .23], ['#597e5a', '#789c6b', '#94ac7c'][i]);
-      plant.scale.set(.85, 1.5, .8);
-    }
-    box([.7, .12, 1.5], [side * 3.05, .43, .30], '#b98e66');
-    for (const z of [-.22, .82]) box([.06, .4, .10], [side * 3.05, .2, z], '#49635c');
-  }
+  // Quiet surroundings keep the moving ball, paddles and court readable.
+  // No garden props or background geometry compete with the rally.
   box([TABLE.width + .025, .10, TABLE.length + .025], [0, TABLE.height - .075, 0], '#efe2be');
   box([TABLE.width, .055, TABLE.length], [0, TABLE.height - .0275, 0], '#276d75');
   for (const x of [-.55, .55]) for (const z of [-1, 1]) box([.075, .65, .075], [x, .33, z], '#284b50');
