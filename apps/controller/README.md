@@ -35,7 +35,7 @@ and Hermes bundles, not an installable APK/IPA.
 
 Start the repository's game server separately. For a physical phone, use its
 reachable **HTTPS** origin and open the TV on that origin. Scan the room QR in
-this app, confirm the displayed server, and enter a player name. The scanner
+this app to join and play as a guest. Your name and manual entry are optional. The scanner
 accepts only HTTPS `/join?code=XXXX` links, unmounts its camera after scanning,
 and never accepts a private account or room token in a QR. Manual room entry
 and **Continue in browser** are always available. In development builds only,
@@ -44,19 +44,21 @@ emulator bridge. It does not permit arbitrary plaintext LAN servers.
 
 ## Try the controller
 
-1. Create a Bowling or Table Tennis lobby on the TV and join from the app.
-2. Select **Touch controls**, or **Calibrate motion** and hold still. Motion
-   calibration uses the shared SI-unit core. Confirm your grip only after
-   checking that the displayed direction follows your movement.
-3. Press **Ready**. Bowling offers aim/power/curve buttons and a single roll,
-   or a frozen aim followed by an explicitly armed forward delivery. Table
-   tennis offers a drag paddle, compact motion control, feeds, practice and a
-   bot match. Existing tennis retains its forehand/backhand touch controls.
-4. P1 can pause, return to the lobby, or switch sports without another QR.
-   A changed sport requires a fresh motion grip check; touch setup remains
-   usable. Recenter between deliveries/points.
+1. Create a Bowling or Table Tennis lobby on the TV and scan from the app.
+2. Allow motion if the operating system asks. The controller checks fresh
+   samples and automatically readies after the server accepts its setup.
+   Denied or unavailable sensors select touch controls automatically.
+3. Bowl with a gentle forward swing, or make compact table-tennis strokes.
+   Bowling waits for a quiet start, locks aim at forward onset, and releases
+   at most once until the TV reports the next delivery. No Arm button is needed.
+   Table-tennis serves are automatic. Existing tennis uses touch controls.
+4. **Options** contains touch/motion choice, centering, profile preferences,
+   practice mode and P1's pause/lobby/sport choices. Switching sports checks
+   fresh samples automatically, without another QR or setup confirmation.
+   Returning to the lobby waits for **Play** before another match; **Wait for
+   friends** can stop a countdown without restarting it automatically.
 5. Background the app and reopen it. Motion stops immediately, the seat
-   reconnects with its private token, and setup must be confirmed again.
+   reconnects with its private token, and fresh samples restore play automatically.
    Buffered motion is discarded. An unresolved roll is queried by its original
    action ID; the app never generates a replacement roll automatically.
 
@@ -71,12 +73,14 @@ are not uploaded to profiles.
 ## Measurement and remaining device checks
 
 The sensor adapter requests 60 Hz gyro and 30 Hz gravity/acceleration data and
-reports achieved sampling frequency and largest observed gap. These numbers
+records achieved sampling frequency and largest observed gap. These numbers
 are callback cadence, **not** end-to-end latency. Pure math, filtering,
 calibration and bowling recognition are shared with web. Native Gyroscope
 measurements are already radians/second; DeviceMotion rotation-rate fields are
-deliberately unused because their axis conventions differ from browser event
-names. Real-device grip/axis validation remains necessary, especially for the
+deliberately unused because their native iOS and Android implementations name
+the axes differently. Expo's gravity-down vector is explicitly converted to a
+support/up vector for bowling tilt aim; canonical native gravity remains down.
+Real-device grip/axis validation remains necessary, especially for the
 legacy bowling recognizer. Gyro-relative paddle orientation can drift; use
 recenter and do not treat it as tracked hand position.
 
@@ -87,7 +91,7 @@ cannot replay old poses or feedback.
 
 Verified in this cloud workspace:
 
-- Twelve native transport/scanner/sensor-lifecycle and guest-claim tests, including cancellation
+- Native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture and guest-claim tests, including cancellation
   while a permission prompt or sensor availability request is unresolved.
 - Metro/Hermes export for Android and iOS, using the pinned SDK dependencies.
 - Installed versions checked against the SDK's bundled native-module manifest.

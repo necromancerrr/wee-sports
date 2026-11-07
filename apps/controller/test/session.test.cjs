@@ -103,3 +103,39 @@ test('resume revalidates setup instead of replaying pre-interruption input', asy
   assert.equal(socket.sent.filter(item => item.event === EVENTS.PLAYER_POSE).length, 0);
   session.dispose();
 });
+
+test('bowling delivery latch advances only for an authoritative delivery or match boundary', async () => {
+  const {session} = await fixture();
+  session.seat = {...session.seat,sport:'bowling',gameState:{phase:'ready',frame:1,currentPlayer:1}};
+  session.observeBowlingTurn(); const first = session.bowlingTurnKey;
+  session.seat.paused = true; session.seat.inputGeneration++; session.observeBowlingTurn();
+  assert.equal(session.bowlingTurnKey,first,'pause does not authorize another roll');
+  session.seat.paused = false; session.seat.inputGeneration++; session.observeBowlingTurn();
+  assert.equal(session.bowlingTurnKey,first,'resume does not authorize another roll');
+  session.seat.gameState.phase='rolling'; session.observeBowlingTurn();
+  assert.equal(session.bowlingTurnKey,first);
+  session.seat.gameState.phase='ready'; session.observeBowlingTurn();
+  assert.notEqual(session.bowlingTurnKey,first,'next ball with same player and frame is a new delivery');
+  session.dispose();
+});
+
+test('late resume acknowledgements cannot reactivate a backgrounded controller', async () => {
+  const {session,socket,EVENTS} = await fixture();
+  const changes = [];
+  session.changed = (seat,state) => changes.push(state);
+  session.token = 'private-reconnect-token';
+  let resume;
+  socket.timeout = () => ({emit(event,payload,ack) {
+    socket.sent.push({event,payload});
+    if(event === EVENTS.SESSION_RESUME) resume = ack;
+    else ack(null,{ok:true});
+  }});
+  const pending = session.onConnect();
+  session.background();
+  resume(null,{ok:true,...session.seat,inputGeneration:4});
+  await pending;
+  assert.equal(changes.includes('online'),false);
+  assert.equal(socket.sent.some(value=>value.event === EVENTS.PLAYER_SETUP),false);
+  assert.equal(session.seat.inputGeneration,3);
+  session.dispose();
+});

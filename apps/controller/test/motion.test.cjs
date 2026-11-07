@@ -46,3 +46,22 @@ test('a missing optional gravity sensor still allows gyro control and stop unsub
   controller.stop();
   assert.equal(sensors.Gyroscope.listeners.size, 0);
 });
+
+test('native automatic setup accepts fresh moving samples but never streams before server setup', async () => {
+  const {MotionController} = await import('../src/motionCore.js');
+  let now = 1000;
+  const statuses = [], poses = [];
+  const session = {seat:{sport:'table-tennis',gameState:{phase:'rally'}},playing:()=>true,latest:(kind,value)=>poses.push({kind,value})};
+  const sensors = {Gyroscope:sensor(),DeviceMotion:sensor()};
+  const controller = new MotionController({session,sensors,now:()=>now,onStatus:value=>statuses.push(value)});
+  await controller.calibrate();
+  for (let index=0;index<5;index++) {controller.sample({x:1,y:.2,z:0}); now +=40;}
+  assert.ok(statuses.some(value=>value.state === 'ready'),'motion need not be stationary to play');
+  assert.equal(poses.length,0,'freshness alone is not server authorization');
+  session.inputSetup = 'motion';
+  controller.sample({x:1,y:.2,z:0});
+  assert.equal(poses.length,1);
+  controller.resetInput(); now +=40; controller.sample({x:1,y:.2,z:0});
+  assert.equal(poses.length,2,'new input generation cancels movement without restarting setup in a loop');
+  controller.stop();
+});

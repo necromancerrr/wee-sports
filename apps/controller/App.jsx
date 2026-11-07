@@ -9,6 +9,7 @@ import { ControllerSession, parseRoomLink, serverOrigin } from './src/session.js
 import { NativeMotionController } from './src/motion.js';
 import { profileRequest, readPrivate, writePrivate } from './src/storage.js';
 import { createGuestClaimVault } from './src/guestClaims.js';
+import { AutomaticControllerSetup } from './src/automaticSetup.js';
 
 const title = sport => ({ bowling: 'Bowling', tennis: 'Tennis', 'table-tennis': 'Table Tennis' })[sport] || 'Wee Sports';
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -39,7 +40,10 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [savedSession, setSavedSession] = useState(null);
   const [setup, setSetup] = useState(null);
-  const [mode, setMode] = useState('touch');
+  const [playIntent, setPlayIntent] = useState(true);
+  const [mode, setMode] = useState('motion');
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [motionStatus, setMotionStatus] = useState({ state: 'off' });
   const [aim, setAim] = useState(0);
   const [power, setPower] = useState(.55);
@@ -53,7 +57,9 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [history, setHistory] = useState([]);
-  const sessionRef = useRef(null), motionRef = useRef(null), hapticsRef = useRef(true);
+  const sessionRef = useRef(null), motionRef = useRef(null), hapticsRef = useRef(true), flowRef = useRef(null);
+  const scanLock = useRef(false), preferencesRef = useRef({hand,sensitivity});
+  preferencesRef.current = {hand,sensitivity};
   const boundaryRef = useRef(null);
   const pendingRoll = useRef(false), touch = useRef(null), poseTimer = useRef(null);
   hapticsRef.current = haptics;
@@ -69,23 +75,19 @@ export default function App() {
     readPrivate('room').then(value => { if (value?.origin && value?.code && value?.token) setSavedSession(value); }).catch(() => {});
     const subscription = AppState.addEventListener('change', state => {
       if (state !== 'active') {
-        motionRef.current?.stop(); setSetup(null); setMotionStatus({ state: 'off' }); setScanner(false);
+        flowRef.current?.stop(); setSetup(null); setMotionStatus({ state: 'off' }); setScanner(false);
         sessionRef.current?.background();
       } else sessionRef.current?.foreground();
     });
-    return () => { subscription.remove(); motionRef.current?.stop(); sessionRef.current?.dispose(); clearInterval(poseTimer.current); };
+    return () => { subscription.remove(); flowRef.current?.stop(); sessionRef.current?.dispose(); clearInterval(poseTimer.current); };
   }, []);
 
   useEffect(() => {
     if (seat?.gameState?.phase === 'rolling' || seat?.gameState?.phase === 'complete') { pendingRoll.current = false; setRollState(null); }
-    if (!seat || seat.paused || !['game', 'ready', 'countdown'].includes(seat.phase)) motionRef.current?.recenter();
+    if (!seat || seat.paused || !['game', 'ready', 'countdown'].includes(seat.phase)) motionRef.current?.resetInput();
   }, [seat?.gameState?.phase, seat?.phase, seat?.paused]);
-  useEffect(() => {
-    if (mode === 'motion') { motionRef.current?.stop(); setSetup(null); setMotionStatus({ state: 'recalibrate', message: 'Check your grip for this sport.' }); }
-  }, [seat?.sport]);
-
   async function makeSession(address) {
-    motionRef.current?.stop(); sessionRef.current?.dispose(); setSetup(null); pendingRoll.current = false;
+    flowRef.current?.stop(); sessionRef.current?.dispose(); setSetup(null); pendingRoll.current = false;
     const savedProfile = await readPrivate('profile').catch(() => null);
     const session = new ControllerSession(address, {
       profileToken: savedProfile?.origin === address ? savedProfile.token : null,
@@ -93,57 +95,52 @@ export default function App() {
       saveClaim: (address, claim) => guestClaims.remember(address, claim),
       changed: (next, connection) => {
         const boundary = next ? `${next.gameId}:${next.inputGeneration}:${next.hostEpoch}` : null;
-        if (boundary !== boundaryRef.current) { motionRef.current?.recenter(); touch.current = null; }
+        if (boundary !== boundaryRef.current) { motionRef.current?.resetInput(); touch.current = null; }
         boundaryRef.current = boundary;
         const currentPlayer = next?.players?.find(value => value.slot === next.slot);
         if (currentPlayer?.setup === null) setSetup(null);
         setSeat(next); setStatus(connection);
-        if (connection !== 'online') { motionRef.current?.stop(); setSetup(null); clearInterval(poseTimer.current); }
+        if (connection !== 'online') { setSetup(null); clearInterval(poseTimer.current); }
+        flowRef.current?.update(next, connection);
       },
       feedback: () => { buzz('contact'); setNotice('Contact confirmed by the TV'); },
     });
     sessionRef.current = session;
+    flowRef.current = new AutomaticControllerSetup({session,notice:setNotice,
+      changed: update => { setMode(update.mode); setSetup(update.setup); if (update.playIntent !== undefined) setPlayIntent(update.playIntent); setMotionStatus(previous => ({...previous,...update})); },
+      makeMotion: onStatus => {
+        const motion = new NativeMotionController({session,...preferencesRef.current,onStatus,
+          onRelease: roll => { buzz('recognized'); release(roll).catch(error => setNotice(error.message)); },
+        });
+        motionRef.current = motion;
+        return motion;
+      },
+    });
     return session;
   }
 
-  async function join() {
-    const address = serverOrigin(origin.trim(), __DEV__);
+  async function join(room = {origin,code}) {
+    const address = serverOrigin(room.origin.trim(), __DEV__);
     const session = await makeSession(address);
     const motionAvailable = await Gyroscope.isAvailableAsync().catch(() => false);
-    result(await session.join(code, name, createControllerCapabilities({
+    result(await session.join(room.code, name.trim() || 'Player', createControllerCapabilities({
       sports: ['tennis', 'bowling', 'table-tennis'], motion: motionAvailable, orientation: motionAvailable, haptics, buttons: true })));
     setOrigin(address); setScanner(false); setSavedSession(null); buzz('ready');
-  }
-  async function setController(kind) {
-    result(await sessionRef.current.request(EVENTS.PLAYER_SETUP, { setup: kind }));
-    setSetup(kind); buzz('ready');
-  }
-  async function useTouch() {
-    motionRef.current?.stop(); setMode('touch'); setMotionStatus({ state: 'off' });
-    await setController('buttons');
-  }
-  async function calibrate() {
-    motionRef.current?.stop(); setMode('motion'); setSetup(null); setMotionStatus({ state: 'collecting', progress: 0 });
-    await sessionRef.current.request(EVENTS.PLAYER_SETUP, { setup: null });
-    const motion = new NativeMotionController({ session: sessionRef.current, hand, sensitivity,
-      onStatus: setMotionStatus,
-      onRelease: roll => { buzz('recognized'); setNotice('Release recognized locally…'); release(roll).catch(error => setNotice(error.message)); },
-    });
-    motionRef.current = motion;
-    await motion.calibrate();
   }
   async function release(roll = { aim, power, spin }) {
     if (pendingRoll.current) throw new Error('Wait for the TV to resolve the previous roll.');
     pendingRoll.current = true;
     const accepted = await sessionRef.current.action(EVENTS.PLAYER_ROLL, { type: 'roll', power: roll.power, spin: roll.spin, aim: roll.aim });
-    if (!accepted.ok && accepted.error !== 'outcome-unknown') pendingRoll.current = false;
-    setRollState(accepted.error === 'outcome-unknown' ? { id: accepted.id, status: 'unknown', gameId: seat.gameId } : null);
+    if (!accepted.ok && accepted.error !== 'outcome-unknown') {
+      pendingRoll.current = false; sessionRef.current.bowlingReleasedTurn = null; motionRef.current?.allowNewDelivery();
+    }
+    setRollState(accepted.error === 'outcome-unknown' ? { id: accepted.id, status: 'unknown', gameId: sessionRef.current.seat.gameId } : null);
     result(accepted); setNotice('Roll accepted by the TV');
   }
   async function checkRoll() {
     if (!rollState) return;
     const checked = result(await sessionRef.current.request(EVENTS.PLAYER_ACTION_STATUS, { id: rollState.id, gameId: rollState.gameId }));
-    if (checked.status === 'rejected') { pendingRoll.current = false; setRollState(null); setNotice('The TV rejected that roll. You may try a new delivery.'); }
+    if (checked.status === 'rejected') { pendingRoll.current = false; sessionRef.current.bowlingReleasedTurn = null; motionRef.current?.allowNewDelivery(); setRollState(null); setNotice('The TV rejected that roll. You may try a new delivery.'); }
     else if (checked.status === 'accepted') { setRollState(null); setNotice('The TV accepted that roll. Wait for it to finish.'); }
     else setNotice('The roll is still unresolved. Check the TV; no duplicate will be sent.');
   }
@@ -158,6 +155,20 @@ export default function App() {
       y: previous ? clamp((reach.x - previous.reach.x) / dt, -12, 12) : 0, z: 0 };
     touch.current = { reach, time, velocity };
     sessionRef.current.latest('pose', { orientation: [0, 0, 0, 1], angularVelocity: velocity, reach, calibrationRevision: 0 });
+    if (start) {
+      clearInterval(poseTimer.current);
+      poseTimer.current = setInterval(() => {
+        const current = touch.current;
+        if (!current) return;
+        sessionRef.current.latest('pose', {orientation:[0,0,0,1],reach:current.reach,
+          angularVelocity:performance.now() - current.time < 70 ? current.velocity : {x:0,y:0,z:0},calibrationRevision:0});
+      }, 1000 / 30);
+    }
+  }
+  function endTouch() {
+    clearInterval(poseTimer.current);
+    if (touch.current) sessionRef.current.latest('pose', {orientation:[0,0,0,1],angularVelocity:{x:0,y:0,z:0},reach:touch.current.reach,calibrationRevision:0});
+    touch.current = null;
   }
   async function openProfile() {
     const address = serverOrigin(origin.trim(), __DEV__);
@@ -214,65 +225,67 @@ export default function App() {
       </>}
       <Button quiet onPress={() => setProfileOpen(false)}>Back to controller</Button>
     </View> : !seat ? <>
-      <Text style={styles.heading}>Your next game{ '\n' }starts here.</Text><Text style={styles.copy}>Open Wee Sports on your TV, then scan its room code. You can also play entirely in your phone’s browser.</Text>
+      <Text style={styles.heading}>Scan. Play.</Text><Text style={styles.copy}>Scan the code on your TV.</Text>
       {scanner && permission?.granted ? <View style={styles.cameraFrame}>
         <CameraView style={styles.camera} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => {
-          try { const scanned = parseRoomLink(data); setOrigin(scanned.origin); setCode(scanned.code); setScanner(false); setNotice('Room scanned. Check the server address and tap Join room.'); } catch (error) { setNotice(error.message); }
+          if (scanLock.current) return;
+          try {
+            const scanned = parseRoomLink(data); scanLock.current = true;
+            setOrigin(scanned.origin); setCode(scanned.code); setScanner(false);
+            task(() => join(scanned)).finally(() => {scanLock.current = false;});
+          } catch (error) { setNotice(error.message); }
         }}/><Button quiet onPress={() => setScanner(false)}>Cancel scan</Button>
       </View> : <Button onPress={() => task(async () => { const granted = permission?.granted || (await requestPermission()).granted; if (!granted) throw new Error('Camera permission was denied. Enter the room below.'); setScanner(true); })}>Scan to play</Button>}
-      <View style={styles.card}>
-        <Text style={styles.subheading}>Or join manually</Text>
+      <Button quiet onPress={() => setManualOpen(!manualOpen)}>{manualOpen ? 'Close' : 'Enter room code'}</Button>
+      {manualOpen ? <View style={styles.card}>
         <Field label="HTTPS game server" placeholder="https://your-game.example" value={origin} onChangeText={setOrigin} autoCapitalize="none" autoCorrect={false} keyboardType="url"/>
         <Field label="Room code" placeholder="K7PM" value={code} onChangeText={value => setCode(normalizeCode(value))} autoCapitalize="characters" maxLength={4}/>
         <Field label="Your name" value={name} onChangeText={setName} maxLength={12}/>
-        <Button disabled={busy || !origin || code.length !== 4 || !name.trim()} onPress={() => task(join)}>Join room</Button>
+        <Button disabled={busy || !origin || code.length !== 4} onPress={() => task(() => join())}>Play</Button>
         <Button quiet disabled={!origin || code.length !== 4} onPress={() => task(async () => { const address = serverOrigin(origin.trim(), __DEV__); await Linking.openURL(`${address}/join?code=${encodeURIComponent(code)}`); })}>Continue in browser</Button>
-      </View>
+      </View> : null}
       {savedSession ? <Button quiet onPress={() => task(async () => { setOrigin(savedSession.origin); await (await makeSession(savedSession.origin)).restore(savedSession); })}>Reconnect to room {savedSession.code}</Button> : null}
-      <Button quiet disabled={!origin} onPress={() => task(openProfile)}>Optional profile</Button>
     </> : <>
       <View style={styles.card}><Text style={styles.eyebrow}>ROOM {seat.code} · PLAYER {seat.slot + 1}</Text>
-        <Text style={styles.heading}>{title(seat.sport)}</Text><Text style={styles.copy}>{player?.name || name} · {seat.phase === 'game' ? seat.paused ? 'Paused' : 'Playing' : 'Get ready'}</Text>
-        <View style={styles.row}><Button quiet onPress={() => task(useTouch)}>Touch controls</Button><Button quiet onPress={() => task(calibrate)}>Calibrate motion</Button></View>
-        {mode === 'motion' ? <>
-          <Text style={styles.copy}>Hold the phone screen up with its top toward the TV. Keep a clear grip and room to move.</Text>
-          <Text style={styles.meter}>{motionStatus.state === 'collecting' ? `Hold still · ${Math.round((motionStatus.progress || 0) * 100)}%` : motionStatus.state === 'moving' ? 'Hold still for calibration' : motionStatus.message || motionStatus.state}</Text>
-          {['done', 'ready'].includes(motionStatus.state) && !setup ? <><Text style={styles.copy}>Tilt gently and check the direction. Recalibrate whenever your grip changes.</Text><Button onPress={() => task(() => setController('motion'))}>Confirm grip</Button></> : null}
-          {motionStatus.achievedHz ? <Text style={styles.small}>{Math.round(motionStatus.achievedHz)} samples/s · largest gap {Math.round(motionStatus.largestGapMs)} ms</Text> : null}
-        </> : <Text style={styles.copy}>Touch controls work without motion permission.</Text>}
-        {['ready', 'countdown'].includes(seat.phase) ? <Button disabled={!setup || busy || status !== 'online'} onPress={() => task(async () => { result(await sessionRef.current.request(EVENTS.PLAYER_READY, { ready: !player?.ready })); buzz('ready'); })}>{player?.ready ? 'Not ready' : 'Ready'}</Button> : null}
-        {seat.phase === 'countdown' ? <Text style={styles.meter}>Starting in {Math.ceil((seat.countdown?.msLeft || 0) / 1000)}</Text> : null}
-        {seat.phase === 'vote' ? <Button onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.TUTORIAL_VOTE, { watch: false })))}>Skip tutorial and play</Button> : null}
+        <Text style={styles.heading}>{title(seat.sport)}</Text>
+        <Text style={styles.copy}>{seat.paused ? 'Paused on the TV' : !setup ? 'Getting ready…' : seat.phase === 'game' ? 'Watch the TV. You’re in.' : playIntent ? 'Ready when your friends are.' : 'Ready when you are.'}</Text>
+        {!playIntent && ['ready','vote'].includes(seat.phase) ? <Button disabled={status !== 'online'} onPress={() => flowRef.current?.play()}>Play</Button> : null}
+        {seat.phase === 'countdown' ? <><Text style={styles.meter}>Starting in {Math.ceil((seat.countdown?.msLeft || 0) / 1000)}</Text><Button quiet onPress={() => task(() => flowRef.current?.waitForFriends())}>Wait for friends</Button></> : null}
       </View>
       {seat.sport === 'bowling' ? <View style={styles.card}>
         <Text style={styles.subheading}>{seat.gameState?.phase === 'complete' ? 'Match complete' : `Frame ${seat.gameState?.frame || 1} of 10`}</Text>
         {rollState ? <Button quiet onPress={() => task(checkRoll)}>Check previous roll outcome</Button> : null}
-        {mode === 'touch' ? <><Stepper label="Aim" value={aim} change={value => { setAim(value); sessionRef.current.latest('aim', { aim: value, locked: false }); }}/><Stepper label="Power" value={power} change={setPower} min={.2}/><Stepper label="Curve" value={spin} change={setSpin}/>
-          <Button disabled={!canRoll || busy} onPress={() => task(() => release())}>Roll</Button></> : <>
-          <Text style={styles.meter}>Aim {Math.round((motionStatus.aim || 0) * 100)}%</Text>
-          <Button disabled={!canRoll || setup !== 'motion'} onPress={() => { if (motionRef.current?.arm()) { buzz('ready'); setNotice('Aim locked. Make one forward underhand delivery.'); } }}>Arm delivery</Button>
-          <Button quiet onPress={() => { motionRef.current?.recenter(); setNotice('Delivery cancelled'); }}>Cancel / recenter</Button>
-        </>}
+        {mode === 'touch' ? <><Stepper label="Aim" value={aim} change={value => { setAim(value); sessionRef.current.latest('aim', { aim: value, locked: false }); }}/>
+          <Button disabled={!canRoll || busy || !setup} onPress={() => task(() => release())}>Roll</Button></> : <View style={styles.playCue}>
+          <Text style={styles.sportIcon}>●</Text>
+          <Text style={styles.subheading}>{canRoll ? 'Swing to roll' : 'Watch the TV'}</Text>
+          <Text style={styles.copy}>Tilt to aim. Swing gently forward.</Text>
+        </View>}
         {seat.slot === 0 && seat.gameState?.phase === 'complete' ? <Button onPress={() => task(() => command('new-match'))}>Play another match</Button> : null}
       </View> : seat.sport === 'table-tennis' ? <View style={styles.card}>
-        <Text style={styles.subheading}>Compact strokes. Real contact.</Text>
+        <Text style={styles.subheading}>{mode === 'touch' ? 'Your paddle' : 'Swing to play'}</Text>
         {mode === 'touch' ? <View accessibilityLabel="Touch paddle. Drag to position and move the paddle." style={styles.touchPad}
           onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
           onResponderGrant={event => touchPose(event, true)} onResponderMove={event => touchPose(event)}
-          onResponderRelease={() => { if (touch.current) sessionRef.current.latest('pose', { orientation: [0, 0, 0, 1], angularVelocity: { x: 0, y: 0, z: 0 }, reach: touch.current.reach, calibrationRevision: 0 }); touch.current = null; }}>
+          onResponderRelease={endTouch} onResponderTerminate={endTouch}>
           <Text style={styles.touchText}>Drag to move your paddle</Text>
-        </View> : <Text style={styles.copy}>Keep strokes compact. Recenter between points.</Text>}
-        <View style={styles.row}><Button disabled={!playable} onPress={() => task(() => command('feed'))}>Feed / serve</Button><Button quiet disabled={!playable} onPress={() => task(async () => { motionRef.current?.recenter(); await command('recenter'); })}>Recenter</Button></View>
-        {seat.slot === 0 ? <><Button quiet disabled={!playable} onPress={() => task(() => command('practice-start'))}>Practice feeds</Button><Button quiet disabled={!playable} onPress={() => task(() => command('new-match'))}>Play the bot</Button></> : null}
+        </View> : <View style={styles.playCue}><Text style={styles.sportIcon}>◉</Text><Text style={styles.copy}>Small swings. Keep your eyes on the TV.</Text></View>}
       </View> : <View style={styles.card}><Text style={styles.copy}>Use touch controls for the existing tennis game.</Text>
         {['Forehand', 'Backhand'].map(label => <Button key={label} disabled={!playable} onPress={() => task(async () => result(await sessionRef.current.action(EVENTS.PLAYER_SWING, { type: 'swing', label, hand, power })))}>{label}</Button>)}
       </View>}
-      {seat.slot === 0 ? <View style={styles.card}><Button quiet disabled={!seat.gameId} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_PAUSE, { gameId: seat.gameId, paused: !seat.paused })))}>{seat.paused ? 'Resume game' : 'Pause game'}</Button>
+      <Button quiet onPress={() => setOptionsOpen(!optionsOpen)}>{optionsOpen ? 'Close options' : 'Options'}</Button>
+      {optionsOpen ? <View style={styles.card}>
+        <View style={styles.row}><Button quiet onPress={() => flowRef.current?.select('touch')}>Touch controls</Button><Button quiet onPress={() => flowRef.current?.select('motion')}>Motion controls</Button></View>
+        <Button quiet onPress={() => motionRef.current?.recenter()}>Center paddle / aim</Button>
+        {seat.sport === 'bowling' && mode === 'touch' ? <><Stepper label="Power" value={power} change={setPower} min={.2}/><Stepper label="Curve" value={spin} change={setSpin}/></> : null}
+        {seat.sport === 'table-tennis' && seat.slot === 0 ? <><Button quiet disabled={!playable} onPress={() => task(() => command('practice-start'))}>Practice</Button><Button quiet disabled={!playable} onPress={() => task(() => command('new-match'))}>Play the bot</Button></> : null}
+        {seat.slot === 0 ? <><Button quiet disabled={!seat.gameId} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_PAUSE, { gameId: seat.gameId, paused: !seat.paused })))}>{seat.paused ? 'Resume game' : 'Pause game'}</Button>
         <Button quiet disabled={!seat.gameId} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_RETURN_TO_LOBBY, { gameId: seat.gameId })))}>Return to lobby</Button>
         {seat.phase !== 'game' ? ['bowling', 'table-tennis', 'tennis'].filter(sport => sport !== seat.sport).map(sport => <Button quiet key={sport} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_SWITCH_SPORT, { sport, gameId: seat.gameId })))}>Switch to {title(sport)}</Button>) : null}
-      </View> : null}
+      </> : null}
       <Button quiet onPress={() => task(openProfile)}>Profile & preferences</Button>
-      <Button quiet onPress={() => task(async () => { motionRef.current?.stop(); await sessionRef.current.leave(); setSetup(null); })}>Leave room</Button>
+      <Button quiet onPress={() => task(async () => { flowRef.current?.stop(); await sessionRef.current.leave(); setSetup(null); })}>Leave room</Button>
+      </View> : null}
     </>}
     <Text style={styles.footer}>The TV owns the game. Your phone brings the motion.</Text>
   </ScrollView></SafeAreaView>;
@@ -293,5 +306,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, stepper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   meter: { color: '#a6e8cf', fontWeight: '700', fontSize: 18 }, cameraFrame: { gap: 12 }, camera: { height: 300, borderRadius: 20, overflow: 'hidden' },
   touchPad: { width: 300, maxWidth: '100%', height: 180, borderRadius: 20, borderWidth: 1, borderColor: '#89cbb8', backgroundColor: '#1a3e3a', alignItems: 'center', justifyContent: 'center' }, touchText: { color: '#a6e8cf', fontWeight: '600' },
+  playCue: { minHeight:180,alignItems:'center',justifyContent:'center',gap:16 }, sportIcon: {fontSize:70,color:'#a6e8cf'},
   footer: { textAlign: 'center', color: '#7f8da7', fontSize: 12, marginTop: 10, lineHeight: 20 },
 });

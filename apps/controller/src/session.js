@@ -38,18 +38,22 @@ export class ControllerSession {
     this.token = null;
     this.active = true;
     this.sequence = 0;
+    this.connectionAttempt = 0;
+    this.bowlingTurn = 0;
+    this.bowlingTurnKey = null;
     this.lastSent = { pose: -Infinity, aim: -Infinity };
     this.feedbackIds = new Set();
     this.socket = makeSocket(this.origin, { transports: ['websocket', 'polling'], autoConnect: false, reconnection: true,
       auth: profileToken ? { profileToken } : {} });
     this.socket.on('connect', () => this.onConnect());
-    this.socket.on('disconnect', () => { this.clearTransient(); this.changed(this.seat, 'offline'); });
+    this.socket.on('disconnect', () => { this.connectionAttempt++; this.resuming = false; this.clearTransient(); this.changed(this.seat, 'offline'); });
     this.socket.on('connect_error', () => this.changed(this.seat, 'offline'));
     this.socket.on(EVENTS.LOBBY_UPDATE, snapshot => {
       if (!this.seat || snapshot.code !== this.seat.code) return;
       if (snapshot.gameId !== this.seat.gameId || snapshot.inputGeneration !== this.seat.inputGeneration || snapshot.hostEpoch !== this.seat.hostEpoch) this.clearTransient();
       this.seat = { ...this.seat, ...snapshot };
-      this.changed(this.seat, 'online');
+      this.observeBowlingTurn();
+      if (!this.resuming) this.changed(this.seat, 'online');
       this.captureGuestClaim();
     });
     this.socket.on(EVENTS.GAME_HIT, event => this.onFeedback(event));
@@ -66,12 +70,19 @@ export class ControllerSession {
 
   async onConnect() {
     if (!this.active) { this.socket.disconnect(); return; }
+    const attempt = ++this.connectionAttempt;
+    const current = () => this.active && this.socket.connected && attempt === this.connectionAttempt;
     if (this.token && this.seat?.code) {
+      this.resuming = true;
       const result = await this.request(EVENTS.SESSION_RESUME, { v: PROTOCOL_VERSION, role: 'player', code: this.seat.code, token: this.token });
+      if (!current()) return;
       if (!result?.ok) { this.ended('Your room session expired. Join again.'); return; }
-      await this.accept(result);
-      // Interruption requires an explicit touch/motion setup check, never queued input.
+      await this.accept(result, {notify:false});
+      if (!current()) return;
+      // Clear old setup before allowing the automatic flow to restart.
       await this.request(EVENTS.PLAYER_SETUP, { setup: null });
+      if (!current()) return;
+      this.resuming = false;
     }
     this.changed(this.seat, 'online');
     this.captureGuestClaim();
@@ -111,18 +122,32 @@ export class ControllerSession {
       resolve(error ? { ok: false, error: 'outcome-unknown' } : result || { ok: false, error: 'invalid-response' })));
   }
 
-  async accept(result) {
+  async accept(result, {notify = true} = {}) {
     this.seat = result;
+    this.observeBowlingTurn();
     if (result.token) this.token = result.token;
     this.clearTransient();
     await this.save({ origin: this.origin, code: result.code, token: this.token });
-    this.changed(this.seat, 'online');
+    if (notify && this.active && this.socket.connected) this.changed(this.seat, 'online');
+  }
+
+  observeBowlingTurn() {
+    const seat = this.seat;
+    if (seat?.sport !== 'bowling') return;
+    const state = seat.gameState;
+    const identity = `${seat.gameId}:${seat.matchRound || 0}:${state?.frame}:${state?.currentPlayer}`;
+    if (identity !== this.bowlingIdentity || (state?.phase === 'ready' && ['rolling','settling','resetting'].includes(this.bowlingPhase))) {
+      this.bowlingTurn++;
+    }
+    this.bowlingIdentity = identity;
+    this.bowlingPhase = state?.phase;
+    this.bowlingTurnKey = `${identity}:${this.bowlingTurn}`;
   }
 
   async join(code, name, capabilities) {
     await this.connect();
     const result = await this.request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code: normalizeCode(code), name, capabilities });
-    if (result.ok) await this.accept(result);
+    if (result.ok && this.active && this.socket.connected) await this.accept(result);
     return result;
   }
 
