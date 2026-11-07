@@ -67,8 +67,8 @@ export class World {
 
     constructor(container: HTMLElement) {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xc4d9d3);
-        this.scene.fog = new THREE.Fog(0xc4d9d3, 45, 110);
+        this.scene.background = new THREE.Color(0xd6e5e7);
+        this.scene.fog = new THREE.Fog(0xd6e5e7, 45, 110);
 
         this.worldCamera = new WorldCamera();
         this.camera = this.worldCamera.primary;

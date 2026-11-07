@@ -28,10 +28,8 @@ test('motion startup needs continuous live samples and a matching server acknowl
   f.acknowledge();
   expect(f.session.state.setup).toBe('motion');
   f.session.lobby({connected: true, playing: true, paused: false, gameId: 'first', generation: 1});
-  f.session.sample(sample(.24, 12, {x: 8, y: 0, z: 0}));
-  expect(f.session.frame(.24).angularVelocity).toEqual({x: 0, y: 0, z: 0});
-  f.session.sample(sample(.28, 13, {x: 8, y: 0, z: 0}));
-  expect(f.session.frame(.28).angularVelocity.x).toBeGreaterThan(0);
+  expect(f.session.sample(sample(.24, 12, {x: 8, y: 0, z: 0})).angularVelocity).toEqual({x: 0, y: 0, z: 0});
+  expect(f.session.sample(sample(.28, 13, {x: 8, y: 0, z: 0})).angularVelocity.x).toBeGreaterThan(0);
 });
 
 test('stale setup acknowledgement cannot authorize a different selected mode', () => {
@@ -99,4 +97,39 @@ test('touch input stays bounded and paused or disconnected sessions cannot emit 
   f.session.lobby({connected: false, playing: true, paused: false, gameId: 'game', generation: 1});
   f.session.stroke(2);
   expect(f.session.frame(2.1)).toBeNull();
+});
+
+test('fresh motion reaches the bridge at sensor cadence even while display frames are delayed', () => {
+  const f = create();
+  f.session.select('motion'); f.warm(); f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'game', generation: 1});
+  f.session.sample(sample(.22, 11));
+  const before = f.messages.filter(message => message.type === 'wee:player-pose').length;
+  // A full second of 60 Hz sensor input, without any animation-frame callback.
+  for (let step = 1; step <= 60; step++) {
+    const now = .22 + step / 60;
+    const pose = f.session.sample(sample(now, 11 + step, {x: 2 + step / 100, y: 0, z: 0}));
+    expect(pose?.angularVelocity.x).toBeCloseTo(2 + step / 100);
+    expect(f.session.frame(now + .001)).toBeNull();
+  }
+  const sent = f.messages.filter(message => message.type === 'wee:player-pose').slice(before);
+  expect(sent).toHaveLength(60);
+  expect(new Set(sent.map(message => message.event.seq)).size).toBe(60);
+  // No duplicate heartbeat of the last sample is sent after rendering resumes.
+  expect(f.session.frame(1.25)).toBeNull();
+});
+
+test('high-rate sensor bursts coalesce to the newest pose and never replay skipped samples', () => {
+  const f = create();
+  f.session.select('motion'); f.warm(); f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'game', generation: 1});
+  f.session.sample(sample(.22, 11));
+  const before = f.messages.filter(message => message.type === 'wee:player-pose').length;
+  for (let step = 1; step <= 10; step++) {
+    expect(f.session.sample(sample(.22 + step / 1000, 11 + step, {x: step, y: 0, z: 0}))).toBeNull();
+  }
+  expect(f.messages.filter(message => message.type === 'wee:player-pose')).toHaveLength(before);
+  expect(f.session.frame(.237).angularVelocity.x).toBe(10);
+  expect(f.session.frame(.26)).toBeNull();
+  expect(f.messages.filter(message => message.type === 'wee:player-pose')).toHaveLength(before + 1);
 });

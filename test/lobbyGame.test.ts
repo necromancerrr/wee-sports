@@ -356,14 +356,14 @@ test('practice feeds repeat without scoring, records real contact, and restores 
     expect(game.getScore()).toMatchObject({player1: 0, player2: 0, server: 'player1'});
 });
 
-test('difficulty, timing assistance and movement are independent; changing the format starts its new match', async () => {
+test('difficulty, timing assistance and movement are independent; legacy formats preserve the current match', async () => {
     const {game, ball} = await court();
     game.configure({assistance: 'beginner', botDifficulty: 'standard', autoMove: false, timingAssist: true});
     expect(game.getSettings()).toMatchObject({assistance: 'beginner', botDifficulty: 'standard', autoMove: false, timingAssist: true});
     game.configure({botDifficulty: 'beginner'});
     expect(game.getSettings()).toMatchObject({autoMove: false, timingAssist: true, botDifficulty: 'beginner'});
     game.configure({format: 'quick'});
-    expect(game.getScore()).toMatchObject({format: 'quick', tieBreak: true});
+    expect(game.getScore()).toMatchObject({format: 'full', tieBreak: false});
     const data = ball.userData as BallUserData;
     ball.position.set(0, .11, -3);
     hitForPoint();
@@ -373,9 +373,9 @@ test('difficulty, timing assistance and movement are independent; changing the f
         data.firstBounceInBounds = true; data.lastHitBy = 'player1';
         game.update(1 / 120);
     }
-    expect(game.getScore().player1).toBe(1);
+    expect(game.getScore().player1).toBe(15);
     game.configure({format: 'quick'});
-    expect(game.getScore().player1).toBe(1); // Identical selection never erases a match.
+    expect(game.getScore().player1).toBe(15); // Identical selection never erases a match.
 });
 
 test.each([false, true])('serve returned before bounce: net touch=%s resolves point or let', async netTouched => {

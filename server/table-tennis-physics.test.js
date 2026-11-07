@@ -130,11 +130,11 @@ describe('singles scoring', () => {
     const r = new TableTennisRules();
     const point = winner => { r.beginPoint(); r.award(winner, 'test'); };
     point(1); expect(r.server).toBe(1); point(2); expect(r.server).toBe(2);
-    for (let i = 0; i < 18; i++) point(i % 2 ? 2 : 1);
-    expect(r.score).toEqual([10, 10]); expect(r.server).toBe(1);
-    point(1); expect(r.phase).toBe('ready'); expect(r.server).toBe(2);
-    point(2); expect(r.server).toBe(1); point(1); point(1);
-    expect(r.score).toEqual([13, 11]); expect(r.winner).toBe(1);
+    for (let i = 0; i < 20; i++) point(i % 2 ? 2 : 1);
+    expect(r.score).toEqual([11, 11]); expect(r.server).toBe(2);
+    point(1); expect(r.phase).toBe('ready'); expect(r.server).toBe(1);
+    point(2); expect(r.server).toBe(2); point(1); point(1);
+    expect(r.score).toEqual([14, 12]); expect(r.winner).toBe(1);
     expect(r.beginPoint()).toBe(false); expect(r.award(2, 'duplicate')).toBeNull();
   });
   test('checkpoint parser rejects inconsistent completed scores and live points', () => {
@@ -214,15 +214,15 @@ describe('solo controls and persistence', () => {
       g.update(FIXED_STEP);
     }
     expect(g.rules.phase).toBe('complete');
-    expect(Math.max(...g.rules.score)).toBeGreaterThanOrEqual(11);
+    expect(Math.max(...g.rules.score)).toBeGreaterThanOrEqual(12);
     expect(Math.abs(g.rules.score[0] - g.rules.score[1])).toBeGreaterThanOrEqual(2);
     expect(g.checkpoint().rules.winner).toBe(g.rules.winner);
   });
-  test('repeated compact strokes produce real rallies and points against the physical bot', () => {
-    const g = new TableTennisGame(); g.startMatch(); let started = null, incoming = false, returns = 0, lastHitter = 0;
+  test('compact strokes with deliberate wide placement produce rallies and points against the physical bot', () => {
+    const g = new TableTennisGame(); g.startMatch(); let started = null, incoming = false, returns = 0, lastHitter = 0, hits = 0;
     const collision = g.physics.onEvent;
     g.physics.onEvent = event => {
-      if (event.kind === 'hit') lastHitter = event.player;
+      if (event.kind === 'hit') {lastHitter = event.player; if (event.player === 1) hits++;}
       if (event.kind === 'bounce' && event.side === 2 && lastHitter === 1) returns++;
       collision(event);
     };
@@ -231,7 +231,8 @@ describe('solo controls and persistence', () => {
       if (!ball.active || ball.velocity.z < 0) {started = null; incoming = false;}
       if (!incoming && ball.active && ball.velocity.z > 0 && ball.position.z > .5) {started = g.time; incoming = true;}
       const phase = started === null ? -1 : (g.time - started) / .24;
-      g.setInput(pose({angularVelocity: v3(phase >= 0 && phase <= 1 ? 4 * Math.sin(phase * Math.PI) : 0, 0, 0)}));
+      g.setInput(pose({reach: {x: hits % 2 ? 1 : -1, y: 0},
+        angularVelocity: v3(phase >= 0 && phase <= 1 ? 4 * Math.sin(phase * Math.PI) : 0, 0, 0)}));
       g.update(FIXED_STEP);
     }
     expect(g.rules.phase).toBe('complete');

@@ -20,7 +20,8 @@ They contain no third-party samples or melodies. Their source code is included
 so the team can regenerate and modify them.
 
 This includes the five shared `ui/` countdown/start/test cues and tennis
-`fault.wav` / `let.wav`. Their bright, brief sound palette is intended for an
+`fault.wav` / `let.wav`, and the three original synthesized plastic-ball impacts
+in `table-tennis/`. Their bright, brief sound palette is intended for an
 upbeat family sports game; no Wii Sports or Nintendo sound assets or melodies
 are used.
 

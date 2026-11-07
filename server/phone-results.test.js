@@ -61,7 +61,7 @@ test('completion prompts once, respects dismissal/reconnect, and prompts again a
   expect(f.text()).toContain('Sam wins!');
 });
 
-test('paused results wait for reconnect; only P1 can replay with the applied match format', async () => {
+test('paused results wait for reconnect; only P1 can replay and legacy quick matches become best of three', async () => {
   const lobby = tennis();
   lobby.paused = true; lobby.gameState = { phase: 'complete', winner: 1, server: 1 };
   const f = mount(lobby);
@@ -73,7 +73,7 @@ test('paused results wait for reconnect; only P1 can replay with the applied mat
   const first = action(); action();
   expect(h.request).toHaveBeenCalledTimes(1);
   expect(h.request).toHaveBeenCalledWith(EVENTS.PLAYER_GAME_COMMAND,
-    expect.objectContaining({ gameId: 'game-1', action: 'new-match', format: 'quick' }));
+    expect.objectContaining({ gameId: 'game-1', action: 'new-match', format: 'full' }));
   finish({ ok: true }); await first;
   f.update({ phase: 'prepare', server: 1, winner: null });
   expect(f.button('Play again')).toBeUndefined();

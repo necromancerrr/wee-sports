@@ -29,7 +29,7 @@ export function playerCapacity(sport) {
 }
 export const NAME_MAX = 12;
 
-/** One controller can play the current tennis prototype against the bot. */
+/** One controller can play tennis against the bot. */
 export const READY_AT_PLAYERS = 1;
 /** The 5, 4, 3, 2, 1 that starts by itself once every player is ready. */
 export const COUNTDOWN_SECONDS = 5;
@@ -266,7 +266,9 @@ export function isStrokeResult(event) {
 }
 
 export function isGameSoundEvent(sport, event) {
-  const events = sport === 'tennis' || sport === 'table-tennis'
+  const events = sport === 'table-tennis'
+    ? ['paddle-hit', 'table-bounce', 'net-hit', 'point-win', 'point-lose', 'serve', 'match-win', 'match-lose', 'let', 'start', 'stop']
+    : sport === 'tennis'
     ? ['hit', 'bounce', 'serve', 'point', 'game', 'set', 'match', 'fault', 'let', 'start', 'stop']
     : sport === 'bowling' ? ['release', 'roll', 'roll-end', 'pin', 'gutter', 'strike', 'spare', 'result', 'match', 'start', 'stop'] : [];
   return events.includes(event);

@@ -123,6 +123,12 @@ No physical-phone, installed-native, haptic or latency gate is marked complete.
 
 ## Milestone gates
 
+The later [game-quality follow-up](../game-quality.md) records consistent
+table-tennis placement, TV avatars and aim feedback, 12-point scoring,
+best-of-three tennis, input scheduling and Expo trial instructions. Its
+505-test root / 162-test Node / 26-test native results supersede the earlier
+software counts for those changed files; hardware acceptance remains open.
+
 | Plan gate | Cloud deliverable | Evidence still required |
 | --- | --- | --- |
 | M0: baseline | Baseline tests and auditable detector replay | Physical reference-phone sensor/network/render measurements |

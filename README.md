@@ -11,12 +11,13 @@ installation is required.
   the phone and watch the live TV indicator; beginning a forward delivery freezes
   aim automatically. Button controls provide aim, power, curve and a deliberate roll.
 - **Table Tennis:** one player, repeatable practice feeds or a scored bot game
-  to 11 with a two-point lead. Use compact motion or the touch paddle. The
+  to 12 with a two-point lead. Use compact motion or the touch paddle. The
   standalone diagnostic view also supports pointer/arrow movement, click/Space
-  to stroke, and P to pause. Friendly assistance helps reach; contact still
-  determines the ball's path.
-- **Tennis:** one player against a bot or two phone controllers. Existing
-  forehand/backhand motion and button controls remain available.
+  to stroke, and P to pause. In Friendly mode, aim selects a landing area and
+  power changes pace. Direction locks at stroke onset; the ball follows its
+  physical flight after contact. Standard mode uses unassisted contact physics.
+- **Tennis:** best of three sets, against a bot or a second phone controller.
+  Forehand/backhand motion and button controls remain available.
 
 Tennis keyboard controls:
 
@@ -41,10 +42,29 @@ Tennis keyboard controls:
   SQLite. Bowling and Table Tennis save settled roll/point boundaries; they
   never promise exact mid-flight recovery.
 
-See [the simple-controller design and research](docs/system-plan/controller-simplicity.md),
+See [consistent shots and TV feedback](docs/game-quality.md),
+[the simple-controller design and research](docs/system-plan/controller-simplicity.md),
 the [trial runbook](docs/system-plan/README.md) and
 [acceptance evidence](docs/system-plan/acceptance.md) for what was checked and
 which physical-device trials remain open.
+
+## Try Expo on your phone
+
+For Android, install **Expo Go for SDK 58** from [expo.dev/go](https://expo.dev/go).
+Keep `npm run dev` running for the TV, then use a second terminal in this repo:
+
+```sh
+npm run expo:install
+npm run expo
+```
+
+Scan the terminal's Expo QR to open the controller, then tap **Scan to play**
+and scan the TV's room QR. The phone and PC should share Wi-Fi.
+
+For iPhone, SDK 58 needs a development build; the App Store Expo Go is
+incompatible. The [controller guide](apps/controller/README.md#using-an-iphone-from-windows-linux-or-mac)
+includes a Windows/Linux/Mac cloud-build route and a local Xcode route. Once
+installed, use `npm run expo:dev`. Browser play remains available immediately.
 
 ## Development
 

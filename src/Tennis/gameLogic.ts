@@ -147,8 +147,9 @@ export class GameLogic {
 
     public getSettings(): TennisSettings { return {...this.settings, autoMove: this.autoPositionEnabled}; }
     public configure(settings: Partial<TennisSettings>): void {
-        const previousFormat = this.settings.format;
-        if (settings.format === 'full' || settings.format === 'quick') this.settings.format = settings.format;
+        // Older phones can still send `quick`; every new match now uses the
+        // same best-of-three format. Configuration alone never clears a score.
+        if (settings.format === 'full' || settings.format === 'quick') this.settings.format = 'full';
         if (settings.assistance === 'beginner' || settings.assistance === 'standard') this.settings.assistance = settings.assistance;
         if (settings.botDifficulty === 'beginner' || settings.botDifficulty === 'standard') this.settings.botDifficulty = settings.botDifficulty;
         if (typeof settings.timingAssist === 'boolean') {
@@ -162,7 +163,6 @@ export class GameLogic {
         }
         if (typeof settings.autoMove === 'boolean') this.autoPositionEnabled = settings.autoMove;
         this.settings.autoMove = this.autoPositionEnabled;
-        if (previousFormat !== this.settings.format) this.startRound();
     }
     public getServeState() {
         const data = this.ball.userData as BallUserData;

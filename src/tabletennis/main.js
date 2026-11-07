@@ -1,6 +1,8 @@
-import * as THREE from 'three';
 import {TableTennisGame} from './game.js';
-import {TABLE, BALL, clamp, v3} from './physics.js';
+import {clamp, v3} from './physics.js';
+import {createTableTennisScene} from './scene.js';
+import {tableTennisAnnouncement} from './presentation.js';
+import {createSportsAudio} from '../audio/sportsAudio';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -8,12 +10,48 @@ const embedded = window.parent !== window && new URLSearchParams(location.search
 const post = message => { if (embedded) window.parent.postMessage(message, location.origin); };
 let gameId = null, connected = !embedded, playing = !embedded, generation = null, hostEpoch = null, lastSeq = -1;
 let localPaused = false, lastCheckpoint = '', lastState = '';
+let playerName = 'You', announcedServe = -1, announcementUntil = 0;
+const sound = embedded ? null : createSportsAudio('table-tennis');
+sound?.mountButton($('tt-sound'));
+function audioEvent(event) {
+  if (embedded) {
+    if (gameId) post({type: 'wee:game-audio', sport: 'table-tennis', gameId, event});
+  } else if (event === 'stop') sound?.stop();
+  else sound?.play(event);
+}
+function announce(event) {
+  const state = game.snapshot();
+  const message = tableTennisAnnouncement(state, event, playerName);
+  if (!message) return;
+  $('tt-announcement-title').textContent = message.title;
+  $('tt-announcement-detail').textContent = message.detail;
+  $('tt-announcement').dataset.tone = message.tone;
+  $('tt-announcement').hidden = false;
+  announcementUntil = performance.now() + (state.winner ? 7000 : event.type === 'serve' ? 1150 : 1600);
+}
 const game = new TableTennisGame({onEvent: event => {
-  if (event.type === 'hit' && gameId) post({type: 'wee:game-hit', gameId, player: event.player});
+  if (event.type === 'hit') {
+    if (gameId) post({type: 'wee:game-hit', gameId, player: event.player});
+    audioEvent('paddle-hit');
+  }
+  if (event.type === 'point') {
+    audioEvent(game.rules.winner ? game.rules.winner === 1 ? 'match-win' : 'match-lose' : event.winner === 1 ? 'point-win' : 'point-lose');
+    announce(event);
+  } else if (event.type === 'let') { audioEvent('let'); announce(event); }
+  if (event.type === 'state' && game.mode === 'bot' && game.rules.phase === 'serve' && game.rules.pointId !== announcedServe) {
+    announcedServe = game.rules.pointId; audioEvent('serve'); announce({type: 'serve'});
+  }
   if (['state', 'point', 'let'].includes(event.type)) publish();
 }});
 game.remote = embedded;
 game.paused = embedded;
+sound?.setActive(!game.paused);
+const handleCollision = game.physics.onEvent;
+game.physics.onEvent = event => {
+  handleCollision(event);
+  if (event.kind === 'bounce') audioEvent('table-bounce');
+  else if (event.kind === 'net') audioEvent('net-hit');
+};
 
 function publish() {
   const state = game.snapshot();
@@ -33,8 +71,8 @@ function publish() {
 }
 
 function command(value) {
-  if (value.action === 'new-match' || value.action === 'practice-stop') { lastCheckpoint = ''; lastState = ''; game.startMatch(); return true; }
-  if (value.action === 'practice-start') { lastCheckpoint = ''; lastState = ''; game.startPractice(); return true; }
+  if (value.action === 'new-match' || value.action === 'practice-stop') { announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startMatch(); return true; }
+  if (value.action === 'practice-start') { announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startPractice(); return true; }
   if (value.action === 'feed') return game.mode === 'practice' ? game.feed() : game.serve();
   if (value.action === 'recenter') return game.recenter();
   if (value.action === 'configure') return game.configure(value.settings);
@@ -47,6 +85,7 @@ window.addEventListener('message', event => {
   if (data?.type === 'wee:lobby-state' && data.sport === 'table-tennis') {
     if (data.gameId !== gameId) {
       gameId = data.gameId;
+      announcedServe = -1; announcementUntil = 0;
       game.startPractice();
       lastState = ''; lastCheckpoint = ''; lastSeq = -1;
     }
@@ -54,11 +93,14 @@ window.addEventListener('message', event => {
       lastSeq = -1;
       game.inputAt = -Infinity;
     }
+    playerName = data.players?.find(player => player.slot === 0)?.name || 'You';
     generation = data.generation;
     hostEpoch = data.hostEpoch;
     connected = data.connected;
     playing = data.playing;
     game.paused = Boolean(data.paused || !connected || !playing);
+    sound?.setActive(!game.paused);
+    if (game.paused) audioEvent('stop');
     publish();
   } else if (data?.type === 'wee:table-tennis-pose' && connected && playing && !game.paused) {
     const input = data.event;
@@ -91,19 +133,19 @@ function action() {
   if (embedded) return;
   if (game.mode === 'practice' && !game.physics.ball.active) game.feed(); else game.stroke();
 }
-$('tt-practice').onclick = () => { if (!game.paused) { game.startPractice($('tt-feed').value); publish(); } };
-$('tt-match').onclick = () => { if (!game.paused) { game.startMatch(); publish(); } };
+$('tt-practice').onclick = () => { if (!game.paused) { announcedServe = -1; announcementUntil = 0; game.startPractice($('tt-feed').value); publish(); } };
+$('tt-match').onclick = () => { if (!game.paused) { announcedServe = -1; announcementUntil = 0; game.startMatch(); publish(); } };
 $('tt-action').onclick = action;
 $('tt-recenter').onclick = () => { if (game.recenter()) { pointer.x = 0; pointer.y = 0; } else game.lastReason = 'Recenter between points'; };
 $('tt-pause').onclick = () => {
   if (embedded) post({type: 'wee:pause-toggle', gameId});
-  else { localPaused = !localPaused; game.paused = localPaused; }
+  else { localPaused = !localPaused; game.paused = localPaused; sound?.setActive(!localPaused); }
 };
 $('tt-assistance').onchange = () => { game.configure({assistance: $('tt-assistance').value}); publish(); };
 $('tt-sensitivity').oninput = () => { game.configure({sensitivity: Number($('tt-sensitivity').value)}); publish(); };
 $('tt-feed').onchange = () => game.startPractice($('tt-feed').value);
 if (embedded) {
-  $('tt-help').textContent = 'Tilt your phone for paddle angle. Make compact strokes. Recenter between points.';
+  $('tt-help').textContent = 'Point the paddle to aim. Make a compact swing after the bounce.';
   // Embedded matches change rounds through authenticated P1 commands. The
   // standalone diagnostic controls must not reset a durable room locally.
   document.querySelector('.tt-controls').hidden = true;
@@ -122,111 +164,48 @@ window.addEventListener('keydown', event => {
   }
 });
 
-function makeScene() {
-  const container = $('table-court');
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#173f4c');
-  scene.fog = new THREE.Fog('#173f4c', 6, 14);
-  const camera = new THREE.PerspectiveCamera(43, 1, .01, 40);
-  camera.position.set(0, 3.05, 5.0); camera.lookAt(0, .65, 0);
-  const renderer = new THREE.WebGLRenderer({antialias: true, alpha: false});
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  container.appendChild(renderer.domElement);
-  const ambient = new THREE.HemisphereLight('#e5fbff', '#234251', 2.2); scene.add(ambient);
-  const light = new THREE.DirectionalLight('#fff2cf', 3); light.position.set(-2, 5, 2); light.castShadow = true;
-  light.shadow.mapSize.set(1024, 1024); light.shadow.camera.left = -3; light.shadow.camera.right = 3;
-  light.shadow.camera.top = 3; light.shadow.camera.bottom = -3; scene.add(light);
-  const box = (size, position, color) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({color, roughness: .6}));
-    mesh.position.set(...position); mesh.receiveShadow = true; mesh.castShadow = true; scene.add(mesh); return mesh;
-  };
-  box([14, .08, 14], [0, -.06, 0], '#23515d');
-  box([TABLE.width, .055, TABLE.length], [0, TABLE.height - .0275, 0], '#297580');
-  box([TABLE.width + .02, .08, TABLE.length + .02], [0, TABLE.height - .09, 0], '#f0e4bb');
-  for (const x of [-.55, .55]) for (const z of [-1, 1]) box([.065, .65, .065], [x, .33, z], '#102f38');
-  for (const x of [-TABLE.width / 2 + .012, TABLE.width / 2 - .012]) box([.018, .001, TABLE.length], [x, TABLE.height + .001, 0], '#e6f5e4');
-  for (const z of [-TABLE.length / 2 + .012, TABLE.length / 2 - .012]) box([TABLE.width, .001, .018], [0, TABLE.height + .001, z], '#e6f5e4');
-  box([.008, .001, TABLE.length], [0, TABLE.height + .001, 0], '#c2e2db');
-  const net = new THREE.Group();
-  const netMaterial = new THREE.LineBasicMaterial({color: '#d3e9de', transparent: true, opacity: .58});
-  for (let y = TABLE.height; y <= TABLE.height + TABLE.netHeight; y += .019) {
-    net.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.84, y, 0), new THREE.Vector3(.84, y, 0)]), netMaterial));
-  }
-  for (let x = -.84; x <= .84; x += .04) {
-    net.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, TABLE.height, 0), new THREE.Vector3(x, TABLE.height + TABLE.netHeight, 0)]), netMaterial));
-  }
-  scene.add(net);
-  box([1.68, .012, .012], [0, TABLE.height + TABLE.netHeight, 0], '#fff9df');
-  for (const x of [-.84, .84]) box([.025, .2, .025], [x, TABLE.height + .07, 0], '#132e3a');
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL.radius, 20, 12), new THREE.MeshStandardMaterial({color: '#fff6dd', emissive: '#625131', emissiveIntensity: .18, roughness: .55}));
-  ball.castShadow = true; scene.add(ball);
-  // A larger translucent halo improves readability without changing collision radius.
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(.035, 16, 10), new THREE.MeshBasicMaterial({color: '#fff7c5', transparent: true, opacity: .15, depthWrite: false}));
-  scene.add(halo);
-  const paddles = [0, 1].map(index => {
-    const group = new THREE.Group();
-    const face = new THREE.Mesh(new THREE.CylinderGeometry(.095, .095, .012, 32), new THREE.MeshStandardMaterial({color: index === 0 ? '#eafa9e' : '#eea68a', roughness: .78}));
-    face.rotation.x = Math.PI / 2; face.scale.y = 1; face.scale.z = 1.23; face.castShadow = true; group.add(face);
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(.034, .115, .018), new THREE.MeshStandardMaterial({color: '#e5c390'}));
-    handle.position.y = -.14; handle.castShadow = true; group.add(handle); scene.add(group); return group;
+let court;
+try {
+  court = createTableTennisScene($('table-court'), game, {
+    onMove: event => {
+      if (embedded) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      pointer.x = clamp((event.clientX - rect.left) / rect.width * 2 - 1, -1, 1);
+      pointer.y = clamp(1 - (event.clientY - rect.top) / rect.height * 2, -1, 1);
+      localInput();
+    }, onAction: action, labels: [$('tt-player-tag'), $('tt-bot-tag')],
   });
-  function resize() {
-    const width = container.clientWidth, height = container.clientHeight;
-    renderer.setSize(width, height); camera.aspect = width / height;
-    camera.position.z = width / height < 1 ? 6.2 : 5;
-    camera.updateProjectionMatrix();
-  }
-  new ResizeObserver(resize).observe(container); resize();
-  renderer.domElement.addEventListener('pointermove', event => {
-    if (embedded) return;
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = clamp((event.clientX - rect.left) / rect.width * 2 - 1, -1, 1);
-    pointer.y = clamp(1 - (event.clientY - rect.top) / rect.height * 2, -1, 1);
-    localInput();
-  });
-  renderer.domElement.addEventListener('pointerdown', action);
-  const normal = new THREE.Vector3();
-  return () => {
-    const p = game.physics.ball.position;
-    ball.position.set(p.x, p.y, p.z); ball.visible = game.physics.ball.active;
-    halo.position.copy(ball.position); halo.visible = ball.visible;
-    game.physics.paddles.forEach((paddle, index) => {
-      paddles[index].position.set(paddle.position.x, paddle.position.y, paddle.position.z);
-      normal.set(paddle.normal.x, paddle.normal.y, paddle.normal.z).normalize();
-      paddles[index].lookAt(paddles[index].position.clone().add(normal));
-      paddles[index].visible = paddle.enabled;
-    });
-    renderer.render(scene, camera);
-  };
-}
-
-let render;
-try { render = makeScene(); } catch {
+} catch {
   $('tt-error').hidden = false;
   $('tt-error').textContent = 'This browser could not start 3D graphics. Enable WebGL or try a current Chrome, Safari, or Firefox browser.';
-  render = () => {};
 }
+const setText = (id, text) => { if ($(id).textContent !== String(text)) $(id).textContent = text; };
 let previous = performance.now(), nextPublish = 0;
 function frame(now) {
   game.update((now - previous) / 1000); previous = now;
   const state = game.snapshot();
-  $('tt-you-label').textContent = state.practice ? 'Returns' : 'You';
-  $('tt-bot-label').textContent = state.practice ? 'Best rally' : 'Bot';
-  document.querySelector('.tt-score').setAttribute('aria-label', state.practice ? 'Practice returns and best rally' : 'Match score');
-  $('tt-you').textContent = state.practice ? state.returns : state.score[0];
-  $('tt-bot').textContent = state.practice ? game.bestRally : state.score[1];
-  $('tt-mode').textContent = state.practice ? `${game.settings.assistance === 'friendly' ? 'Friendly' : 'Standard'} practice` : 'First to 11 · win by 2';
-  $('tt-status').textContent = game.paused ? 'Paused' : state.stale ? 'Controller paused — reconnect or touch the controls' : state.winner ? `${state.winner === 1 ? 'You win' : 'Bot wins'} · ${state.score.join(' – ')}` : state.reason;
-  $('tt-detail').textContent = state.practice ? `${state.returns} returns · best rally ${game.bestRally} · feeds: ${game.feedStyle}` : `Player ${state.server} serves · assisted toss`;
-  $('tt-action').textContent = game.physics.ball.active ? 'Stroke · Space' : state.practice ? 'Feed ball · Space' : 'Serve · Space';
-  $('tt-pause').textContent = game.paused ? 'Resume · P' : 'Pause · P';
+  setText('tt-you-label', state.practice ? 'Returns' : playerName);
+  setText('tt-bot-label', state.practice ? 'Best rally' : 'Bot');
+  const score = document.querySelector('.tt-score');
+  const scoreLabel = state.practice ? 'Practice returns and best rally' : 'Match score';
+  if (score.getAttribute('aria-label') !== scoreLabel) score.setAttribute('aria-label', scoreLabel);
+  setText('tt-you', state.practice ? state.returns : state.score[0]);
+  setText('tt-bot', state.practice ? game.bestRally : state.score[1]);
+  setText('tt-mode', state.practice ? `${game.settings.assistance === 'friendly' ? 'Friendly' : 'Standard'} practice` : `First to ${state.targetPoints || 12} · win by 2`);
+  setText('tt-status', game.paused ? 'Paused' : state.stale ? 'Waiting for your controller' : state.winner ? `${state.winner === 1 ? 'You win' : 'Bot wins'} · ${state.score.join(' – ')}` : state.practice ? game.physics.ball.active ? 'Swing after the bounce' : 'Next ball coming' : state.deuce ? 'Deuce · win by two' : state.gamePoint ? `Game point · ${state.gamePoint === 1 ? playerName : 'Bot'}` : game.physics.ball.active ? 'Keep the rally going' : `${state.server === 1 ? 'Your' : 'Bot’s'} serve next`);
+  setText('tt-detail', game.paused ? 'Resume when everyone is ready.' : state.stale ? 'Play resumes when fresh motion arrives.' : game.lastReason === 'Contact' || game.lastReason === 'Bot returned' ? 'Aim ring shows your next return.' : state.reason);
+  setText('tt-action', game.physics.ball.active ? 'Stroke · Space' : state.practice ? 'Feed ball · Space' : 'Serve · Space');
+  setText('tt-pause', game.paused ? 'Resume · P' : 'Pause · P');
+  setText('tt-player-tag', playerName);
   $('tt-practice').classList.toggle('selected', state.practice); $('tt-match').classList.toggle('selected', !state.practice);
-  render();
+  $('tt-you-side').classList.toggle('serving', !state.practice && state.server === 1);
+  $('tt-bot-side').classList.toggle('serving', !state.practice && state.server === 2);
+  $('tt-announcement').hidden = game.paused || state.stale || now >= announcementUntil;
+  court?.render(now);
   if (now >= nextPublish) { publish(); nextPublish = now + 250; }
   requestAnimationFrame(frame);
 }
+window.addEventListener('pagehide', event => { if (!event.persisted) { sound?.dispose(); court?.dispose(); } });
 localInput();
 post({type: 'wee:bridge-ready'});
 requestAnimationFrame(frame);

@@ -13,6 +13,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Rigid-body suites are CPU intensive; avoid oversubscribing shared CI.
+    maxWorkers: 4,
     include: ['test/**/*.test.ts', 'server/*.test.js'],
   },
 });

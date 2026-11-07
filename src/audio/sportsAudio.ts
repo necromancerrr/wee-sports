@@ -1,6 +1,6 @@
 import './sportsAudio.css';
 
-export type Sport = 'tennis' | 'bowling';
+export type Sport = 'tennis' | 'bowling' | 'table-tennis';
 
 interface SoundDefinition {
   file: string;
@@ -39,6 +39,18 @@ export const SOUND_MANIFEST: Record<Sport, Record<string, SoundDefinition>> = {
     match: {file: '/sounds/tennis/match.wav', volume: 0.45, cooldownMs: 1000},
     fault: {file: '/sounds/tennis/fault.wav', volume: 0.4, cooldownMs: 500},
     let: {file: '/sounds/tennis/let.wav', volume: 0.4, cooldownMs: 500},
+  },
+  'table-tennis': {
+    ...START_SOUNDS,
+    'paddle-hit': {file: '/sounds/table-tennis/paddle.wav', volume: 0.46, cooldownMs: 45},
+    'table-bounce': {file: '/sounds/table-tennis/table.wav', volume: 0.3, cooldownMs: 65},
+    'net-hit': {file: '/sounds/table-tennis/net.wav', volume: 0.22, cooldownMs: 350},
+    serve: {file: '/sounds/ui/ready.wav', volume: 0.28, cooldownMs: 700},
+    'point-win': {file: '/sounds/tennis/point.wav', volume: 0.4, cooldownMs: 400},
+    'point-lose': {file: '/sounds/tennis/fault.wav', volume: 0.25, cooldownMs: 400},
+    'match-win': {file: '/sounds/tennis/match.wav', volume: 0.5, cooldownMs: 1000},
+    'match-lose': {file: '/sounds/tennis/set.wav', volume: 0.3, cooldownMs: 1000},
+    let: {file: '/sounds/tennis/let.wav', volume: 0.3, cooldownMs: 500},
   },
   bowling: {
     ...START_SOUNDS,
@@ -128,16 +140,19 @@ export function createSportsAudio(
   const requests = new AbortController();
   const listeners = new Set<(status: SportsAudioStatus) => void>();
 
+  const readyCount = () => Object.values(SOUND_MANIFEST[sport])
+    .filter(definition => buffers.has(definition.file)).length;
+
   function getStatus(): SportsAudioStatus {
     return {
       muted,
-      ready: unlocked && context?.state === 'running' && buffers.size > 0,
+      ready: unlocked && context?.state === 'running' && readyCount() > 0,
       loading: loadingSounds,
       unavailable,
       partial:
         !loadingSounds &&
-        buffers.size > 0 &&
-        buffers.size < Object.keys(SOUND_MANIFEST[sport]).length,
+        readyCount() > 0 &&
+        readyCount() < Object.keys(SOUND_MANIFEST[sport]).length,
     };
   }
 
@@ -174,9 +189,10 @@ export function createSportsAudio(
   }
 
   function download(
-    event: string,
+    _event: string,
     definition: SoundDefinition,
   ): Promise<ArrayBuffer | undefined> {
+    const event = definition.file;
     if (encoded.has(event)) return Promise.resolve(encoded.get(event));
     const pending = downloads.get(event);
     if (pending) return pending;
@@ -201,14 +217,15 @@ export function createSportsAudio(
     if (preloading) return preloading;
     preloading = Promise.allSettled(
       Object.entries(SOUND_MANIFEST[sport]).map(async ([event, definition]) => {
-        if (!buffers.has(event)) await download(event, definition);
+        if (!buffers.has(definition.file)) await download(event, definition);
       }),
     )
       .then(() => {})
       .finally(() => {
-        preloading = undefined;
+        if (preloading === task) preloading = undefined;
       });
-    return preloading;
+    const task = preloading;
+    return task;
   }
 
   function stop(event?: string) {
@@ -240,20 +257,48 @@ export function createSportsAudio(
     if (!audioContext || !fetchAsset) return;
     await Promise.allSettled(
       Object.entries(SOUND_MANIFEST[sport]).map(async ([event, definition]) => {
-        if (buffers.has(event)) return;
+        if (buffers.has(definition.file)) return;
         const bytes = await download(event, definition);
         if (!bytes) return;
         try {
           const buffer = await audioContext.decodeAudioData(bytes.slice(0));
           if (!disposed) {
-            buffers.set(event, buffer);
+            buffers.set(definition.file, buffer);
             refreshButtons();
           }
         } catch {
-          encoded.delete(event); // An explicit retry fetches a damaged response again.
+          encoded.delete(definition.file); // An explicit retry fetches a damaged response again.
         }
       }),
     );
+  }
+
+  function prepareSounds(): Promise<void> {
+    if (loading) return loading;
+    loadingSounds = true;
+    const task = loadSounds().finally(() => {
+      if (loading === task) {
+        loading = undefined;
+        loadingSounds = false;
+        refreshButtons();
+      }
+    });
+    loading = task;
+    return task;
+  }
+
+  /** Keep the TV's activated audio context when the phone changes sports. */
+  async function setSport(next: Sport): Promise<void> {
+    if (disposed || next === sport || !Object.hasOwn(SOUND_MANIFEST, next)) return;
+    stop();
+    sport = next;
+    lastPlayed.clear();
+    loading = undefined;
+    preloading = undefined;
+    unavailable = false;
+    if (context) await prepareSounds();
+    else await preload();
+    if (!disposed) refreshButtons();
   }
 
   /** Call directly from a click/tap. Never queues a game event for later playback. */
@@ -286,21 +331,15 @@ export function createSportsAudio(
       }
       // Resume synchronously within the gesture, before waiting on downloads.
       const resumed = context.resume();
-      if (!loading) {
-        loadingSounds = true;
-        loading = loadSounds().finally(() => {
-          loading = undefined;
-          loadingSounds = false;
-        });
-      }
+      const prepared = prepareSounds();
       refreshButtons();
       await resumed;
       if (disposed) return false;
       unlocked = context.state === 'running';
       refreshButtons();
-      await loading;
+      await prepared;
       if (disposed) return false;
-      unavailable = !unlocked || buffers.size === 0;
+      unavailable = !unlocked || readyCount() === 0;
       refreshButtons();
       return !unavailable;
     } catch {
@@ -321,7 +360,7 @@ export function createSportsAudio(
       return false;
     }
     const definition = SOUND_MANIFEST[sport][event];
-    const buffer = buffers.get(event);
+    const buffer = definition && buffers.get(definition.file);
     if (
       disposed ||
       !active ||
@@ -449,6 +488,7 @@ export function createSportsAudio(
     preload,
     unlock,
     setMuted,
+    setSport,
     setActive,
     getStatus,
     subscribe,

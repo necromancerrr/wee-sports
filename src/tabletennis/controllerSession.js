@@ -1,5 +1,9 @@
 import {createAutomaticMotionSetup, createPaddleIntentController} from '../../shared/motion.js';
 
+// A 60 Hz target with room for sub-millisecond browser scheduling jitter.
+// Latest state is coalesced, never buffered for a later catch-up burst.
+const POSE_INTERVAL_SECONDS = .016;
+
 /** Owns freshness and acknowledged readiness; browser permission alone never
  * makes a motion controller playable. No DOM or sensor APIs live here. */
 export function createTableTennisControllerSession({send = () => {}, onChange = () => {}} = {}) {
@@ -9,6 +13,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
   let phase = 'ready', accepted = null, requested, pending = null, setupId = 0;
   let latest = null, corrected = null, motionReady = false, setupError = false;
   let neutralPose = true;
+  let sentSampleSequence = null;
   let gameId = null, generation = null, sequence = 0, lastSent = -Infinity, strokeUntil = 0, touchRevision = 1;
   let reach = {x: 0, y: 0};
   const changed = () => onChange(api.state);
@@ -20,7 +25,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     send({type: 'wee:controller-setup', setup: value, requestId: pending});
   }
   function clearMotion() {
-    automatic.reset(); paddle.reset(); latest = corrected = null; motionReady = false; strokeUntil = 0; neutralPose = true;
+    automatic.reset(); paddle.reset(); latest = corrected = null; motionReady = false; strokeUntil = 0; neutralPose = true; sentSampleSequence = null;
   }
   function invalidate() {
     clearMotion(); setup(null); changed();
@@ -49,6 +54,10 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       corrected = value.sample;
       latest = paddle.push(corrected);
       if (!motionReady) {motionReady = true; setup('motion'); changed();}
+      // Send fresh input on receipt instead of first waiting for the display's
+      // animation frame. frame() still flushes a coalesced sample and watches
+      // freshness when sensor delivery stops.
+      return api.frame(sample.timeSeconds);
     },
     acknowledge(requestId, result) {
       if (requestId !== pending) return;
@@ -63,7 +72,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       const newBoundary = gameId !== value.gameId || generation !== value.generation || paused !== Boolean(value.paused);
       gameId = value.gameId; generation = value.generation;
       connected = value.connected === true; playing = value.playing === true; paused = value.paused === true;
-      if (newBoundary) {latest = null; paddle.reset(); strokeUntil = 0; neutralPose = true;}
+      if (newBoundary) {latest = null; paddle.reset(); strokeUntil = 0; neutralPose = true; sentSampleSequence = null;}
       if (interrupted && mode === 'motion') clearMotion();
       if (reconnected && mode) setup(suspended ? null : expected(), true);
       changed();
@@ -92,17 +101,19 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     get canSend() {return connected && playing && !paused && !suspended && accepted !== null && accepted === expected() && pending === null;},
     frame(now) {
       if (mode === 'motion' && motionReady && !automatic.read(now).ready) invalidate();
-      if (!api.canSend || !Number.isFinite(now) || now - lastSent < 1 / 30) return null;
+      if (!api.canSend || !Number.isFinite(now) || now - lastSent < POSE_INTERVAL_SECONDS - 1e-9) return null;
       let value = latest;
       if (mode === 'touch') {
         const pulse = now < strokeUntil ? Math.sin((.24 - strokeUntil + now) / .24 * Math.PI) : 0;
         value = {orientation: [0, 0, 0, 1], angularVelocity: {x: Math.max(0, pulse) * 12, y: 0, z: 0}, reach, calibrationRevision: touchRevision};
       }
       if (!value || mode === 'motion' && (now < value.sampleTime || now - value.sampleTime > .12)) return null;
+      if (mode === 'motion' && value.sequence === sentSampleSequence) return null;
       const event = {seq: sequence++, orientation: value.orientation,
         angularVelocity: mode === 'motion' && neutralPose ? {x: 0, y: 0, z: 0} : value.angularVelocity,
         reach: {...value.reach}, calibrationRevision: value.calibrationRevision};
       neutralPose = false;
+      if (mode === 'motion') sentSampleSequence = value.sequence;
       lastSent = now;
       send({type: 'wee:player-pose', event});
       return event;

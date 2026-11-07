@@ -98,4 +98,19 @@ describe('standard tennis scoring', () => {
             server: 'player1', completedSets: [], lastPoint: null,
         });
     });
+
+    test('split sets require a deciding third set and never a fourth', () => {
+        const score = new ScoreSystem();
+        for (let i = 0; i < 6; i++) game(score, 'player1');
+        for (let i = 0; i < 6; i++) game(score, 'player2');
+        expect(score.getScore()).toMatchObject({setsPlayer1: 1, setsPlayer2: 1, matchWinner: null});
+        reachTieBreak(score);
+        for (let i = 0; i < 6; i++) { point(score, 'player1'); point(score, 'player2'); }
+        expect(point(score, 'player2')?.kind).toBe('point');
+        expect(point(score, 'player2')).toEqual({kind: 'match', player: 2});
+        expect(score.getScore()).toMatchObject({setsPlayer1: 1, setsPlayer2: 2,
+            completedSets: [{player1: 6, player2: 0}, {player1: 0, player2: 6}, {player1: 6, player2: 7}]});
+        expect(point(score, 'player1')).toBeNull();
+        expect(score.getScore().completedSets).toHaveLength(3);
+    });
 });

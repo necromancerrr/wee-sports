@@ -29,7 +29,7 @@ import { request } from '../lib/socket.js';
 import { useReconnect } from '../lib/useReconnect.js';
 import { ReconnectNotice } from '../components/ReconnectNotice.jsx';
 import { sportName } from '../lib/sports.js';
-import { PrototypeFrame } from '../components/PrototypeFrame.jsx';
+import { GameFrame } from '../components/GameFrame.jsx';
 import { usePhoneLink } from '../lib/usePhoneLink.js';
 import { PhoneSoundToggle } from '../components/PhoneSoundToggle.jsx';
 import { ThemeToggle } from '../components/ThemeToggle.jsx';
@@ -205,7 +205,7 @@ export default function JoinStub() {
         {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} /> : null}
         {isController(seat.sport, seat.slot) ? (
           <>
-            <PrototypeFrame code={seat.code} controller controllerIntent={controllerIntent} onControllerMode={controllerMode} player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
+            <GameFrame code={seat.code} controller controllerIntent={controllerIntent} onControllerMode={controllerMode} player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
               playing={phase === PHASES.GAME}
               paused={phase !== PHASES.GAME || reconnecting || seat.paused}
               manuallyPaused={Boolean(lobby.manuallyPaused && !reconnecting && !lobby.reconnecting?.length && !lobby.setupPending?.length)}

@@ -7,6 +7,7 @@ That option uses ffmpeg only for decoding; it never downloads or plays anything.
 import argparse
 import array
 import math
+import random
 from pathlib import Path
 import struct
 import subprocess
@@ -64,6 +65,17 @@ def generate_cues():
     }
     for name, (notes, spacing, decay) in cues.items():
         save(ROOT / name, chime(notes, spacing, decay))
+    # Original hollow plastic-ball impacts: short transients, no sampled audio.
+    for name, frequency, decay in [('paddle', 940, .075), ('table', 690, .065), ('net', 370, .055)]:
+        noise = random.Random(23)
+        samples = []
+        for sample in range(round(decay * RATE)):
+            t = sample / RATE
+            envelope = min(1, t / .0008) * math.exp(-t * 95) * (1 - t / decay)
+            body = math.sin(2 * math.pi * frequency * t) + .32 * math.sin(2 * math.pi * frequency * 2.7 * t)
+            click = noise.uniform(-1, 1) * math.exp(-t * 460)
+            samples.append((body + .5 * click) * envelope)
+        save(ROOT / 'table-tennis' / f'{name}.wav', samples)
 
 
 def decode(path):

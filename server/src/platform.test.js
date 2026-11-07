@@ -99,6 +99,24 @@ test('continuous streams keep the latest sequence, discard burst samples and nev
   assert.equal(next.event.seq, 13);
 });
 
+test('the pose relay admits 60 Hz input with jitter and still rejects bursts without a queue', () => {
+  const f = fixture();
+  for (let seq = 0; seq < 60; seq++) {
+    if (seq) f.advance(seq % 2 ? 15 : 18);
+    assert.equal(f.store.continuousTarget('p1', f.pose(seq), 'pose').ok, true);
+  }
+  f.advance(1);
+  assert.equal(f.store.continuousTarget('p1', f.pose(60), 'pose').error, 'rate-limited');
+  f.advance(14);
+  // The rejected sample is still obsolete; retrying it cannot replay it later.
+  assert.equal(f.store.continuousTarget('p1', f.pose(60), 'pose').error, 'stale-sequence');
+  assert.equal(f.store.continuousTarget('p1', f.pose(61), 'pose').ok, true);
+  const bowling = fixture('bowling');
+  assert.equal(bowling.store.continuousTarget('p1', bowling.aim(0), 'aim').ok, true);
+  bowling.advance(18);
+  assert.equal(bowling.store.continuousTarget('p1', bowling.aim(1), 'aim').error, 'rate-limited');
+});
+
 test('pause cancels old-generation pose, and resume requires a fresh envelope', () => {
   const f = fixture();
   const before = f.pose();

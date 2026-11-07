@@ -371,7 +371,9 @@ export class RoomStore {
     const last = room.streams.get(key);
     if (last && event.seq <= last.seq) return {ok: false, error: 'stale-sequence'};
     const now = this.#now();
-    if (last && now - last.at < (kind === 'pose' ? 25 : 40)) {
+    // Admit ordinary 60 Hz paddle updates with transport jitter. The relay is
+    // latest-state/volatile; reject bursts instead of building an input queue.
+    if (last && now - last.at < (kind === 'pose' ? 12 : 40)) {
       last.seq = event.seq; return {ok: false, error: 'rate-limited'};
     }
     room.streams.set(key, {seq: event.seq, at: now});

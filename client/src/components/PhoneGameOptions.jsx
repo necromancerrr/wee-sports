@@ -18,7 +18,6 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
   const [confirmReturn, setConfirmReturn] = useState(false);
   const [resultMode, setResultMode] = useState(false);
   const resultShown = useRef(null);
-  const [format, setFormat] = useState('full');
   const [stroke, setStroke] = useState('alternate');
   const [hand, setHand] = useState('Right');
   const options = lobby.gameOptions;
@@ -58,7 +57,6 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
     setMessage(''); setResultMode(true);
     dialog.current?.showModal();
   }, [completed, disabled, lobby.paused, lobby.gameId, resultMode]);
-  useEffect(() => { if (settings?.format) setFormat(settings.format); }, [settings?.format]);
   async function command(action, detail = {}) {
     if (locked || pending.current) return;
     const gameId = lobby.gameId;
@@ -112,7 +110,7 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
           <p>{slot === 0 ? 'Another round?' : 'Player 1 can start the next game.'}</p>
           {lobby.paused || disabled ? <p role="status">{lobby.manuallyPaused ? 'Resume the game to play again.' : 'Reconnect everyone to play again.'}</p> : null}
           {slot === 0 ? <button type="button" className="btn btn--primary" disabled={locked}
-            onClick={() => command('new-match', tennis ? { format: settings?.format ?? 'full' } : {})}>{busy ? 'Starting…' : 'Play again'}</button> : null}
+            onClick={() => command('new-match', tennis ? { format: 'full' } : {})}>{busy ? 'Starting…' : 'Play again'}</button> : null}
           <p className="phone-options-message" role="status">{statusMessage}</p>
           <button type="button" className="btn btn--ghost" onClick={() => dialog.current?.close()}>{slot === 0 ? 'Not now' : 'Keep watching'}</button>
         </div> : <>
@@ -160,9 +158,9 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
                   {options.practice?.active ? 'Start a new ten-frame game' : 'Practice rolls (resets score)'}</button> : null}
               </>}
               <details className="phone-options-section"><summary>{tennis || tableTennis ? 'New match' : 'New bowling game'}</summary>
-                {tennis ? <label>Match length<select value={format} onChange={event => { setFormat(event.target.value); setConfirmRestart(false); }}><option value="full">Full · best of 3 sets</option><option value="quick">Quick · tie-break to 7</option></select></label> : null}
+                {tennis ? <p>Best of 3 sets. First to win 2 sets wins the match.</p> : tableTennis ? <p>First to 12 points. Win by 2.</p> : null}
                 <p className="stub__muted">This resets the current score for everyone.</p>
-                {confirmRestart ? <div className="phone-options-confirm"><button type="button" className="btn btn--primary" onClick={() => command('new-match', tennis ? { format } : {})}>Reset score and start</button>
+                {confirmRestart ? <div className="phone-options-confirm"><button type="button" className="btn btn--primary" onClick={() => command('new-match', tennis ? { format: 'full' } : {})}>Reset score and start</button>
                   <button type="button" className="btn btn--ghost" onClick={() => setConfirmRestart(false)}>Cancel</button></div>
                   : <button type="button" className="btn btn--secondary" onClick={() => setConfirmRestart(true)}>{tennis || tableTennis ? 'Start new match' : 'Start new bowling game'}</button>}
               </details>

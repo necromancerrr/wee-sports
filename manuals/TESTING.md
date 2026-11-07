@@ -37,3 +37,10 @@ events to check real controller/socket behavior, permission-call timing, curve
 direction and lifecycle cancellation. Both require an environment-provided
 Playwright and Chromium; commands are in the owner trial runbook. Neither
 runner exercises a physical sensor or a real permission dialog.
+
+The [game-quality follow-up](../docs/game-quality.md) explains the repeatable
+shot matrix, 12-point/deuce rules, three-set tennis, aim feedback, 60 Hz input
+scheduling and current Expo checks. Root tests cap worker concurrency at four
+to keep CPU-heavy rigid-body tests reliable on shared runners. Browser roll
+waits allow software rendering to reach the actual settled boundary; they
+must not be read as a real-device performance benchmark.

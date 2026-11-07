@@ -14,7 +14,7 @@ vi.mock('react', async () => ({ ...(await vi.importActual('react')),
 vi.mock('../client/src/lib/socket.js', () => ({ request: h.request, requestSwing: h.requestSwing, useConnection: () => h.connection,
   socket: { connected: true, volatile: { emit: h.emit },
     on(name, fn) { h.socketHandlers.set(name, fn); }, off(name) { h.socketHandlers.delete(name); } } }));
-import { PrototypeFrame } from '../client/src/components/PrototypeFrame.jsx';
+import { GameFrame } from '../client/src/components/GameFrame.jsx';
 
 let listener;
 let cleanups;
@@ -32,7 +32,7 @@ afterEach(() => { cleanups.forEach(cleanup => cleanup?.()); vi.clearAllTimers();
 function mount(overrides = {}) {
   const onAudio = vi.fn();
   let props = { code: 'ABCD', gameId: 'match-a', sport: 'tennis', onAudio, ...overrides };
-  PrototypeFrame(props);
+  GameFrame(props);
   const contentWindow = { postMessage: vi.fn() };
   h.refs[0].current = { contentWindow };
   let effects = h.effects;
@@ -44,7 +44,7 @@ function mount(overrides = {}) {
   const rerender = changes => {
     props = { ...props, ...changes };
     h.refIndex = 0; h.reuseRefs = true; h.effects = [];
-    PrototypeFrame(props);
+    GameFrame(props);
     h.reuseRefs = false;
     h.effects.forEach(({ effect, deps }, index) => {
       if (deps.some((dep, depIndex) => !Object.is(dep, effects[index].deps[depIndex]))) {
@@ -69,6 +69,20 @@ test('homepage audio accepts only the current game frame, sport, session and kno
     result: 'hit', reason: 'Good contact', receivedToContactMs: 66 };
   await f.receive(result);
   expect(h.emit).toHaveBeenCalledExactlyOnceWith(EVENTS.HOST_STROKE_RESULT, result);
+});
+
+test('table tennis contact and result cues cross only its active authenticated frame', async () => {
+  const f = mount({sport: 'table-tennis'});
+  const message = {type: 'wee:game-audio', gameId: 'match-a', sport: 'table-tennis', event: 'paddle-hit'};
+  await f.receive(message);
+  expect(f.onAudio).toHaveBeenCalledExactlyOnceWith('paddle-hit');
+  await f.receive({...message, event: 'point-win'});
+  expect(f.onAudio).toHaveBeenLastCalledWith('point-win');
+  await f.receive({...message, event: 'strike'});
+  await f.receive(message, {source: {}});
+  f.rerender({paused: true});
+  await f.receive(message);
+  expect(f.onAudio).toHaveBeenCalledTimes(2);
 });
 
 test.each([{ paused: true }, { playing: false }, { controller: true }])('inactive/phone frames cannot send TV effects: %j', async props => {
@@ -96,11 +110,11 @@ test('switching sports keeps the same controller document and sends sport throug
   expect(first.contentWindow.postMessage).toHaveBeenCalledWith(expect.objectContaining({
     type: 'wee:lobby-state', sport: 'tennis',
   }), window.location.origin);
-  PrototypeFrame({ code: 'ABCD', controller: true, player: 1, sport: 'bowling', gameId: 'match-b' });
+  GameFrame({ code: 'ABCD', controller: true, player: 1, sport: 'bowling', gameId: 'match-b' });
   expect(frames[1].src).toBe(frames[0].src);
   expect(frames[1].key).toBe(frames[0].key);
-  PrototypeFrame({ code: 'ABCD', controller: false, sport: 'tennis' });
-  PrototypeFrame({ code: 'ABCD', controller: false, sport: 'bowling' });
+  GameFrame({ code: 'ABCD', controller: false, sport: 'tennis' });
+  GameFrame({ code: 'ABCD', controller: false, sport: 'bowling' });
   expect(frames[2].src).not.toBe(frames[3].src);
 });
 

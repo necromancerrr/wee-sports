@@ -140,7 +140,9 @@ async function returnToLobby(host) {
     await segment(phone, frame, 200);
     assert.equal((await rolls(phone)).length, 1, 'one release remains latched while the ball is in flight');
     pass('A forward swing and wrist twist produce one bounded, authenticated roll; extra motion cannot duplicate it');
-    await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 30000});
+    // Software WebGL can advance the bounded physics clock slowly; this check
+    // verifies a settled turn, not real-phone frame rate or latency.
+    await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 60000});
     await segment(phone, frame, 600);
     await segment(phone, frame, 160, 400, 150);
     await hidden(frame, true);
@@ -164,7 +166,7 @@ async function returnToLobby(host) {
     await phone.waitForFunction(() => window.__bridge.filter(message => message.type === 'wee:player-roll').length === 2);
     assert.ok((await rolls(phone))[1].spin < 0, 'opposite wrist twist curves left');
     pass('Sensor gaps discard partial deliveries; a fresh opposite wrist turn produces the opposite curve');
-    await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 30000});
+    await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 60000});
     await returnToLobby(host);
     await host.getByLabel('Next sport', {exact: true}).selectOption('table-tennis');
     await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout: 20000});

@@ -267,9 +267,9 @@ test('new-match retries acknowledge once without resetting a second time', async
   expect(runtime.world.configure).toHaveBeenCalledOnce();
   expect(commandResults().map(message => message.result)).toEqual([{ ok: true }, { ok: true }]);
   command({ id: 'new-format', action: 'new-match', format: 'quick' });
-  expect(runtime.world.configure).toHaveBeenLastCalledWith({ format: 'quick' });
-  // The real configure method starts the round itself when the format changes.
-  expect(runtime.world.startRound).toHaveBeenCalledOnce();
+  expect(runtime.world.configure).toHaveBeenLastCalledWith({ format: 'full' });
+  // Each distinct command starts exactly one best-of-three match, even from an older phone.
+  expect(runtime.world.startRound).toHaveBeenCalledTimes(2);
 });
 
 test('solo practice controls work while human-opponent commands cannot enable practice or hide their view', async () => {
@@ -331,10 +331,18 @@ test('a completed set announces its winner once, then continues the match until 
   expect(document.getElementById('set-result').hidden).toBe(true);
 });
 
-test('quick-match result waits for a two-point margin and offers standalone replay', async () => {
+test('a deciding third-set tie-break waits for two points and offers standalone replay', async () => {
   window.parent = window;
   await import('../src/main.ts');
   const scoring = new ScoreSystem('quick');
+  for (let point = 0; point < 24; point++) scoring.awardPoint('player1', 'player2');
+  for (let point = 0; point < 24; point++) scoring.awardPoint('player2', 'player1');
+  runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
+  expect(document.getElementById('score-format').textContent).toBe('Set 3 of 3');
+  for (let game = 0; game < 6; game++) {
+    for (let point = 0; point < 4; point++) scoring.awardPoint('player1', 'player2');
+    for (let point = 0; point < 4; point++) scoring.awardPoint('player2', 'player1');
+  }
   for (let point = 0; point < 6; point++) {
     scoring.awardPoint('player1', 'player2'); scoring.awardPoint('player2', 'player1');
   }
@@ -344,8 +352,9 @@ test('quick-match result waits for a two-point margin and offers standalone repl
   scoring.awardPoint('player1', 'player2');
   runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
   expect(document.getElementById('match-result').hidden).toBe(false);
-  expect(document.getElementById('match-result-label').textContent).toBe('Match complete');
-  expect(document.getElementById('match-result-score').textContent).toBe('8–6 in the tie-break');
+  expect(document.getElementById('match-result-label').textContent).toBe('Game, set & match');
+  expect(document.getElementById('match-result-score').textContent).toBe('2–1 in sets');
+  expect(document.getElementById('match-result-detail').textContent).toBe('6–0 · 0–6 · 7–6');
   expect(document.getElementById('play-again').hidden).toBe(false);
   runtime.world.startRound.mockImplementation(() => { scoring.reset(); runtime.world.score = scoring.getScore(); });
   document.getElementById('play-again').onclick();

@@ -99,6 +99,7 @@ export default function HostStub() {
   // countdown starts (the click that opened this lobby usually counts).
   const { activateForPlay } = audio;
   useEffect(() => {
+    if (!lobby?.code) return;
     const unlock = () => { void activateForPlay(); };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
@@ -106,7 +107,7 @@ export default function HostStub() {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
     };
-  }, [activateForPlay]);
+  }, [activateForPlay, lobby?.code]);
   useEffect(() => { if (phase === PHASES.COUNTDOWN) void activateForPlay(); }, [phase, activateForPlay]);
 
   async function returnToLobby() {
@@ -149,7 +150,7 @@ export default function HostStub() {
 
   // Keep the game mounted through a temporary drop, so its local state survives.
   if (lobby?.phase === PHASES.GAME && !revealing) return <TvGame lobby={lobby}
-    onAudio={audio.onAudio}
+    onAudio={audio.onAudio} audioControls={audio.controls}
     onReturnToLobby={returnToLobby} returning={returning} returnDisabled={reconnecting || pausing}
     onPauseToggle={togglePause} pauseDisabled={reconnecting || pausing || returning || (lobby.gameState?.phase === 'complete' && !lobby.manuallyPaused)}
     immersive={immersive} fullscreen={fullscreen} onToggleView={immersive ? leaveGameView : enterGameView}
@@ -180,7 +181,7 @@ export default function HostStub() {
 
   return (
     <main className="stub host-lobby">
-      <div className="session-heading"><p className="eyebrow">TV lobby</p><ThemeToggle /></div>
+      <div className="session-heading"><p className="eyebrow">TV lobby</p>{audio.controls}<ThemeToggle /></div>
       <h1>{sportName(lobby.sport)} lobby</h1>
       <p className="stub__muted">{lobby.sport === 'table-tennis' ? 'One player, one phone. Practise returns or play a scored game against the bot.' : lobby.sport === 'bowling' ? 'One to four players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
       {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your session.</p> : null}

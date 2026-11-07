@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       </section>
       <details id="court-options" class="tennis-local-options"><summary>Play options & practice</summary><p id="connection"></p>
       <div class="tennis-options">
-      <label>Match <select id="match-format"><option value="full">Full · best of 3 sets</option><option value="quick">Quick · tie-break to 7</option></select></label>
+      <p>Best of 3 sets · first to win 2 sets.</p>
       <button id="new-match" type="button">Start new match</button>
       <label>Assistance <select id="assist-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
       <label>Bot challenge <select id="bot-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
@@ -164,22 +164,20 @@ async function main(): Promise<void> {
         const setNumber = Math.min(3, score.completedSets.length + (score.matchWinner ? 0 : 1));
         el('score-format').textContent = practice.active ? 'Practice'
             : score.matchWinner ? 'Final score'
-            : score.tieBreak ? score.format === 'quick' ? 'Quick match' : 'Tie-break'
+            : score.tieBreak ? 'Tie-break'
             : score.player1 === 40 && score.player2 === 40 ? 'Deuce'
             : score.player1 === 'Adv' || score.player2 === 'Adv'
-                ? 'Advantage' : `Set ${setNumber}`;
-        el('games-progress').textContent = score.format === 'quick' ? 'First to 7 · win by 2'
-            : score.matchWinner ? `Sets ${score.setsPlayer1}–${score.setsPlayer2}`
+                ? 'Advantage' : `Set ${setNumber} of 3`;
+        el('games-progress').textContent = score.matchWinner ? `Sets ${score.setsPlayer1}–${score.setsPlayer2}`
                 : `Games ${score.roundsPlayer1}–${score.roundsPlayer2}`;
-        el('sets-progress').textContent = score.format === 'quick' ? ''
-            : score.matchWinner ? score.completedSets.map(set => `${set.player1}–${set.player2}`).join(' · ')
+        el('sets-progress').textContent = score.matchWinner ? score.completedSets.map(set => `${set.player1}–${set.player2}`).join(' · ')
                 : `Sets ${score.setsPlayer1}–${score.setsPlayer2}`;
         el('completed-sets').textContent = score.completedSets.map((set, index) => `Set ${index + 1}: ${set.player1}–${set.player2}`).join(' · ');
         const point = score.lastPoint;
         const pointScore = !score.tieBreak && score.player1 === 40 && score.player2 === 40 ? 'Deuce'
             : score.player1 === 'Adv' || score.player2 === 'Adv'
                 ? `Advantage ${names[score.player1 === 'Adv' ? 0 : 1]}` : `${score.player1}–${score.player2}`;
-        const result = practice.active ? '' : point ? `${point.kind === 'match' ? score.format === 'quick' ? 'Match' : 'Game, set and match' : point.kind[0].toUpperCase() + point.kind.slice(1)} · ${names[point.player - 1]}${point.kind === 'point' ? ` · ${pointScore}` : ''}${point.reason ? ` · ${pointReasonLabel(point.reason)}` : ''}` : '';
+        const result = practice.active ? '' : point ? `${point.kind === 'match' ? 'Game, set and match' : point.kind[0].toUpperCase() + point.kind.slice(1)} · ${names[point.player - 1]}${point.kind === 'point' ? ` · ${pointScore}` : ''}${point.reason ? ` · ${pointReasonLabel(point.reason)}` : ''}` : '';
         if (result !== lastResult) { lastResult = result; resultUntil = performance.now() + 1800; }
         const ballData = world.ball.userData as BallUserData;
         const servingPlayer = score.server === 'player1' ? 0 : 1;
@@ -203,13 +201,10 @@ async function main(): Promise<void> {
         el('match-result').hidden = practice.active || !score.matchWinner;
         if (score.matchWinner) {
             const winner = score.matchWinner === 'player1' ? 0 : 1;
-            setText('match-result-label', score.format === 'quick' ? 'Match complete' : 'Game, set & match');
+            setText('match-result-label', 'Game, set & match');
             setText('match-winner', `${names[winner]} wins!`);
-            setText('match-result-score', score.format === 'quick'
-                ? `${winner === 0 ? score.player1 : score.player2}–${winner === 0 ? score.player2 : score.player1} in the tie-break`
-                : `${winner === 0 ? score.setsPlayer1 : score.setsPlayer2}–${winner === 0 ? score.setsPlayer2 : score.setsPlayer1} in sets`);
-            setText('match-result-detail', score.format === 'quick' ? 'First to seven · win by two.'
-                : score.completedSets.map(set => winner === 0 ? `${set.player1}–${set.player2}` : `${set.player2}–${set.player1}`).join(' · '));
+            setText('match-result-score', `${winner === 0 ? score.setsPlayer1 : score.setsPlayer2}–${winner === 0 ? score.setsPlayer2 : score.setsPlayer1} in sets`);
+            setText('match-result-detail', score.completedSets.map(set => winner === 0 ? `${set.player1}–${set.player2}` : `${set.player2}–${set.player1}`).join(' · '));
             setText('match-replay-prompt', embedded ? 'Play again? Choose on your phone.' : 'Ready for another match?');
         }
         (el('play-again') as HTMLButtonElement).disabled = paused;
@@ -247,7 +242,7 @@ async function main(): Promise<void> {
         if (paused) return;
         playSound('stop');
         world.stopPractice();
-        world.configure({ format: (el('match-format') as HTMLSelectElement).value as 'full' | 'quick' });
+        world.configure({ format: 'full' });
         world.startRound(); playSound('start'); updateScore();
     };
     el('practice-start').onclick = () => {
@@ -291,11 +286,8 @@ async function main(): Promise<void> {
         } else if (command.action === 'new-match') {
             playSound('stop');
             world.stopPractice();
-            const previousFormat = world.getSettings().format;
-            world.configure({format: command.format});
-            // configure already restarts for a changed format.
-            if (previousFormat === command.format) world.startRound();
-            (el('match-format') as HTMLSelectElement).value = command.format;
+            world.configure({format: 'full'});
+            world.startRound();
             playSound('start');
         } else if (command.action === 'practice-start') {
             world.startPractice(command.stroke, command.hand);

@@ -3,7 +3,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
 body { margin: 0; background: #203a32; color: var(--text); font-family: var(--font); }
 #bowling-app { position: relative; width: 100%; height: 100dvh; min-height: 0; overflow: hidden; }
 #lane { position: absolute; inset: 0; overflow: hidden; }
-.bowling-hud { width: min(1040px, calc(100% - 32px)); border-radius: 15px; padding: 9px 12px 8px; backdrop-filter: blur(12px); }
+.bowling-hud { width: min(1040px, calc(100% - 32px)); border-radius: 20px; padding: 12px 16px 10px; background: var(--surface); backdrop-filter: none; box-shadow: 0 12px 40px #09231b24; }
 .bowling-embedded .bowling-hud { top: max(54px, calc(env(safe-area-inset-top) + 48px)); }
 .bowling-heading { gap: 8px; margin-bottom: 7px; }
 .bowling-heading h1 { margin: 0; color: var(--accent-ink); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; line-height: 1.3; font-weight: 900; }
@@ -35,7 +35,16 @@ body { margin: 0; background: #203a32; color: var(--text); font-family: var(--fo
 .bowling-callout[data-kind='spare'] { border-color: #9fd6e9; }
 .bowling-callout[data-kind='spare'] strong { color: #b4e9f5; }
 @keyframes bowling-call-in { from { opacity: 0; translate: 0 10px; scale: .96; } to { opacity: 1; translate: 0 0; scale: 1; } }
-.bowling-help { position: absolute; bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 28px); padding: 6px 12px; border-radius: 20px; color: #fff; background: #142c2ac7; font-size: 11px; text-align: center; margin: 0; }
+.bowling-aim { --aim-position: 50%; position: absolute; bottom: max(22px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(278px, calc(100% - 32px)); padding: 12px 18px 13px; border: 1px solid #c5ffe045; border-radius: 20px; background: #12342ff5; box-shadow: 0 10px 30px #06211b30; color: #effff5; pointer-events: none; }
+.bowling-aim[hidden] { display: none; }
+.bowling-aim__heading { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 800; }
+.bowling-aim__state { color: #c5ffe0; font-size: 10px; text-transform: uppercase; letter-spacing: .09em; }
+.bowling-aim__track { position: relative; height: 4px; margin: 15px 4px; border-radius: 3px; background: #a2c8b74a; }
+.bowling-aim__track::before { content: ''; position: absolute; left: 50%; top: -4px; height: 12px; width: 1px; background: #d5f2e45c; }
+.bowling-aim__marker { position: absolute; left: var(--aim-position); top: -5px; width: 14px; height: 14px; border-radius: 5px 5px 3px 3px; transform: translateX(-50%) rotate(45deg); background: #c5ffe0; box-shadow: 0 0 0 3px #12342f; }
+.bowling-aim[data-locked='true'] .bowling-aim__marker { background: #ffdb7d; }
+.bowling-aim[data-locked='true'] .bowling-aim__state { color: #ffdb7d; }
+.bowling-help { color: #deece3; font-size: 11px; line-height: 1.4; text-align: center; margin: 0; }
 #bowling-app button { border: 1px solid var(--accent-bottom); border-radius: var(--radius-sm); background: linear-gradient(var(--accent-top), var(--accent-bottom)); color: white; padding: 10px 18px; font: 800 13px var(--font); cursor: pointer; }
 #bowling-app button:disabled { opacity: .45; cursor: default; }
 #bowling-app button:focus-visible, #bowling-app input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -44,7 +53,7 @@ body { margin: 0; background: #203a32; color: var(--text); font-family: var(--fo
 .bowling-controls { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
 .bowling-controls label { display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 800; }
 .bowling-controls input { width: 110px; accent-color: var(--accent-ink); }
-#bowling-app:has(#local-controls:not([hidden])) .bowling-help { display: none; }
+#bowling-app:has(#local-controls:not([hidden])) .bowling-aim { bottom: 174px; }
 @media (max-width: 540px) {
   .bowling-hud { width: calc(100% - 14px); padding: 7px 8px; }
   .bowling-embedded .bowling-hud { top: max(48px, calc(env(safe-area-inset-top) + 44px)); }

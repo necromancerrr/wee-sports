@@ -17,6 +17,10 @@ export const mix = (a, b, t) => add(scale(a, 1 - t), scale(b, t));
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const bounded = (a, max) => length(a) > max ? scale(unit(a), max) : a;
 
+/** Live force law; the contact-time planner uses its allocation-free equivalent. */
+export const flightAcceleration = (velocity, spin) => add(v3(0, -9.81, 0),
+  add(scale(velocity, -MATERIAL.drag * length(velocity)), scale(cross(spin, velocity), MATERIAL.magnus)));
+
 export function makePaddle(player) {
   const sign = player === 1 ? 1 : -1;
   return {player, position: v3(0, 1.02, sign * 1.19), previous: v3(0, 1.02, sign * 1.19),
@@ -57,6 +61,9 @@ export class TableTennisPhysics {
     this.accumulator = 0;
     this.droppedSeconds = 0;
     this.onEvent = () => {};
+    // Optional game assistance resolves only an actual swept contact. It may
+    // choose the outgoing impulse, never move the ball or steer it in flight.
+    this.resolvePaddleContact = null;
   }
 
   launch(position, velocity, spin = v3()) {
@@ -96,9 +103,7 @@ export class TableTennisPhysics {
   substep(dt, from, to, fullDt) {
     const ball = this.ball;
     if (!ball.active) return;
-    const speed = length(ball.velocity);
-    const force = add(v3(0, -9.81, 0), add(scale(ball.velocity, -MATERIAL.drag * speed),
-      scale(cross(ball.spin, ball.velocity), MATERIAL.magnus)));
+    const force = flightAcceleration(ball.velocity, ball.spin);
     ball.velocity = bounded(add(ball.velocity, scale(force, dt)), MATERIAL.maxSpeed);
     ball.spin = scale(ball.spin, Math.exp(-.12 * dt));
     let remaining = dt;
@@ -141,12 +146,23 @@ export class TableTennisPhysics {
         const relative = sub(ball.velocity, surface);
         const normalSpeed = dot(relative, hit.normal);
         if (normalSpeed < 0) {
+          const incomingVelocity = {...ball.velocity};
           const tangent = sub(relative, scale(hit.normal, normalSpeed));
           ball.velocity = add(surface, add(scale(hit.normal, -normalSpeed * MATERIAL.paddleRestitution), scale(tangent, MATERIAL.paddleTangentialRetention)));
           const brushTorque = 2.5 * (1 - MATERIAL.paddleTangentialRetention) / BALL.radius;
           ball.spin = bounded(add(scale(ball.spin, .5), scale(cross(hit.normal, tangent), brushTorque)), MATERIAL.maxSpin);
           ball.velocity = bounded(ball.velocity, MATERIAL.maxSpeed);
-          this.emit('hit', {player: hit.paddle.player, position: {...ball.position}});
+          const response = this.resolvePaddleContact?.({player: hit.paddle.player, position: {...ball.position},
+            incomingVelocity, velocity: {...ball.velocity}, spin: {...ball.spin}});
+          let assisted = false;
+          if (response && [response.velocity, response.spin].every(vector => vector &&
+            ['x', 'y', 'z'].every(axis => Number.isFinite(vector[axis])))) {
+            ball.velocity = bounded({...response.velocity}, MATERIAL.maxSpeed);
+            ball.spin = bounded({...response.spin}, MATERIAL.maxSpin);
+            assisted = true;
+          }
+          this.emit('hit', {player: hit.paddle.player, position: {...ball.position},
+            velocity: {...ball.velocity}, assisted});
         }
       } else if (hit.kind === 'bounce') {
         const surface = cross(ball.spin, v3(0, -BALL.radius, 0));

@@ -22,6 +22,7 @@ let inputGeneration: number | undefined;
 let hostEpoch: number | undefined;
 let lastAimSequence = -1;
 let lastAimPlayer: number | null = null;
+let previousPhase: BowlingState['phase'] | null = null;
 let lastCheckpoint = '';
 let restored = false;
 let restoring = false;
@@ -75,8 +76,25 @@ function audioEvent(event: string): void {
   else sound?.play(event);
 }
 
+function showAim(aim: number, locked = false): void {
+  (el('aim') as HTMLInputElement).value = String(aim);
+  const guide = el('aim-hud');
+  guide.style.setProperty('--aim-position', `${50 + aim * 45}%`);
+  guide.dataset.locked = String(locked);
+  el('aim-label').textContent = `Aim · ${Math.abs(aim) < .08 ? 'centre' : aim < 0 ? 'left' : 'right'}`;
+  el('aim-state').textContent = locked ? 'Locked' : 'Live';
+  el('help').textContent = locked ? 'Follow through. Turn your wrist to curve.' : 'Tilt to aim. Swing forward to bowl.';
+}
+
 function render(state: BowlingState): void {
-  if (state.currentPlayer !== lastAimPlayer) { lastAimSequence = -1; lastAimPlayer = state.currentPlayer; }
+  const changedPlayer = state.currentPlayer !== lastAimPlayer;
+  if (changedPlayer) { lastAimSequence = -1; lastAimPlayer = state.currentPlayer; }
+  if (!restoring && state.phase === 'ready' && (changedPlayer || previousPhase === 'rolling')) {
+    // A completed delivery never leaves a gold, locked guide for the next turn.
+    showAim(0); world?.setAim(0);
+  }
+  previousPhase = state.phase;
+  el('aim-hud').hidden = paused || state.phase !== 'ready';
   complete = state.complete;
   const call = callouts.observe(state, paused);
   if (paused || state.phase === 'rolling' || !state.lastRoll) clearCallout();
@@ -159,6 +177,7 @@ function newMatch(): void {
   audioEvent('stop');
   clearCallout(); callouts.reset();
   delivered.clear(); world?.reset();
+  showAim(0); world?.setAim(0);
   lastAimSequence = -1;
   audioEvent('start'); publishOptions();
 }
@@ -208,7 +227,7 @@ function receive(event: MessageEvent): void {
       restoring = true;
       ok = world.restoreCheckpoint(data.payload);
       restoring = false;
-      if (ok) { restored = true; lastCheckpoint = JSON.stringify(world.exportCheckpoint()); publishOptions(); }
+      if (ok) { restored = true; showAim(data.payload.settings.aim); lastCheckpoint = JSON.stringify(world.exportCheckpoint()); publishOptions(); }
     }
     post({type: 'wee:restore-checkpoint-result', gameId, ok, ...(ok ? {} : {error: 'checkpoint-unavailable'})});
   } else if (data?.type === 'wee:game-aim') {
@@ -223,7 +242,7 @@ function receive(event: MessageEvent): void {
         (hostEpoch !== undefined && aim.hostEpoch !== hostEpoch)) return;
     lastAimSequence = sequence;
     world.setAim(aim.aim, aim.locked);
-    el('help').textContent = aim.locked ? 'Aim locked · swing forward to release.' : 'Live aim · arm your roll to lock this direction.';
+    showAim(aim.aim, aim.locked);
   } else if (data?.type === 'wee:game-command') {
     const command = data.command;
     if (!command || typeof command.id !== 'string') return;
@@ -239,7 +258,7 @@ function receive(event: MessageEvent): void {
       if (command.action === 'practice-start' || command.action === 'practice-stop') {
         const ok = world.setPractice(command.action === 'practice-start');
         result = ok ? {ok: true} : {ok: false, error: 'practice-requires-solo'};
-        if (ok) { callouts.reset(); clearCallout(); delivered.clear(); publishOptions(); }
+        if (ok) { callouts.reset(); clearCallout(); delivered.clear(); showAim(0); world.setAim(0); publishOptions(); }
       } else { newMatch(); result = {ok: true}; }
     }
     post({type: 'wee:game-command-result', id: command.id, gameId, result});
@@ -268,11 +287,14 @@ el('roll').onclick = () => {
   const value = (id: string): number => Number((el(id) as HTMLInputElement).value);
   world.roll({player, aim: value('aim'), spin: value('spin'), power: value('power')});
 };
-el('aim').oninput = () => world?.setAim(Number((el('aim') as HTMLInputElement).value));
+el('aim').oninput = () => {
+  const aim = Number((el('aim') as HTMLInputElement).value);
+  world?.setAim(aim); showAim(aim);
+};
 const practiceButton = document.getElementById('practice');
 if (practiceButton) practiceButton.onclick = () => {
   if (!world || paused) return;
-  if (world.setPractice(!world.getState().practice)) { callouts.reset(); clearCallout(); publishOptions(); }
+  if (world.setPractice(!world.getState().practice)) { callouts.reset(); clearCallout(); showAim(0); world.setAim(0); publishOptions(); }
 };
 function syncWorldState(): void {
   paused = lobbyPaused || pageSuspended;
@@ -288,7 +310,7 @@ function pauseShortcut(event: KeyboardEvent): void {
 window.addEventListener('message', receive);
 window.addEventListener('keydown', pauseShortcut);
 try {
-  if (!embedded) { create([{player: 1, name: 'Player 1'}]); el('local-controls').hidden = false; el('help').textContent = 'Aim, choose your curve and power, then roll. X = strike · / = spare · ten frames to make your mark.'; }
+  if (!embedded) { create([{player: 1, name: 'Player 1'}]); el('local-controls').hidden = false; el('help').textContent = 'Choose your aim below, then roll.'; }
   post({type: 'wee:bridge-ready'});
 } catch (error) {
   el('frame-label').textContent = 'Lane unavailable';

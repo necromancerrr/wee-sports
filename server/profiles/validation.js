@@ -78,7 +78,8 @@ export function checkpoint(sport, value) {
     keys(value, ['version', 'boundary', 'rules', 'settings', 'seed', 'mode', 'practiceReturns']);
     if (value.boundary !== 'point' || !object(value.rules) || !Number.isInteger(value.seed) || value.seed < 0 || value.seed > 0xffffffff ||
         !['practice', 'bot'].includes(value.mode) || !Number.isSafeInteger(value.practiceReturns) || value.practiceReturns < 0) fail('unstable-checkpoint');
-    keys(value.rules, ['firstServer', 'score', 'pointId', 'phase', 'winner']);
+    keys(value.rules, ['firstServer', 'score', 'pointId', 'phase', 'winner', 'targetPoints']);
+    if (value.rules.targetPoints !== undefined && ![11, 12].includes(value.rules.targetPoints)) fail('invalid-state');
     keys(value.settings, ['assistance', 'sensitivity']);
     if (!['friendly', 'standard'].includes(value.settings.assistance) || !Number.isFinite(value.settings.sensitivity) ||
         value.settings.sensitivity < .25 || value.settings.sensitivity > 2) fail('invalid-state');

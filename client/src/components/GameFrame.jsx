@@ -4,8 +4,10 @@ import { request, requestSwing, socket, useConnection } from '../lib/socket.js';
 import { createInputId } from '../../../src/network/inputId.js';
 
 const NO_PLAYERS = [];
-/** Keep the game/controller alive while the outer page owns the lobby session. */
-export function PrototypeFrame({ code, controller = false, controllerIntent = null, onControllerMode, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
+/** Authenticated bridge between the lobby and an isolated WebGL game/controller.
+ * Owns input delivery, lifecycle gating, checkpoint recovery, and feedback.
+ */
+export function GameFrame({ code, controller = false, controllerIntent = null, onControllerMode, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
   const frame = useRef(null);
   const ready = useRef(false);
   const pending = useRef(new Map());
@@ -268,14 +270,14 @@ export function PrototypeFrame({ code, controller = false, controllerIntent = nu
     };
   }, [paused, manuallyPaused, connection, src, controller, controllerIntent, onControllerMode, attempt, players, playing, sport, gameId, gameState, generation, hostEpoch, matchRound, profilePreferences, player, onAudio, onPauseToggle]);
   return (
-    <div className={`prototype-frame ${controller ? 'prototype-frame--phone' : ''}`}>
+    <div className={`game-frame ${controller ? 'game-frame--phone' : ''}`}>
       {loading ? <p role="status">{failed ? 'Taking too long to load.' : `Loading ${controller ? 'controller' : sport}…`}
         {failed ? <button type="button" className="btn btn--ghost" onClick={() => setAttempt(value => value + 1)}>Retry loading</button> : null}</p> : null}
       {!controller && saveStatus ? <p className="game-save-status" role="status">{saveStatus}</p> : null}
       <iframe key={attempt} ref={frame} src={src} title={`${sport === 'bowling' ? 'Bowling' : sport === 'table-tennis' ? 'Table Tennis' : 'Tennis'} ${controller ? 'phone controller' : 'game'}`}
         style={controller ? { height } : undefined}
         allow={controller ? 'accelerometer; gyroscope; screen-wake-lock' : undefined} onLoad={publishState} />
-      {showPause ? <div className="prototype-frame__pause" role="status">{pauseMessage || 'Match paused. Reconnect and finish controller setup to continue.'}</div> : null}
+      {showPause ? <div className="game-frame__pause" role="status">{pauseMessage || 'Match paused. Reconnect and finish controller setup to continue.'}</div> : null}
     </div>
   );
 }

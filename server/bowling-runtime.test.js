@@ -47,14 +47,20 @@ const result = () => parent.postMessage.mock.calls.filter(([message]) => message
 test('live aim accepts only fresh authenticated current-turn state and never changes a moving ball', async () => {
   await import('../src/bowlingMain.ts');
   state({generation: 3, hostEpoch: 2});
+  expect(runtime.world.setAim).toHaveBeenCalledExactlyOnceWith(0);
+  expect(document.getElementById('aim-hud').hidden).toBe(false);
+  runtime.world.setAim.mockClear();
   const aim = (overrides = {}, source = parent) => receive({type: 'wee:game-aim', event: {
     gameId: 'bowl-one', player: 1, generation: 3, hostEpoch: 2, seq: 4, aim: .4, locked: true, ...overrides,
   }}, source);
   aim();
   expect(runtime.world.setAim).toHaveBeenCalledExactlyOnceWith(.4, true);
+  expect(document.getElementById('aim-label').textContent).toBe('Aim · right');
+  expect(document.getElementById('aim-state').textContent).toBe('Locked');
   for (const overrides of [{seq: 3}, {gameId: 'old'}, {player: 2}, {generation: 2}, {hostEpoch: 1}, {seq: 5, aim: NaN}, {seq: 5, aim: 2}]) aim(overrides);
   aim({seq: 5}, {});
   expect(runtime.world.setAim).toHaveBeenCalledTimes(1);
+  expect(document.getElementById('aim-label').textContent).toBe('Aim · right');
   runtime.world.rolling = true;
   aim({seq: 5});
   expect(runtime.world.setAim).toHaveBeenCalledTimes(1);
@@ -62,9 +68,26 @@ test('live aim accepts only fresh authenticated current-turn state and never cha
   state({generation: 4, hostEpoch: 2});
   aim({generation: 4, seq: 1, locked: false});
   expect(runtime.world.setAim).toHaveBeenLastCalledWith(.4, false);
+  expect(document.getElementById('aim-state').textContent).toBe('Live');
   state({generation: 4, hostEpoch: 2, paused: true});
+  expect(document.getElementById('aim-hud').hidden).toBe(true);
   aim({generation: 4, seq: 2});
   expect(runtime.world.setAim).toHaveBeenCalledTimes(2);
+});
+
+test('a completed delivery reveals an unlocked centre guide for the next turn', async () => {
+  await import('../src/bowlingMain.ts'); state({});
+  receive({type: 'wee:game-aim', event: {gameId: 'bowl-one', player: 1, seq: 1, aim: -.6, locked: true}});
+  expect(document.getElementById('aim-state').textContent).toBe('Locked');
+  receive({type: 'wee:game-roll', event: {id: 'delivery', gameId: 'bowl-one', player: 1, aim: -.6, spin: 0, power: .7}});
+  expect(document.getElementById('aim-hud').hidden).toBe(true);
+  runtime.match.record([1, 2]);
+  runtime.world.rolling = false;
+  runtime.world.onState(runtime.world.getState());
+  expect(runtime.world.setAim).toHaveBeenLastCalledWith(0);
+  expect(document.getElementById('aim-label').textContent).toBe('Aim · centre');
+  expect(document.getElementById('aim-state').textContent).toBe('Live');
+  expect(document.getElementById('aim-hud').hidden).toBe(false);
 });
 
 test('recovery bridge can request a fresh stable checkpoint without accepting a foreign request', async () => {

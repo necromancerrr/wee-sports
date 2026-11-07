@@ -164,7 +164,10 @@ export class ControllerSession {
   latest(kind, value) {
     if (!this.playing()) return false;
     const now = this.now();
-    if (now - this.lastSent[kind] < (kind === 'pose' ? 1000 / 30 : 50)) return false;
+    // The gyro provides about 60 samples/second. A little scheduling headroom
+    // keeps alternate 16 ms callbacks from being dropped by a 16.67 ms gate.
+    // Congestion still drops the current sample; no old pose is queued.
+    if (now - this.lastSent[kind] < (kind === 'pose' ? 12 : 50)) return false;
     const transport = this.socket.io?.engine?.transport;
     if (transport && !transport.writable) return false;
     this.lastSent[kind] = now;

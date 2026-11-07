@@ -30,7 +30,7 @@ stream, with touch fallback. Controllers open before Play and stay loaded throug
 countdown. Each must report live valid motion samples or active touch controls
 before readiness; the phone handles that exchange automatically after Play.
 Reloading a controller clears stale input and pauses an active match until fresh
-samples or touch controls are ready again. A simple network reconnect keeps the selected mode. Embedded swings use the same lobby session; standalone prototypes
+samples or touch controls are ready again. A simple network reconnect keeps the selected mode. Embedded swings use the same lobby session; standalone games
 retain their separate relay. The TV's game stays mounted and
 pauses during a lobby disconnect. Bowling and Table Tennis now checkpoint stable
 settled roll/point boundaries, including surviving pin transforms or table-tennis

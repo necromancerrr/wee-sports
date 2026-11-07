@@ -208,8 +208,13 @@ export function createPlayer(
                     const cloned = material.clone();
 
                     if ('color' in cloned) {
-                        (cloned as THREE.MeshStandardMaterial)
-                            .color.setHex(color);
+                        // The shipped GLB has unpainted Head, Hand and Body
+                        // meshes. Keep skin readable instead of tinting the
+                        // whole avatar one metallic team colour.
+                        const painted = cloned as THREE.MeshStandardMaterial;
+                        painted.color.setHex(/^(Head|Hand)$/i.test(child.name) ? 0xf0be91 : color);
+                        painted.metalness = 0;
+                        painted.roughness = .82;
                     }
 
                     return cloned;

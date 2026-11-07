@@ -1504,9 +1504,9 @@
 }
 /* The lobby stays mounted while the existing tennis pages run inside it. */
 .tennis-session { padding: 16px; }
-.prototype-frame { position: relative; margin: 16px 0; }
-.prototype-frame iframe { display: block; width: 100%; height: 75vh; min-height: 480px; border: 0; border-radius: 12px; }
-.prototype-frame__pause { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--page-overlay); color: var(--text); text-align: center; font-weight: 800; }
+.game-frame { position: relative; margin: 16px 0; }
+.game-frame iframe { display: block; width: 100%; height: 75vh; min-height: 480px; border: 0; border-radius: 12px; }
+.game-frame__pause { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--page-overlay); color: var(--text); text-align: center; font-weight: 800; }
 
 /* Continue the homepage's rounded, light surfaces through the whole session. */
 .host-lobby { max-width: 64rem; }
@@ -1527,7 +1527,7 @@
 .phone-session--simple .you h1 { font-size: 1.15rem; }
 .phone-session--simple .seat__badge--big { width: 2.4rem; height: 2.4rem; font-size: .9rem; }
 .phone-session--simple .phone-ready { padding: .4rem 0; }
-.phone-session--simple .prototype-frame { margin-top: .4rem; }
+.phone-session--simple .game-frame { margin-top: .4rem; }
 .phone-session .you { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
 .phone-session__name { min-width: 0; flex: 1; }
 .phone-session .you h1 { font-size: 1.4rem; overflow-wrap: anywhere; }
@@ -1538,8 +1538,8 @@
 .phone-session--playing .you h1 { font-size: 1.1rem; overflow-wrap: anywhere; }
 .phone-session--playing .you .stub__muted { margin-top: 2px; font-size: 0.85rem; }
 .phone-session--playing .seat__badge--big { width: 2.5rem; height: 2.5rem; font-size: 1rem; }
-.phone-session--playing .prototype-frame { margin: 12px 0; }
-.phone-session--playing .prototype-frame--phone iframe { min-height: 0; }
+.phone-session--playing .game-frame { margin: 12px 0; }
+.phone-session--playing .game-frame--phone iframe { min-height: 0; }
 .phone-session__options { padding: 0 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .phone-session__options summary { min-height: 48px; padding: 14px 0; cursor: pointer; font-weight: 800; color: var(--text-muted); }
 .phone-session__options summary span { float: right; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.08em; }
@@ -1586,9 +1586,9 @@
 .match-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .match-heading h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 900; }
 .match-pill { background: var(--accent-soft); color: var(--accent-ink); padding: 8px 16px; border-radius: var(--radius-pill); font-weight: 800; }
-.prototype-frame iframe { border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
-.prototype-frame--phone iframe { box-shadow: none; border: 0; height: 1050px; }
-.prototype-frame__pause { border-radius: var(--radius-lg); }
+.game-frame iframe { border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.game-frame--phone iframe { box-shadow: none; border: 0; height: 1050px; }
+.game-frame__pause { border-radius: var(--radius-lg); }
 @media (max-width: 600px) { .host-lobby .stub__row { padding: 16px; justify-content: center; text-align: center; } .tennis-session { padding: 16px; } }
 
 .game-save-status { position: absolute; z-index: 2; bottom: .5rem; left: 1rem; margin: 0; font-size: .75rem; padding: .3rem .65rem; border-radius: .5rem; background: var(--surface); color: var(--text-muted); pointer-events: none; }

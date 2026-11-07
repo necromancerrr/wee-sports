@@ -1,6 +1,7 @@
 import type { BallPlayer } from './components/ball';
 import type { PointReason, ServiceSide } from './tennisRules';
 
+/** `quick` is accepted from older controllers and normalized to best of three. */
 export type MatchFormat = 'full' | 'quick';
 
 export interface CompletedSet {
@@ -60,9 +61,8 @@ export class ScoreSystem {
     private lastPoint: PointResult | null = null;
     private format: MatchFormat;
 
-    public constructor(format: MatchFormat = 'full') {
-        this.format = format;
-        this.tieBreak = format === 'quick';
+    public constructor(_format: MatchFormat = 'full') {
+        this.format = 'full';
     }
 
     public get isComplete(): boolean {
@@ -104,14 +104,14 @@ export class ScoreSystem {
         return { ...this.lastPoint };
     }
 
-    public reset(format: MatchFormat = this.format): void {
-        this.format = format;
+    public reset(_format: MatchFormat = this.format): void {
+        this.format = 'full';
         this.points = { player1: 0, player2: 0 };
         this.games = { player1: 0, player2: 0 };
         this.sets = { player1: 0, player2: 0 };
         this.server = 'player1';
         this.tieBreakStarter = 'player1';
-        this.tieBreak = format === 'quick';
+        this.tieBreak = false;
         this.matchWinner = null;
         this.completedSets = [];
         this.lastPoint = null;
@@ -126,10 +126,6 @@ export class ScoreSystem {
     }
 
     private completeGame(winner: BallPlayer): PointResult['kind'] {
-        if (this.format === 'quick') {
-            this.matchWinner = winner;
-            return 'match';
-        }
         this.games[winner]++;
         this.points = { player1: 0, player2: 0 };
         // A tie-break's first server receives in the first game of the next set.

@@ -28,6 +28,27 @@ async function returnToLobby(host) {
     await host.getByRole('button', { name: 'End match and return', exact: true }).click();
 }
 
+async function waitForRoll(controller, host) {
+    const frame = host.frames().find(frame => frame.url().includes('/bowling.html'));
+    await frame.evaluate(() => {
+        const probe = {started: performance.now(), frames: 0, active: true};
+        window.__settlementProbe = probe;
+        const tick = () => { if (probe.active) { probe.frames++; requestAnimationFrame(tick); } };
+        requestAnimationFrame(tick);
+    });
+    try {
+        // Software WebGL may render fewer than ten frames/second. The game caps
+        // physics catch-up per frame; wait for the actual settled state instead
+        // of treating this functional smoke as a real-device latency benchmark.
+        await controller.getByRole('button', {name: 'Roll', exact: true}).waitFor({timeout: 60000});
+    } finally {
+        console.log('SETTLEMENT_RENDER', await frame.evaluate(() => {
+            const probe = window.__settlementProbe; probe.active = false;
+            return {frames: probe.frames, elapsedMs: Math.round(performance.now() - probe.started)};
+        }));
+    }
+}
+
 (async () => {
     const browser = await chromium.launch({ executablePath: process.env.WEE_SMOKE_CHROMIUM || '/usr/bin/chromium', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
     const failures = [];
@@ -56,7 +77,7 @@ async function returnToLobby(host) {
         pass('Bowling one-tap guest Play without a name, automatic touch readiness and authenticated live aim');
         await bc.getByRole('button', { name: 'Roll', exact: true }).click();
         await bc.getByText('Watch the lane', { exact: true }).waitFor({ timeout: 5000 });
-        await bc.getByRole('button', { name: 'Roll', exact: true }).waitFor({ timeout: 30000 });
+        await waitForRoll(bc, host);
         await host.getByText('Progress saved.', { exact: true }).waitFor({ timeout: 5000 });
         const before = await bg.locator('body').innerText();
         assert.match(before, /Ball 2|Frame 2/);
@@ -89,7 +110,7 @@ async function returnToLobby(host) {
         await tc.locator('#tt-touch-stroke').click();
         await tc.getByText('Options', { exact: true }).click();
         await tc.locator('#tt-match-phone').click();
-        await tg.getByText('First to 11 · win by 2', { exact: true }).waitFor({ timeout: 6000 });
+        await tg.getByText('First to 12 · win by 2', { exact: true }).waitFor({ timeout: 6000 });
         pass('Table Tennis automatic touch setup, compact stroke and optional scored bot mode');
         if (process.env.WEE_SMOKE_SCREENSHOT)
             await host.screenshot({ path: process.env.WEE_SMOKE_SCREENSHOT });
@@ -151,7 +172,7 @@ async function returnToLobby(host) {
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
         await recoveryController.getByRole('button', { name: 'Roll', exact: true }).click();
         await recoveryController.getByText('Watch the lane', { exact: true }).waitFor();
-        await recoveryController.getByRole('button', { name: 'Roll', exact: true }).waitFor({ timeout: 30000 });
+        await waitForRoll(recoveryController, host);
         await host.getByText('Progress saved.', { exact: true }).waitFor();
         const saved = await host.evaluate(async () => {
             const { history } = await (await fetch('/api/profile/history')).json();

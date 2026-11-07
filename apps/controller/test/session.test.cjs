@@ -66,6 +66,39 @@ test('backgrounding cancels buffered input and cannot emit gameplay while suspen
   session.dispose();
 });
 
+test('native table-tennis poses preserve 60 Hz samples and drop congestion without a replay queue', async () => {
+  const {session, socket, advance, EVENTS} = await fixture();
+  for (let index = 0; index < 60; index++) {
+    assert.equal(session.latest('pose', {reach: {x: index / 60, y: 0}}), true);
+    assert.equal(session.latest('pose', {reach: {x: -1, y: 0}}), false, 'a same-tick burst is bounded');
+    advance(index % 2 ? 17 : 16);
+  }
+  assert.equal(socket.sent.length, 60);
+  socket.io.engine.transport.writable = false;
+  for (let index = 0; index < 6; index++) {
+    advance(17);
+    assert.equal(session.latest('pose', {reach: {x: -.5, y: 0}}), false);
+  }
+  assert.deepEqual(socket.sendBuffer, []);
+  socket.io.engine.transport.writable = true;
+  assert.equal(session.latest('pose', {reach: {x: .8, y: 0}}), true);
+  assert.equal(socket.sent.length, 61);
+  assert.equal(socket.sent.at(-1).event, EVENTS.PLAYER_POSE);
+  assert.equal(socket.sent.at(-1).payload.reach.x, .8);
+  assert.equal(socket.sent.at(-1).payload.seq, 60);
+  session.dispose();
+});
+
+test('faster table-tennis input does not raise bowling aim traffic', async () => {
+  const {session, socket, advance} = await fixture();
+  for (let index = 0; index < 60; index++) {
+    session.latest('aim', {aim: index / 60});
+    advance(1000 / 60);
+  }
+  assert.ok(socket.sent.length >= 15 && socket.sent.length <= 20);
+  session.dispose();
+});
+
 test('timed out deliberate action has one stable id and is never automatically resent', async () => {
   const { session, socket, EVENTS } = await fixture();
   socket.responses.set(EVENTS.PLAYER_ROLL, 'timeout');

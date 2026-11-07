@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {BowlingMatch, BowlingPlayer, BowlingState, BowlingMatchCheckpoint, BowlingResult} from './match';
 import {BALL_RADIUS, BowlingPhysics, LANE, PIN_COM, pinSpot, RollControls, RollSettlement, validRoll, SettledPin, validSettledPins} from './physics';
+import {createBowlingAimGuide, updateBowlingAimGuide} from './aimGuide';
 
 export type {BowlingPlayer, BowlingState} from './match';
 export interface BowlingRoll extends RollControls {player: number}
@@ -76,9 +77,7 @@ export class BowlingWorld {
     this.buildAlley();
     this.buildPins();
     this.buildBall();
-    this.aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({
-      color: 0x496c25, dashSize: 0.15, gapSize: 0.13, transparent: true, opacity: 0.65,
-    }));
+    this.aimLine = createBowlingAimGuide();
     this.scene.add(this.aimLine);
     const trailGeometry = new THREE.BufferGeometry();
     trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3).setUsage(THREE.DynamicDrawUsage));
@@ -182,21 +181,7 @@ export class BowlingWorld {
   setAim(aim: number, locked = false): void {
     if (!Number.isFinite(aim) || this.rolling) return;
     this.aim = THREE.MathUtils.clamp(aim, -1, 1);
-    if (this.aimLine) {
-      const points = this.aimLine.geometry.getAttribute('position');
-      const endX = -Math.tan(this.aim * 0.06) * 7;
-      if (points?.count === 2) {
-        points.setXYZ(1, endX, .012, 7.35);
-        points.needsUpdate = true;
-      } else this.aimLine.geometry.setFromPoints([
-        new THREE.Vector3(0, 0.012, 0.35), new THREE.Vector3(endX, 0.012, 7.35),
-      ]);
-      this.aimLine.geometry.computeBoundingSphere();
-      this.aimLine.computeLineDistances();
-      const material = this.aimLine.material as THREE.LineDashedMaterial;
-      material.color.set(locked ? 0xffcc66 : 0x91c77c);
-      material.opacity = locked ? 1 : .8;
-    }
+    if (this.aimLine) updateBowlingAimGuide(this.aimLine, this.aim, locked);
   }
 
   reset(players: BowlingPlayer[] = this.players): void {
@@ -389,12 +374,13 @@ export class BowlingWorld {
 
   private buildAlley(): void {
     const wood = new THREE.MeshStandardMaterial({map: this.woodTexture(), roughness: 0.32, metalness: 0.05});
+    const adjacentWood = new THREE.MeshStandardMaterial({map: wood.map, color: '#a4b1a1', roughness: .6, metalness: 0});
     const gutter = new THREE.MeshStandardMaterial({color: '#344d43', roughness: 0.45, metalness: 0.3});
     const trim = new THREE.MeshStandardMaterial({color: '#f5f1e3', roughness: 0.5});
     const lime = new THREE.MeshStandardMaterial({color: '#b2d568', emissive: '#6b961d', emissiveIntensity: 0.2});
     this.mesh(new THREE.BoxGeometry(18, 0.15, 34), new THREE.MeshStandardMaterial({color: '#344c40', roughness: 0.9}), 0, -0.475, 10);
     for (const offset of [-3.2, -1.6, 0, 1.6, 3.2]) {
-      this.mesh(new THREE.BoxGeometry(LANE.width, 0.2, LANE.deckEnd + 1.6), wood, offset, -0.1, (LANE.deckEnd - 1.6) / 2);
+      this.mesh(new THREE.BoxGeometry(LANE.width, 0.2, LANE.deckEnd + 1.6), offset === 0 ? wood : adjacentWood, offset, -0.1, (LANE.deckEnd - 1.6) / 2);
       for (const side of [-1, 1]) {
         this.mesh(new THREE.BoxGeometry(LANE.gutterWidth, 0.06, LANE.deckEnd), gutter,
           offset + side * (LANE.width + LANE.gutterWidth) / 2, -0.14, LANE.deckEnd / 2);

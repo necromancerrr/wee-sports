@@ -56,7 +56,7 @@ function seed(store, owner, {id = 'source-match', sport = 'table-tennis', count 
   const participants = Array.from({length: count}, (_, i) => ({memberId: `${id}-p${i}`, name: `Player ${i + 1}`, profileId: owner.profile.id}));
   store.createMatch({matchId: id, sport, hostMemberId, participants});
   const state = sport === 'bowling' ? bowlingState(count) : tableState();
-  if (complete && sport === 'table-tennis') state.rules = {...state.rules, score: [11, 0], phase: 'complete', winner: 1, pointId: 11};
+  if (complete && sport === 'table-tennis') state.rules = {...state.rules, score: [12, 0], phase: 'complete', winner: 1, pointId: 12};
   const results = complete ? participants.map(p => ({memberId: p.memberId, score: 1, rank: 1, outcome: 'complete'})) : undefined;
   store.saveCheckpoint({matchId: id, hostMemberId, hostEpoch: 1, expectedRevision: 0, state, results});
   return state;

@@ -162,7 +162,7 @@ export default function App() {
         if (!current) return;
         sessionRef.current.latest('pose', {orientation:[0,0,0,1],reach:current.reach,
           angularVelocity:performance.now() - current.time < 70 ? current.velocity : {x:0,y:0,z:0},calibrationRevision:0});
-      }, 1000 / 30);
+      }, 1000 / 60);
     }
   }
   function endTouch() {
