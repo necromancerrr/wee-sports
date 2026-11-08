@@ -32,7 +32,7 @@ export function createSimpleSwingStream(label = 'Forehand') {
       peak = Math.max(peak, speed);
       angle += speed * Math.max(0, Math.min(gap, 100)) / 1000;
       if (sample.timeMs - started >= 100 && angle >= 22) {
-        pending.push({ label, early: true, complete: false, peakRotation: peak, detectionDelayMs: sample.timeMs - started, simple: true });
+        pending.push({ label, early: true, complete: false, startMs: started, peakRotation: peak, detectionDelayMs: sample.timeMs - started, simple: true });
         recovering = true; recoveryStarted = sample.timeMs; reset();
       }
     },
@@ -52,6 +52,7 @@ export function createBowlingMotionDetector() {
   let rotation = 0;
   let pitchRotation = 0;
   let slowSince = null;
+  let quietSamples = 0;
   let finished = false;
   let twist = 0;
   let accelerationPeak = 0;
@@ -67,7 +68,7 @@ export function createBowlingMotionDetector() {
     const spin = Math.sign(twist) * turn * .55 || 0;
     return { power, spin, peakRotation: peak };
   }
-  function reset() { started = null; peak = 0; rotation = 0; pitchRotation = 0; slowSince = null; twist = 0; accelerationPeak = 0; }
+  function reset() { started = null; peak = 0; rotation = 0; pitchRotation = 0; slowSince = null; quietSamples = 0; twist = 0; accelerationPeak = 0; }
   return {
     push(sample) {
       if (finished) return null;
@@ -95,9 +96,9 @@ export function createBowlingMotionDetector() {
       peak = Math.max(peak, pitch);
       rotation += speed * dt;
       pitchRotation += pitch * dt;
-      // Include wrist rotation as the swing slows into release. The detector
-      // closes after the same 80 ms deceleration window; later movement cannot
-      // change the delivery. Backswing samples were excluded above.
+      // Include wrist rotation as the swing slows into release. Active wrist
+      // turns keep the full 80 ms window; a confirmed, quiet finish can release
+      // sooner. Backswing samples were excluded above.
       const forwardPower = pitch >= Math.max(100, peak * .45);
       twist += sample.rotationBeta * dt;
       const acceleration = sample.acceleration;
@@ -105,12 +106,17 @@ export function createBowlingMotionDetector() {
         accelerationPeak = Math.max(accelerationPeak, Math.min(30, Math.hypot(acceleration.x, acceleration.y, acceleration.z)));
       }
       slowSince = pitch < peak * .45 ? slowSince ?? sample.timeMs : null;
-      if (slowSince !== null && sample.timeMs - slowSince >= 80) {
+      quietSamples = slowSince !== null && pitch <= 35 &&
+        Math.abs(sample.rotationBeta) <= 12 && Math.abs(sample.rotationGamma) <= 12 ? quietSamples + 1 : 0;
+      const settled = quietSamples >= 2 && sample.timeMs - slowSince >= 40;
+      if (slowSince !== null && (sample.timeMs - slowSince >= 80 || settled)) {
         if (sample.timeMs - started >= 160 && pitchRotation >= 25 && pitchRotation >= rotation * .55 && peak >= 150) {
           finished = true;
           return values();
         }
-        reset();
+        // A quick compact swing may settle before its minimum duration. Keep
+        // the original confirmation window to qualify it instead of erasing it.
+        if (sample.timeMs - slowSince >= 80) reset();
       }
       return null;
     },
@@ -121,7 +127,8 @@ export function createBowlingMotionDetector() {
 
 /** Natural swing entry: fresh quiet samples prepare the current player's turn.
  * A release stays latched until an authoritative turnKey changes. Pausing,
- * reconnecting, a local timeout or an acknowledgement cannot create a new turn.
+ * reconnecting or a local timeout cannot create a new turn. An explicit,
+ * correlated rejection that proves no ball was released can permit a retry.
  */
 export function createBowlingDeliveryGate({quietMs = 250, quietSpeed = 45} = {}) {
   let key, previous = null, quietSince = null, detector = null, aim = null, released = false;
@@ -148,6 +155,17 @@ export function createBowlingDeliveryGate({quietMs = 250, quietSpeed = 45} = {})
       return {...delivery, aim: aim ?? clamp(liveAim, -1, 1)};
     },
     suspend,
+    rejectRelease(turnKey, result) {
+      // Unknown outcomes and duplicates may already be moving on the TV. Do
+      // not unlock them on a timeout, a delayed ACK or a changed generation.
+      if (!released || turnKey !== key || result?.ok !== false || ![
+        'network-busy', 'disconnected', 'paused', 'not-playing', 'wrong-generation',
+        'game-loading', 'game-command-pending', 'not-ready-to-roll', 'not-your-turn', 'bad-roll',
+      ].includes(result.error)) return false;
+      released = false;
+      suspend();
+      return true;
+    },
     get phase() { return released ? 'finished' : detector?.phase ?? 'rest'; },
     get lockedAim() { return aim; },
     get preview() { return detector?.preview ?? {power: 0, spin: 0, peakRotation: 0}; },

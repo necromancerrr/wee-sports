@@ -40,6 +40,17 @@ test('TV reload preserves the room and players and transfers host permission', (
   assert.equal(store.hostedBy('host'), null);
 });
 
+test('reconnection snapshots distinguish the TV from a player named TV without exposing proof', () => {
+  const {store,code,host}=setup();
+  const player=store.join('named-tv',{v,code,name:'TV'});
+  store.disconnect('named-tv');store.disconnect('host');
+  const reconnecting=store.lobby(code).reconnecting;
+  assert.equal(reconnecting.filter(member=>member.name==='TV').length,2);
+  assert.deepEqual(new Set(reconnecting.map(member=>member.role)),new Set(['host','player']));
+  assert.equal(JSON.stringify(reconnecting).includes(host.token),false);
+  assert.equal(JSON.stringify(reconnecting).includes(player.token),false);
+});
+
 test('wrong tokens, room codes, roles, and protocol versions cannot resume', () => {
   const { store, players, code } = setup();
   const payload = { v, code, token: players[0].token, role: 'player' };

@@ -299,3 +299,12 @@ TV can return while its room remains alive; connected phones retain that room.
 This differs from **Close lobby**, which ends the room for everyone, and from a
 server restart, which expires all live room codes. Saved-game continuation has
 the separate boundaries described above.
+
+Both phone controllers offer **Go home**, including while reconnecting. This
+stops input immediately and remembers a private shortcut to **Return to room**
+while the seat is still available. Returning is always a choice. **Leave room**
+forgets that shortcut and works offline; **Close lobby** on the TV sends phones
+home automatically. A temporary TV disconnect shows **Waiting for the TV**.
+Room shortcuts do not extend the server's reservation or survive its restart.
+See [controller recovery and input delivery](docs/controller-recovery-input.md)
+for the behavior, latency changes and verification boundaries.

@@ -53,3 +53,12 @@ test('native start confirmation is tied to the ready roster, sport and connectio
   for(const change of [{sport:'tennis'},{inputGeneration:2},{players:[...seat.players,{id:'ari',slot:1,ready:true,setup:'buttons'}]}])assert.notEqual(startConfirmationKey({...seat,...change}),key);
   for(const change of [{paused:true},{canStart:false},{phase:'countdown'}])assert.equal(startConfirmationKey({...seat,...change}),null);
 });
+
+test('a missing TV is distinguished from a missing player named TV',async()=>{
+  const {controllerPlayState,waitingForTv}=await import('../src/controllerPresentation.js');
+  const seat={phase:'game',sport:'tennis',paused:true,reconnecting:[{role:'host',name:'TV'}]};
+  assert.equal(controllerPlayState(seat,'online','motion').title,'Waiting for the TV');
+  assert.equal(waitingForTv({...seat,reconnecting:[{role:'player',name:'TV'}]}),false);
+  assert.equal(waitingForTv({...seat,reconnecting:[{name:'TV'}]}),true,'older servers still show TV reconnection');
+  assert.equal(controllerPlayState(seat,'offline','motion').title,'Reconnecting');
+});

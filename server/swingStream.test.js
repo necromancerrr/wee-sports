@@ -95,6 +95,28 @@ test('a fast delivery stays latched through its full motion window and sensor ga
   assert.deepEqual(stream.analyze(true), []);
 });
 
+test('fast confirmation rejects an isolated post-peak dip and waits for sustained deceleration', () => {
+  const stream = createSwingStream('Right', {fast: true});
+  const events = [];
+  const push = (timeMs, magnitude) => {
+    stream.push({timeMs, rotationAlpha: magnitude * .45, rotationBeta: magnitude * .9, rotationGamma: 0});
+    events.push(...stream.analyze().filter(event => event.label !== 'Unknown'));
+  };
+  for (let timeMs = 0; timeMs <= 200; timeMs += 20) push(timeMs, 0);
+  for (const [time, magnitude] of [[220, 300], [240, 700], [260, 1100], [280, 1300],
+    [300, 1270], [320, 1200], [340, 975], [360, 1250]]) push(time, magnitude);
+  assert.deepEqual(events, [], 'a single dip followed by renewed speed must not confirm');
+  push(380, 900);
+  assert.deepEqual(events, [], 'the first lower reading is only a candidate');
+  push(400, 850);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].label, 'Forehand');
+  assert.equal(events[0].peakTimeMs, 280);
+  assert.equal(events[0].detectedAtMs, 400);
+  for (let time = 420; time <= 700; time += 20) push(time, 0);
+  assert.equal(events.length, 1, 'completion of the same follow-through is not a second delivery');
+});
+
 for (const early of [false, true]) {
   test(`gentler forehands and backhands work for both hands (${early ? 'early' : 'completion'})`, () => {
     for (const [hand, label, alpha, beta, gamma] of [

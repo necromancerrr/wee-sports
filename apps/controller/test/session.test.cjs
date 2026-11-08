@@ -30,15 +30,17 @@ async function fixture() {
   return { session, socket, feedback, EVENTS, advance: ms => { now += ms; } };
 }
 
-test('a room close or explicit leave cannot be undone by a late resume response', async () => {
-  for (const leave of [false,true]) {
+test('room close, Home and Leave cannot be undone by a late resume response', async () => {
+  for (const departure of ['closed','home','leave']) {
     const {session, socket, EVENTS} = await fixture();
     session.token='private-seat';
     const old = {...session.seat,token:session.token,ok:true};
     let complete;
     session.request = event => event === EVENTS.SESSION_RESUME ? new Promise(resolve=>{complete=resolve;}) : Promise.resolve({ok:true});
     const reconnect = session.onConnect();
-    if (leave) await session.leave(); else socket.emit(EVENTS.ROOM_CLOSED,{code:old.code});
+    if (departure==='leave') await session.leave();
+    else if (departure==='home') session.home();
+    else socket.emit(EVENTS.ROOM_CLOSED,{code:old.code});
     complete(old); await reconnect;
     assert.equal(session.seat,null); assert.equal(session.token,null); assert.equal(session.playing(),false);
   }
@@ -125,16 +127,85 @@ test('Tools suspend gameplay while preserving neutral poses, setup, connection a
   session.dispose();
 });
 
-test('a failed leave keeps the seat and reconnect token until the server confirms departure', async () => {
+test('Leave releases the phone immediately even offline or with an unanswered server request', async () => {
+  for (const connected of [false,true]) {
+    const {session,socket,EVENTS}=await fixture();
+    const saved=[],changes=[];
+    session.save=value=>saved.push(value);session.changed=(seat,status)=>changes.push({seat,status});
+    session.token='private-seat';socket.connected=connected;
+    socket.timeout=()=>({emit:(event,payload)=>socket.sent.push({event,payload})});
+    const leaving=session.leave();
+    assert.equal(session.token,null);assert.equal(session.seat,null);assert.equal(socket.connected,false);
+    assert.deepEqual(saved,[null]);assert.equal(changes.at(-1).status,'Left room');
+    assert.equal(socket.sent.some(event=>event.event===EVENTS.PLAYER_LEAVE),connected);
+    assert.equal((await leaving).ok,true);
+    session.foreground();
+    assert.equal(socket.connected,false);assert.equal(session.playing(),false);
+    session.dispose();
+  }
+});
+
+test('Home saves private return proof, marks the controller away and never auto-rejoins on foreground', async () => {
   const {session,socket,EVENTS}=await fixture();
-  session.token='private-seat';
-  socket.responses.set(EVENTS.PLAYER_LEAVE,'timeout');
-  await assert.rejects(session.leave(),/Could not leave/);
-  assert.equal(session.token,'private-seat');assert.equal(session.seat.code,'K7PM');assert.equal(socket.connected,true);
-  socket.responses.set(EVENTS.PLAYER_LEAVE,{ok:true});
-  await session.leave();
-  assert.equal(session.token,null);assert.equal(session.seat,null);assert.equal(socket.connected,false);
+  const saved=[],changes=[];let away=0;
+  session.save=value=>saved.push(value);session.changed=(seat,status)=>changes.push({seat,status});
+  session.token='private-seat';socket.on(EVENTS.SESSION_AWAY,()=>away++);
+  socket.sendBuffer.push({oldMotion:true});
+  session.home();
+  assert.deepEqual(saved,[{origin:'https://game.example',code:'K7PM',token:'private-seat'}]);
+  assert.equal(away,1);assert.equal(session.seat,null);assert.equal(session.token,null);
+  assert.deepEqual(socket.sendBuffer,[]);assert.equal(session.latest('pose',{}),false);
+  assert.deepEqual(changes.at(-1),{seat:null,status:'Ready to join'});
+  session.background();session.foreground();
+  assert.equal(socket.connected,false);assert.equal(changes.at(-1).status,'Ready to join');
+  assert.equal((await session.restore(saved[0])).error,'room-ended','a stale Return continuation cannot reopen the detached session');
+  assert.equal(session.token,null);assert.equal(session.seat,null);
+  socket.connect();
+  assert.equal(socket.connected,false,'even a late socket connect cannot reopen a parked controller');
   session.dispose();
+});
+
+test('Return uses the saved private seat; an expired room clears proof instead of retrying forever', async () => {
+  for (const error of [null,'no-room','bad-session','recovery-owner-required']) {
+    const {session,socket,EVENTS}=await fixture();
+    const saved=[],changes=[];
+    session.save=value=>saved.push(value);session.changed=(seat,status)=>changes.push({seat,status});
+    const accepted={...session.seat,ok:true,token:'valid-private-seat'};
+    socket.responses.set(EVENTS.SESSION_RESUME,error ? {ok:false,error} : accepted);
+    await session.restore({code:'K7PM',token:'valid-private-seat'});
+    assert.equal(changes[0].status,'offline','reconnection has a visible escape route before acknowledgment');
+    assert.equal(socket.sent.find(event=>event.event===EVENTS.SESSION_RESUME).payload.token,'valid-private-seat');
+    if (error) {
+      assert.equal(session.seat,null);assert.deepEqual(saved,[null]);assert.equal(socket.connected,false);
+      session.foreground();assert.equal(socket.connected,false);
+    } else {
+      assert.equal(session.seat.slot,0);assert.equal(changes.at(-1).status,'online');
+      assert.equal(saved[0].token,'valid-private-seat');
+    }
+    session.dispose();
+  }
+});
+
+test('native bowling drops transport congestion without retaining a delayed roll', async () => {
+  const {session,socket,EVENTS}=await fixture();
+  session.seat.sport='bowling';socket.io.engine.transport.writable=false;
+  const result=await session.action(EVENTS.PLAYER_ROLL,{type:'roll',aim:.2,power:.5});
+  assert.equal(result.error,'network-busy');
+  socket.io.engine.transport.writable=true;
+  assert.equal(socket.sent.some(event=>event.event===EVENTS.PLAYER_ROLL),false);
+  session.dispose();
+});
+
+test('Home and Leave cancel a bowling roll waiting for transport before it can send', async () => {
+  for (const departure of ['home','leave']) {
+    const {session,socket,EVENTS}=await fixture();
+    session.seat.sport='bowling';socket.io.engine.transport.writable=false;
+    const pending=session.action(EVENTS.PLAYER_ROLL,{type:'roll',aim:.2,power:.5});
+    await session[departure]();socket.io.engine.transport.writable=true;
+    assert.equal((await pending).error,'not-playing');
+    assert.equal(socket.sent.some(event=>event.event===EVENTS.PLAYER_ROLL),false);
+    session.dispose();
+  }
 });
 
 test('backgrounding cancels buffered input and cannot emit gameplay while suspended', async () => {

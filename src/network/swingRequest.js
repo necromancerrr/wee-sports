@@ -17,7 +17,7 @@ export function waitForSwingTransport(writable, connected, current = () => true)
 }
 
 /** At most one stroke waits for this socket; emitted strokes are never retried. */
-export async function sendSwingRequest(socket, event, payload, current = () => true) {
+export async function sendSwingRequest(socket, event, payload, current = () => true, ackTimeoutMs = 2000) {
   if (waiting.has(socket)) return {ok: false, error: 'network-busy'};
   waiting.add(socket);
   const state = await waitForSwingTransport(() => Boolean(socket.io.engine?.transport?.writable),
@@ -25,7 +25,7 @@ export async function sendSwingRequest(socket, event, payload, current = () => t
   waiting.delete(socket);
   if (state !== 'ready') return {ok: false, error: state};
   return new Promise(resolve => {
-    socket.volatile.timeout(2000).emit(event, payload, (err, response) => {
+    socket.volatile.timeout(ackTimeoutMs).emit(event, payload, (err, response) => {
       resolve(err ? {ok: false, error: 'timeout'} : response);
     });
   });

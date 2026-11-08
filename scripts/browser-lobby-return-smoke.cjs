@@ -8,7 +8,7 @@ const games = ['Bowling', 'Table Tennis', 'Tennis'];
 const ids = {'Bowling':'bowling', 'Table Tennis':'table-tennis', 'Tennis':'tennis'};
 
 async function phoneContext(browser) {
-  const context = await browser.newContext({viewport:{width:390,height:844}});
+  const context = await browser.newContext({viewport:{width:390,height:844}, userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1', isMobile:true, hasTouch:true});
   await context.addInitScript(() => {
     Object.defineProperty(window, 'DeviceMotionEvent', {value:undefined, configurable:true});
     Object.defineProperty(window, 'DeviceOrientationEvent', {value:undefined, configurable:true});
@@ -33,7 +33,7 @@ async function leavePhone(phone) {
   const more = phone.locator('.phone-session__options');
   if (!await more.evaluate(node => node.open)) await more.locator(':scope > summary').click();
   await phone.getByRole('button', {name:'Leave lobby', exact:true}).click();
-  await phone.getByRole('button', {name:'Play', exact:true}).waitFor();
+  await phone.getByRole('heading', {name:'Ready to play?', exact:true}).waitFor();
 }
 async function controllerReady(phone, sport) {
   const frame = phone.frameLocator(`iframe[title="${sport} phone controller"]`);
@@ -118,7 +118,7 @@ async function controllerReady(phone, sport) {
       await host.locator('.host-lobby').getByRole('heading', {name:next === 'bowling' ? 'Bowling' : 'Table Tennis', exact:true}).waitFor();
       assert.equal(await host.getByLabel('Next sport', {exact:true}).count(), 0);
       await host.getByRole('button', {name:'Close lobby', exact:true}).click();
-      await second.getByRole('button', {name:'Play', exact:true}).waitFor();
+      await second.getByText('Room closed. Scan the TV to play again.', {exact:true}).waitFor();
       assert.equal(await second.locator('iframe').count(), 0);
       pass(`${sport}: sport selection stays on the phone; closing the room releases the controller`);
       await context.close(); await secondContext.close(); await host.close();

@@ -40,6 +40,7 @@ export class ControllerSession {
     this.seat = null;
     this.token = null;
     this.active = true;
+    this.detached = false;
     this.inputActive = true;
     this.controlsActive = true;
     this.sequence = 0;
@@ -52,8 +53,8 @@ export class ControllerSession {
     this.socket = makeSocket(this.origin, { transports: ['websocket', 'polling'], autoConnect: false, reconnection: true,
       auth: profileToken ? { profileToken } : {} });
     this.socket.on('connect', () => this.onConnect());
-    this.socket.on('disconnect', () => { clearTimeout(this.resumeRetry); this.connectionAttempt++; this.resuming = false; this.clearTransient(); this.changed(this.seat, 'offline'); });
-    this.socket.on('connect_error', () => this.changed(this.seat, 'offline'));
+    this.socket.on('disconnect', () => { clearTimeout(this.resumeRetry); this.connectionAttempt++; this.resuming = false; this.clearTransient(); if (!this.detached) this.changed(this.seat, 'offline'); });
+    this.socket.on('connect_error', () => {if (!this.detached) this.changed(this.seat, 'offline');});
     this.socket.on(EVENTS.LOBBY_UPDATE, snapshot => {
       if (!this.seat || snapshot.code !== this.seat.code) return;
       if (snapshot.gameId !== this.seat.gameId || snapshot.inputGeneration !== this.seat.inputGeneration || snapshot.hostEpoch !== this.seat.hostEpoch) this.clearTransient();
@@ -118,6 +119,7 @@ export class ControllerSession {
   }
 
   async connect() {
+    if (this.detached) throw new Error('This controller has returned home. Choose Return to room to reconnect.');
     if (this.socket.connected) return;
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { cleanup(); reject(new Error('Could not connect to this game server.')); }, 7000);
@@ -168,9 +170,13 @@ export class ControllerSession {
   }
 
   async restore({ code, token }) {
+    if (this.detached) return {ok:false,error:'room-ended'};
     this.token = token;
     this.seat = { code };
-    await this.connect();
+    this.resuming = true;
+    this.changed(this.seat, 'offline');
+    if (this.socket.connected) await this.onConnect();
+    else await this.connect();
   }
 
   playing() {
@@ -208,17 +214,18 @@ export class ControllerSession {
     const envelope = { ...payload, ...generation, id, gameId: this.seat.gameId };
     const boundary = this.transientGeneration;
     if (event === EVENTS.PLAYER_SWING) {this.diagnostics.count('swing.attempted'); this.diagnostics.mark(id,'request');}
-    const result = event === EVENTS.PLAYER_SWING
+    const result = [EVENTS.PLAYER_SWING, EVENTS.PLAYER_ROLL].includes(event)
       ? await sendSwingRequest(this.socket, event, envelope, () => this.controlsPlaying() &&
         boundary === this.transientGeneration && this.seat.gameId === envelope.gameId &&
-        this.seat.inputGeneration === envelope.generation && this.seat.hostEpoch === envelope.hostEpoch)
+        this.seat.inputGeneration === envelope.generation && this.seat.hostEpoch === envelope.hostEpoch,
+        event === EVENTS.PLAYER_ROLL ? 5000 : 2000)
       : await this.request(event, envelope);
     if (event === EVENTS.PLAYER_SWING) {
       this.diagnostics.mark(id,'result'); this.diagnostics.measure(id,'request','result','swing.requestResultMs');
       this.diagnostics.count(result?.ok ? 'swing.accepted' : 'swing.rejected');
     }
     if (!result) return {ok:false,error:'invalid-response',id};
-    if (event === EVENTS.PLAYER_SWING && result.error === 'timeout') return {ok:false,error:'outcome-unknown',id};
+    if ([EVENTS.PLAYER_SWING, EVENTS.PLAYER_ROLL].includes(event) && result.error === 'timeout') return {ok:false,error:'outcome-unknown',id};
     return { ...result, id };
   }
 
@@ -232,6 +239,7 @@ export class ControllerSession {
   }
 
   background() {
+    if (this.detached) return;
     if (this.socket.connected) this.socket.emit(EVENTS.SESSION_AWAY, {});
     this.active = false;
     this.inputActive = false;
@@ -244,6 +252,7 @@ export class ControllerSession {
   // Suppress input without abandoning the room or cancelling a permission prompt.
   inactive() { this.inputActive = false; this.clearTransient({clearFeedback:false}); }
   foreground() {
+    if (this.detached) return;
     const suspended = !this.active;
     this.active = true; this.inputActive = true; this.clearTransient({clearFeedback:suspended});
     if (this.token && !this.socket.connected) this.socket.connect();
@@ -253,14 +262,35 @@ export class ControllerSession {
     // Server reads account identity from the authenticated handshake, never room data.
     if (this.active && this.token) { this.socket.disconnect(); this.socket.connect(); }
   }
-  ended(message) { clearTimeout(this.resumeRetry); this.connectionAttempt++; this.resuming = false; this.token = null; this.seat = null; this.inputSetup = null; this.clearTransient(); this.socket.disconnect(); this.save(null); this.changed(null, message); }
-  async leave() {
-    clearTimeout(this.resumeRetry); this.leaving = true; this.connectionAttempt++; this.clearTransient();
-    const result=await this.request(EVENTS.PLAYER_LEAVE, {code:this.seat?.code,token:this.token});
-    this.leaving = false;
-    if(!result?.ok) {if (this.resuming) {this.resuming = false; void this.onConnect();} throw new Error('Could not leave the room yet. Reconnect and try again.');}
-    this.ended('Left room');
-    return result;
+  detach(message, saved) {
+    clearTimeout(this.resumeRetry);
+    this.connectionAttempt++;
+    this.detached = true;
+    this.active = false;
+    this.inputActive = false;
+    this.resuming = false;
+    this.token = null;
+    this.seat = null;
+    this.inputSetup = null;
+    this.clearTransient();
+    this.socket.disconnect();
+    void this.save(saved);
+    this.changed(null, message);
   }
-  dispose() { clearTimeout(this.resumeRetry); this.active = false; this.clearTransient(); this.socket.removeAllListeners(); this.socket.disconnect(); }
+  ended(message) { this.detach(message, null); }
+  home() {
+    if (this.detached) return;
+    const saved = this.token && this.seat?.code ? {origin:this.origin, code:this.seat.code, token:this.token} : null;
+    if (this.socket.connected) this.socket.emit(EVENTS.SESSION_AWAY, {});
+    this.detach('Ready to join', saved);
+  }
+  async leave() {
+    this.leaving = true;
+    // Departure must work even when the TV or network is gone. Try to release
+    // the seat now; a disconnected seat otherwise expires at the server.
+    if (this.socket.connected) void this.request(EVENTS.PLAYER_LEAVE, {code:this.seat?.code,token:this.token});
+    this.ended('Left room');
+    return {ok:true};
+  }
+  dispose() { clearTimeout(this.resumeRetry); this.detached = true; this.active = false; this.clearTransient(); this.socket.removeAllListeners(); this.socket.disconnect(); }
 }

@@ -55,6 +55,27 @@ for (const [name, hand, expected] of cases) {
   });
 }
 
+test('recorded fast confirmation keeps bounded post-peak delay without waiting for rest', () => {
+  const delays = [];
+  for (const [name, hand] of cases) {
+    const data = JSON.parse(readFileSync(new URL(`./fixtures/team-motion/${name}.json`, import.meta.url)));
+    const samples = data.samples ?? data;
+    const stream = createSwingStream(hand, {fast: true, suppressReturns: true});
+    for (const sample of samples) {
+      stream.push(sample);
+      for (const event of stream.analyze()) if (event.label !== 'Unknown') {
+        delays.push(sample.timeMs - event.peakTimeMs);
+      }
+    }
+  }
+  delays.sort((a, b) => a - b);
+  assert.equal(delays.length, 19);
+  // Fixture-clock timing only: neither network RTT nor motion-to-screen delay.
+  assert.ok(delays[Math.floor(delays.length / 2)] <= 67);
+  assert.ok(delays[Math.ceil(delays.length * .95) - 1] <= 117);
+  assert.ok(delays.every(delay => delay >= 40), 'retain post-peak evidence before committing');
+});
+
 function samplesTo(durationMs, ratesAt) {
   return Array.from({ length: durationMs / 20 + 1 }, (_, index) => {
     const timeMs = index * 20;

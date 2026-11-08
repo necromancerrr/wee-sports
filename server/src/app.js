@@ -3,7 +3,7 @@ import {ProfileError} from '../profiles/validation.js';
 import {isAllowedOrigin} from '../origins.js';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
-import { ERRORS, EVENTS } from '../../shared/protocol.js';
+import { ERRORS, EVENTS, PHASES } from '../../shared/protocol.js';
 import { RoomStore } from './RoomStore.js';
 import { waitForSwingTransport } from '../../src/network/swingRequest.js';
 import {createDiagnostics, DIAGNOSTICS_PROBE} from '../../shared/diagnostics.js';
@@ -100,7 +100,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       if (error) {reply(packet.at(-1), {ok:false, error}); return;}
       next();
     });
-    let swingWaiting = false;
+    let swingWaiting = false, rollWaiting = false;
     let lastProbe = -Infinity;
     socket.on(DIAGNOSTICS_PROBE, (payload, ack) => {
       if (payload?.enabled === false) {
@@ -298,24 +298,68 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       phone.volatile.emit(EVENTS.GAME_HIT, result.event);
       reply(ack, { ok: true });
     });
-    socket.on(EVENTS.PLAYER_ROLL, (event, ack) => {
+    socket.on(EVENTS.PLAYER_ROLL, async (event, ack) => {
+      const receivedAt = diagnosticClients.size ? performance.now() : undefined;
+      if (rollWaiting) {recordRelay(socket, null, 'roll', event?.id, receivedAt, 'rejected'); return reply(ack, {ok: false, error: 'network-busy'});}
       const result = store.rollTarget(socket.id, event);
-      if (!result.ok) return reply(ack, result);
+      if (!result.ok) {recordRelay(socket, null, 'roll', event?.id, receivedAt, 'rejected'); return reply(ack, result);}
+      const sourceMember = store.sessionContext(socket.id)?.memberId;
+      const frame = store.lobby(result.code)?.gameState?.frame;
       const host = io.sockets.sockets.get(result.hostSocketId);
-      if (!host) {
-        store.finishRollDelivery(result.code, result.event.id, result.event.gameId);
-        return reply(ack, { ok: false, error: 'disconnected' });
-      }
-      // Acknowledge the actual game result; never buffer or retry a release.
-      host.timeout(2500).emit(EVENTS.GAME_ROLL, result.event, (error, received) => {
+      const recordStage = (stage, previous, metric) => {
+        if (!diagnosticClients.size) return;
+        for (const peer of [socket, host]) {
+          const diagnostic = diagnosticFor(peer);
+          if (!diagnostic) continue;
+          diagnostic.count(`roll.${stage}`);
+          diagnostic.mark(result.event.id, stage);
+          if (previous) diagnostic.measure(result.event.id, previous, stage, metric);
+        }
+      };
+      const reject = error => {
+        const outcome = {ok: false, error, id: result.event.id};
+        store.finishRollDelivery(result.code, result.event.id, result.event.gameId, outcome);
+        recordRelay(socket, host, 'roll', result.event.id, receivedAt, 'transportDropped');
+        reply(ack, outcome);
+      };
+      if (!host?.connected) return reject('disconnected');
+      // rollTarget reserves the lane. Recheck without reserving a second time:
+      // a setup reset, replaced phone/TV, changed turn or lobby return must not
+      // release an old ball after a stalled transport starts accepting data.
+      const currentInput = () => {
+        const current = store.lobby(result.code);
+        const source = store.sessionContext(socket.id);
+        return source?.memberId === sourceMember && source?.role === 'player' &&
+          store.hostedBy(host.id) === result.code && current?.sport === 'bowling' &&
+          current.phase === PHASES.GAME && !current.paused &&
+          current.gameId === result.event.gameId && current.hostEpoch === result.hostEpoch &&
+          current.inputGeneration === result.inputGeneration &&
+          current.gameState?.phase === 'ready' && current.gameState.currentPlayer === result.event.player &&
+          current.gameState.frame === frame;
+      };
+      rollWaiting = true;
+      recordStage('serverWaitStarted');
+      const available = await waitForSwingTransport(() => host.conn.transport.writable,
+        () => socket.connected && host.connected, currentInput);
+      rollWaiting = false;
+      recordStage('serverWaitFinished', 'serverWaitStarted', 'roll.transportWaitMs');
+      if (available !== 'ready') return reject(available);
+      if (!currentInput()) return reject('not-playing');
+      // Acknowledge the actual game result. A regular emit queues behind a
+      // blocked transport; volatile delivery keeps a release transient.
+      recordRelay(socket, host, 'roll', result.event.id, receivedAt, 'relayed');
+      host.volatile.timeout(2500).emit(EVENTS.GAME_ROLL, result.event, (error, received) => {
+        recordStage('deliverySettled', 'serverRelayed', 'roll.relayRoundTripMs');
         const current = store.lobby(result.code);
         if (current?.hostEpoch !== result.hostEpoch || current?.inputGeneration !== result.inputGeneration) {
+          recordStage('unknown');
           store.finishRollDelivery(result.code, result.event.id, result.event.gameId, {ok:false,error:'outcome-unknown'});
           return reply(ack, {ok:false,error:'outcome-unknown',id:result.event.id});
         }
         const outcome = !error && received?.ok === true ? {ok: true, id: result.event.id, receivers: 1}
           : {ok: false, id: result.event.id, error: error ? 'outcome-unknown'
             : typeof received?.error === 'string' && received.error.length <= 160 ? received.error : 'game-loading'};
+        recordStage(outcome.ok ? 'accepted' : outcome.error === 'outcome-unknown' ? 'unknown' : 'rejected');
         store.finishRollDelivery(result.code, result.event.id, result.event.gameId, outcome);
         if (store.lobby(result.code)?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
         reply(ack, outcome);

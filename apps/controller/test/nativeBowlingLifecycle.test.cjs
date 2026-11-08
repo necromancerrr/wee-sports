@@ -18,7 +18,8 @@ async function fixture({raw = false, permission} = {}) {
   let now=1000, motion;
   class Socket extends EventEmitter {
     connected=true;sendBuffer=[];sent=[];io={engine:{transport:{writable:true}}};
-    volatile={emit:(event,payload)=>this.sent.push({event,payload})};
+    volatile={emit:(event,payload)=>this.sent.push({event,payload,volatile:true}),
+      timeout:()=>({emit:(event,payload,ack)=>{this.sent.push({event,payload,volatile:true});ack(null,{ok:true});}})};
     timeout(){return {emit:(event,payload,ack)=>{this.sent.push({event,payload});ack(null,{ok:true});}};}
     disconnect(){this.connected=false;super.emit('disconnect');}
   }
@@ -67,6 +68,7 @@ test('iPhone permission time is not counted as sensor silence and fresh motion c
     for(let i=0;i<30;i++)f.sample();await tick();
     const rolls=f.socket.sent.filter(item=>item.event==='player:roll');
     assert.equal(rolls.length,1,'native sensor callbacks reach a real session action exactly once');
+    assert.equal(rolls[0].volatile,true,'a physical roll uses expiring input delivery');
     assert.equal(rolls[0].payload.gameId,'game-1');
     assert.equal(rolls[0].payload.generation,2);
     assert.ok(rolls[0].payload.power>=.2);

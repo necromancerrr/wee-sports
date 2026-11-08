@@ -14,10 +14,15 @@ export function playerName(seat, number) {
     (number===2 && seat?.sport!=='bowling' ? 'Bot' : `Player ${number}`);
 }
 
+export function waitingForTv(seat) {
+  return Boolean(seat?.reconnecting?.some(member => member.role === 'host' || (!member.role && member.name === 'TV')));
+}
+
 /** One primary play message, with connection/pause taking priority over turns. */
 export function controllerPlayState(seat, status, setup) {
   if (seat?.gameState?.phase === 'complete') return {title:'Match complete', hint:'See the result on your TV.', active:false};
-  if (status !== 'online') return {title:'Reconnecting', hint:'Your place is saved. Keep the app open.', active:false};
+  if (status !== 'online') return {title:'Reconnecting', hint:'You can wait here or go home and return while the room is available.', active:false};
+  if (waitingForTv(seat)) return {title:'Waiting for the TV', hint:'Reopen this room on the TV, or go home on your phone.', active:false};
   if (seat?.paused) return {title:'Game paused', hint:'Your controller is ready when play resumes.', active:false};
   if (!setup) return {title:'Getting ready', hint:'Connecting your controls…', active:false};
   if (seat?.phase !== 'game') return {title:'Watch the TV', hint:'Your game is about to begin.', active:false};

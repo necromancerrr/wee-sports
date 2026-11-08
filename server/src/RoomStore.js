@@ -788,7 +788,7 @@ export class RoomStore {
       room.phase === PHASES.COUNTDOWN ? { msLeft: Math.max(0, room.deadline - (room.pausedAt ?? this.#now())) } : null;
     const reconnecting = [...this.#members.values()]
       .filter(member => member.code === code && member.disconnectedAt !== null)
-      .map(member => ({ name: member.role === 'host' ? 'TV' : room.players.get(member.id)?.name,
+      .map(member => ({ role: member.role, name: member.role === 'host' ? 'TV' : room.players.get(member.id)?.name,
         msLeft: this.#keepHost(member) ? null : Math.max(0, this.#graceMs - (this.#now() - member.disconnectedAt)) }));
     return { code: room.code, sport: room.sport, phase: room.phase, players, countdown, leaderSlot: this.#leaderSlot(room), canStart: this.#canStart(room),
       vote: this.#voteView(room), tutorial: this.#tutorialView(room),

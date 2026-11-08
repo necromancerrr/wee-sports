@@ -6,7 +6,7 @@ import {SportSwitcher} from '../components/SportSwitcher.jsx';
 /** Browser phone entry, reconnecting seat and active controller shell. */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CODE_LENGTH,
   EVENTS,
@@ -54,8 +54,11 @@ function saveName(name) {
 }
 
 export default function JoinStub() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [code, setCode] = useState(() => normalizeCode(params.get('code')));
+  const linkedCode = normalizeCode(params.get('code'));
+  const [code, setCode] = useState(linkedCode);
+  useEffect(() => {setCode(linkedCode);}, [linkedCode]);
   const [name, setName] = useState(loadName);
   const [controllerIntent, setControllerIntent] = useState(rememberedControllerIntent);
   const [prefersTouch, setPrefersTouch] = useState(false);
@@ -80,6 +83,9 @@ export default function JoinStub() {
     if (needsSecurePage && !phoneLinkLoading && secureUrl) window.location.replace(secureUrl);
   }, [needsSecurePage, phoneLinkLoading, secureUrl]);
   const { snapshot: seat, reconnecting, ended, storageWarning, accept, beginJoin, leave: leaveSession } = useReconnect('player', code);
+  useEffect(() => {
+    if (ended === 'ended') navigate('/home', {replace: true, state: {controllerNotice: 'Room closed. Scan the TV to play again.'}});
+  }, [ended, navigate]);
   const lobby = seat;
   // Holds the vote's reveal on screen for a moment; a cancelled vote has none.
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
@@ -113,15 +119,16 @@ export default function JoinStub() {
   }
 
   async function leave() {
-    if (!(await leaveSession())) setError('disconnected');
+    if (await leaveSession()) navigate('/home', {state: {controllerNotice: 'You left the room.'}});
   }
 
-  if (openingSecurePage) return <main className="stub"><p className="eyebrow">Wee Sports · phone controller</p><h1>Opening your controller…</h1><p className="stub__muted" role="status">Connecting your phone for motion play.</p></main>;
+  if (openingSecurePage) return <main className="stub"><p className="eyebrow">Wee Sports · phone controller</p><h1>Opening your controller…</h1><p className="stub__muted" role="status">Connecting your phone for motion play.</p><Link className="btn btn--ghost" to="/home">Go home</Link></main>;
 
   if (seat) {
     const players = lobby?.players ?? [];
     const phase = lobby?.phase ?? PHASES.LOBBY;
     const playing = phase === PHASES.GAME && !revealing;
+    const tvAway = lobby.reconnecting?.some(member => member.role === 'host' || (!member.role && member.name === 'TV'));
     const lobbyOptions = (
       <>
         <GuestResultClaim lobby={lobby} />
@@ -154,6 +161,7 @@ export default function JoinStub() {
     );
     return (
       <main className={`stub phone-session phone-session--simple${playing ? ' phone-session--playing' : ''}`}>
+        <nav className="phone-session__navigation" aria-label="Controller navigation"><Link className="btn btn--ghost" to="/home">Go home</Link><span>Room {seat.code}</span></nav>
         {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your seat.</p> : null}
         {error ? <p className="alert" role="alert">{errorText(error)}</p> : null}
         <div className="you">
@@ -167,12 +175,12 @@ export default function JoinStub() {
           <div className="phone-session__name">
             <h1><SelectedSportIcon sport={seat.sport} />{sportName(seat.sport)}</h1>
             <p className="stub__muted">
-              {seat.name} · {reconnecting ? 'Reconnecting' : 'Connected'}
+              {seat.name} · {reconnecting ? 'Reconnecting' : tvAway ? 'Waiting for TV' : 'Connected'}
             </p>
           </div>
           <PhoneGameOptions lobby={lobby} slot={seat.slot} disabled={reconnecting} />
         </div>
-        {playing ? null : phase === PHASES.LOBBY ? (
+        {playing || tvAway || reconnecting ? null : phase === PHASES.LOBBY ? (
           <p className="stub__status">Getting your lobby ready…</p>
         ) : phase === PHASES.VOTE || revealing ? (
           // Keyed by game, so a fresh vote forgets this phone's last pick.
@@ -201,7 +209,7 @@ export default function JoinStub() {
     );
   }
 
-  if (reconnecting) return <ReconnectNotice reconnecting />;
+  if (reconnecting) return <ReconnectNotice reconnecting homeHref="/home" />;
 
   return (
     <main className="stub phone-join">
@@ -257,8 +265,8 @@ export default function JoinStub() {
           <button type="submit" className="btn btn--primary" disabled={!canJoin}>
             {joining ? 'Connecting…' : 'Play'}
           </button>
-          <Link className="btn btn--ghost" to="/home">
-            Home
+          <Link className="btn btn--ghost" to="/home" onClick={() => {if (joining) void leaveSession();}}>
+            Go home
           </Link>
         </div>
       </form>

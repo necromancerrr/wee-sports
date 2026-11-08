@@ -4,7 +4,7 @@ import {Manager} from 'socket.io-client';
 const h = vi.hoisted(() => ({socket: null}));
 vi.mock('socket.io-client', async () => ({...(await vi.importActual('socket.io-client')), io: () => h.socket}));
 
-let packets, request, requestSwing;
+let packets, request, requestSwing, requestRoll;
 beforeEach(async () => {
   vi.resetModules(); vi.useFakeTimers();
   const manager = new Manager('http://localhost', {autoConnect: false});
@@ -12,7 +12,7 @@ beforeEach(async () => {
   packets = [];
   manager._packet = packet => packets.push(packet);
   h.socket = manager.socket('/'); h.socket.connected = true;
-  ({request, requestSwing} = await import('../client/src/lib/socket.js'));
+  ({request, requestSwing, requestRoll} = await import('../client/src/lib/socket.js'));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 const input = {type: 'swing', id: 'one', gameId: 'current', hand: 'Right', label: 'Forehand'};
@@ -77,4 +77,45 @@ test('unacknowledged strokes settle on timeout and cannot leave pending acknowle
   expect(await pending).toEqual({ok: false, error: 'timeout'});
   expect(Object.keys(h.socket.acks)).toEqual([]);
   expect(h.socket.sendBuffer).toEqual([]);
+});
+
+test('bowling releases expire under congestion instead of arriving on a later turn', async () => {
+  const roll = {type: 'roll', id: 'roll-one', gameId: 'current', aim: .3, spin: .1, power: .6};
+  h.socket.io.engine.transport.writable = false;
+  const pending = requestRoll('player:roll', roll);
+  await vi.advanceTimersByTimeAsync(80);
+  expect(await pending).toEqual({ok: false, error: 'network-busy'});
+  h.socket.io.engine.transport.writable = true;
+  h.socket.emitBuffered();
+  expect(packets).toEqual([]); expect(h.socket.sendBuffer).toEqual([]);
+  expect(Object.keys(h.socket.acks)).toEqual([]);
+  const fresh = requestRoll('player:roll', {...roll, id: 'roll-fresh'});
+  await Promise.resolve();
+  expect(packets).toHaveLength(1);
+  expect(packets[0].data[1].id).toBe('roll-fresh');
+  h.socket.onack({id: packets[0].id, data: [{ok: true}]});
+  expect(await fresh).toEqual({ok: true});
+});
+
+test('bowling pause or room departure cancels a waiting release before transport recovers', async () => {
+  let current = true;
+  h.socket.io.engine.transport.writable = false;
+  const pending = requestRoll('player:roll', {type:'roll',id:'old-roll'}, () => current);
+  await vi.advanceTimersByTimeAsync(12);
+  current = false;
+  h.socket.io.engine.transport.writable = true;
+  await vi.advanceTimersByTimeAsync(4);
+  expect(await pending).toEqual({ok:false,error:'not-playing'});
+  expect(packets).toEqual([]); expect(h.socket.sendBuffer).toEqual([]);
+});
+
+test('bowling waits for the server delivery outcome without sending the release twice', async () => {
+  let settled = false;
+  const pending = requestRoll('player:roll', {type:'roll',id:'slow-ack'}).then(result => {settled = true; return result;});
+  await vi.advanceTimersByTimeAsync(2600);
+  expect(settled).toBe(false);
+  expect(packets).toHaveLength(1);
+  h.socket.onack({id: packets[0].id, data: [{ok:false,error:'outcome-unknown'}]});
+  expect(await pending).toEqual({ok:false,error:'outcome-unknown'});
+  expect(Object.keys(h.socket.acks)).toEqual([]);
 });

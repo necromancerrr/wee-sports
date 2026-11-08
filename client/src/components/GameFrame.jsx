@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { EVENTS, isRoll, isSwing, isGameHit, isTennisState, isBowlingState, isStrokeResult, isGameSoundEvent, isGameCommand, isGameOptions, isPose, isAim, isTableTennisState } from '@wee/shared/protocol.js';
-import { request, requestSwing, socket, useConnection } from '../lib/socket.js';
+import { request, requestSwing, requestRoll, socket, useConnection } from '../lib/socket.js';
 import { createInputId } from '../../../src/network/inputId.js';
 import {createControllerSetupRelay} from '../lib/controllerSetupRelay.js';
 import {browserDiagnostics, DIAGNOSTICS_PROBE} from '../../../shared/diagnostics.js';
@@ -99,7 +99,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
     const timer = setTimeout(() => { if (!ready.current) setFailed(true); }, 15000);
     return () => {
       clearTimeout(timer);
-      for (const { ack, timer } of pending.current.values()) { clearTimeout(timer); ack({ ok: false, error: 'game-loading' }); }
+      for (const { ack, timer } of pending.current.values()) { clearTimeout(timer); ack({ ok: false, error: 'outcome-unknown' }); }
       pending.current.clear();
     };
   }, [src, attempt]);
@@ -205,10 +205,17 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         if (data.type === 'wee:player-aim' && sport === 'bowling' && isAim(envelope)) socket.volatile.emit(EVENTS.PLAYER_AIM, envelope);
       } else if (controller && data?.type === 'wee:player-roll' && isRoll(data.event)) {
         const control = currentControl.current;
+        const inputToken = inputGeneration.current;
+        diagnostics.mark(data.event.id, 'rollSendRequested');
+        diagnostics.count('rollRequests');
         const result = paused || connection !== 'online' ? { ok: false, error: 'paused' }
           : !ready.current || !playing || sport !== 'bowling' || data.event.gameId && data.event.gameId !== gameId ? {ok:false,error:'not-playing'}
-          : await request(EVENTS.PLAYER_ROLL, {...data.event, gameId, generation, hostEpoch});
-        if (['timeout', 'outcome-unknown'].includes(result.error)) {
+          : await requestRoll(EVENTS.PLAYER_ROLL, {...data.event, gameId, generation, hostEpoch},
+            () => currentControl.current === control && inputGeneration.current === inputToken && currentGame.current === gameId);
+        diagnostics.mark(data.event.id, 'rollDeliveryAck');
+        diagnostics.measure(data.event.id, 'rollSendRequested', 'rollDeliveryAck', 'rollDeliveryRoundTripMs');
+        diagnostics.count(result?.ok ? 'rollDelivered' : 'rollRejected');
+        if (currentControl.current === control && ['timeout', 'outcome-unknown'].includes(result.error)) {
           const status = await request(EVENTS.PLAYER_ACTION_STATUS, {id: data.event.id, gameId});
           if (status.ok && status.result) Object.assign(result, status.result);
         }
@@ -273,11 +280,14 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       if (typeof ack === 'function') ack({ ok });
     };
     const roll = (event, ack = () => {}) => {
-      if (controller || !ready.current || recovering.current || paused || connection !== 'online' || event.gameId !== gameId || !isRoll(event) ||
+      if (controller || sport !== 'bowling' || !playing || !ready.current || recovering.current || paused || connection !== 'online' || event?.gameId !== gameId || !isRoll(event) ||
           (event.generation !== undefined && (event.generation !== generation || event.hostEpoch !== hostEpoch))) {
         ack({ ok: false, error: 'game-loading' }); return;
       }
-      const timer = setTimeout(() => { pending.current.delete(event.id); ack({ ok: false, error: 'game-loading' }); }, 1800);
+      if (pending.current.has(event.id)) { ack({ok: false, error: 'duplicate-roll'}); return; }
+      // Once posted, a lost iframe response cannot prove that the ball stayed
+      // still. Keep the controller latched until authoritative turn state.
+      const timer = setTimeout(() => { pending.current.delete(event.id); ack({ ok: false, error: 'outcome-unknown' }); }, 1800);
       pending.current.set(event.id, { ack, timer });
       post({ type: 'wee:game-roll', event });
     };

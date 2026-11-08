@@ -1530,6 +1530,9 @@
 .phone-session--simple .game-frame { margin-top: .4rem; }
 .phone-session .you { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
 .phone-session__name { min-width: 0; flex: 1; }
+.phone-session__navigation { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.phone-session__navigation .btn { min-height: 44px; padding: 10px 16px; }
+.phone-session__navigation > span { color: var(--text-muted); font-size: .8rem; letter-spacing: .05em; }
 .phone-session .you h1 { font-size: 1.4rem; overflow-wrap: anywhere; }
 .phone-session .phone-ready { padding: 18px 0; }
 .phone-session .phone-ready__btn { width: 100%; }

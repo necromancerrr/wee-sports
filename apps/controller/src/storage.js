@@ -1,17 +1,18 @@
 import * as SecureStore from 'expo-secure-store';
 import {fetchJson} from '../../../src/network/fetchJson.js';
+import {createPrivateWriteQueue} from './privateWriteQueue.js';
 
 export async function readPrivate(key) {
   const raw = await SecureStore.getItemAsync(`wee.${key}`);
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }
 }
-export async function writePrivate(key, value) {
+export const writePrivate = createPrivateWriteQueue(async (key, value) => {
   if (value === null) await SecureStore.deleteItemAsync(`wee.${key}`);
   else await SecureStore.setItemAsync(`wee.${key}`, JSON.stringify(value), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
-}
+});
 
 export async function profileRequest(origin, path = '', { method = 'GET', body, token, signal } = {}) {
   const {response, data: result} = await fetchJson(`${origin}/api/profile${path}`, {

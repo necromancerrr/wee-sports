@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { EVENTS } from '../shared/protocol.js';
 
 const h = vi.hoisted(() => ({ refs: [], effects: [], refIndex: 0, reuseRefs: false, socketHandlers: new Map(),
-  emit: vi.fn(), requestSwing: vi.fn(async () => ({ ok: true })), request: vi.fn(async () => ({ ok: true })), connection: 'online' }));
+  emit: vi.fn(), requestSwing: vi.fn(async () => ({ ok: true })), requestRoll: vi.fn(async () => ({ ok: true })), request: vi.fn(async () => ({ ok: true })), connection: 'online' }));
 vi.mock('react', async () => ({ ...(await vi.importActual('react')),
   useRef(value) {
     if (h.reuseRefs) return h.refs[h.refIndex++];
@@ -11,7 +11,7 @@ vi.mock('react', async () => ({ ...(await vi.importActual('react')),
   useState(value) { return [value, () => {}]; },
   useEffect(effect, deps) { h.effects.push({ effect, deps }); },
 }));
-vi.mock('../client/src/lib/socket.js', () => ({ request: h.request, requestSwing: h.requestSwing, useConnection: () => h.connection,
+vi.mock('../client/src/lib/socket.js', () => ({ request: h.request, requestSwing: h.requestSwing, requestRoll: h.requestRoll, useConnection: () => h.connection,
   socket: { connected: true, volatile: { emit: h.emit },
     on(name, fn) { h.socketHandlers.set(name, fn); }, off(name) { h.socketHandlers.delete(name); } } }));
 import { GameFrame } from '../client/src/components/GameFrame.jsx';
@@ -191,6 +191,32 @@ test('a phone frame cannot receive match commands or publish TV options/results'
   await f.receive(commandResult());
   await f.receive({ type: 'wee:game-options', gameId: 'match-a', sport: 'bowling' });
   expect(h.request).not.toHaveBeenCalled();
+});
+
+test.each(['timeout', 'unmount'])('a forwarded bowling release with a missing iframe response stays uncertain: %s', async reason => {
+  const f = mount({sport:'bowling'}), ack = vi.fn(), duplicate = vi.fn();
+  await f.ready;
+  const event = {type:'roll',id:'uncertain-roll',gameId:'match-a',power:.6,aim:.2,spin:0};
+  const roll = h.socketHandlers.get(EVENTS.GAME_ROLL);
+  roll(event, ack);
+  roll(event, duplicate);
+  expect(duplicate).toHaveBeenCalledExactlyOnceWith({ok:false,error:'duplicate-roll'});
+  expect(f.contentWindow.postMessage.mock.calls.filter(([message]) => message.type === 'wee:game-roll')).toHaveLength(1);
+  expect(ack).not.toHaveBeenCalled();
+  if (reason === 'unmount') f.unmount();
+  else vi.advanceTimersByTime(1800);
+  expect(ack).toHaveBeenCalledExactlyOnceWith({ok:false,error:'outcome-unknown'});
+  if (reason === 'timeout') await f.receive({type:'wee:roll-result',id:event.id,result:{ok:true}});
+  vi.advanceTimersByTime(5000);
+  expect(ack).toHaveBeenCalledTimes(1);
+});
+
+test.each([{playing:false},{sport:'tennis'}])('bowling rejects before forwarding when its game is not active: %j', async props => {
+  const f = mount({sport:'bowling',...props}), ack = vi.fn();
+  await f.ready;
+  h.socketHandlers.get(EVENTS.GAME_ROLL)({type:'roll',id:'inactive-roll',gameId:'match-a',power:.6,aim:0,spin:0}, ack);
+  expect(ack).toHaveBeenCalledExactlyOnceWith({ok:false,error:'game-loading'});
+  expect(f.contentWindow.postMessage.mock.calls.filter(([message]) => message.type === 'wee:game-roll')).toHaveLength(0);
 });
 
 test('only current validated TV options are forwarded as a sanitized snapshot', async () => {

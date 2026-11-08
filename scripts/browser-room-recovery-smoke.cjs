@@ -15,7 +15,7 @@ const base=process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5216';
     for(const sport of ['Tennis','Table Tennis','Bowling']) {
       if(process.env.WEE_SMOKE_SPORT && sport!==process.env.WEE_SMOKE_SPORT)continue;
       const context=await browser.newContext({viewport:{width:1280,height:800},colorScheme:'dark'});
-      const phoneContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark'});
+      const phoneContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',isMobile:true,hasTouch:true});
       await context.addInitScript(()=>{
         window.__fullscreenRequests=0;window.__checkpoint=null;window.__gameState=null;
         const fullscreen=Element.prototype.requestFullscreen;
@@ -63,7 +63,7 @@ const base=process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5216';
       // Acknowledge publication before navigation; the round-trip is exercised by the real parent/server.
       await tv.waitForTimeout(500);
       await tv.goto(base+'/home');
-      await phone.getByText('Choose Continue game or New game on the TV.',{exact:true}).waitFor();
+      await phone.getByText('TV disconnected',{exact:true}).waitFor();
       assert.equal(await phone.locator('.phone-session--playing').count(),0,'a missing TV releases the phone play screen immediately');
       await tv.getByRole('link',{name:`Return to room ${code}`,exact:true}).click();
       await tv.getByRole('heading',{name:'Your game is still here'}).waitFor();
@@ -88,7 +88,7 @@ const base=process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5216';
       else assert.deepEqual(fresh.match.deliveries,[]);
       await tv.getByLabel('TV display controls').click();
       await tv.getByRole('button',{name:'Close lobby',exact:true}).click();
-      await phone.getByRole('button',{name:'Play',exact:true}).waitFor();
+      await phone.getByText('Room closed. Scan the TV to play again.',{exact:true}).waitFor();
       assert.equal(await phone.locator('iframe').count(),0);
       pass(`${sport}: New game starts fresh; closing the room releases the controller`);
       await context.close();await phoneContext.close();

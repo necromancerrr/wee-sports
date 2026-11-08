@@ -110,8 +110,15 @@ export function useReconnect(role, code) {
   async function leave() {
     if (leaving.current) return false;
     leaving.current = true; operation.current++;
-    const result = await request(role === 'host' ? EVENTS.HOST_CLOSE : EVENTS.PLAYER_LEAVE, {code, token:token.current});
-    if (!result?.ok) {leaving.current = false; return false;}
+    const proof = token.current;
+    if (role === 'host') {
+      const result = await request(EVENTS.HOST_CLOSE, {code, token:proof});
+      if (!result?.ok) {leaving.current = false; return false;}
+    } else if (socket.connected) {
+      // A phone can always leave locally. Never let a missing acknowledgement
+      // trap it, or queue a stale Leave to run after a different room is joined.
+      void request(EVENTS.PLAYER_LEAVE, {code, token:proof}).catch(() => {});
+    }
     clearTimeout(pendingDepartures.get(`${role}:${code}`));
     pendingDepartures.delete(`${role}:${code}`);
     clearToken(role, code); token.current = null; needsResume.current = false;

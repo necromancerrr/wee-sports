@@ -214,7 +214,7 @@ export class MotionController {
         if (stroke.label === 'Unknown' || !(stroke.complete || stroke.early || stroke.fast)) continue;
         this.diagnostics.count('swing.recognized');
         if (Number.isFinite(stroke.detectionDelayMs)) this.diagnostics.observe('swing.recognitionMs',stroke.detectionDelayMs);
-        this.onSwing({type:'swing', label:stroke.label, hand:this.hand, ...this.tennisAim.capture(),
+        this.onSwing({type:'swing', label:stroke.label, hand:this.hand, ...this.tennisAim.capture(stroke.startMs),
           power:Math.min(1, tennisPower(stroke.peakRotation, null, stroke.label) * this.sensitivity)});
       }
     } else if (this.session.seat?.sport === 'table-tennis') {

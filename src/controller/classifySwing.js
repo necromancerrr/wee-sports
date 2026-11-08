@@ -1,6 +1,13 @@
 // Provisional rules inferred from screenshots, not fitted to raw recordings.
-export const classifierVersion = 'gyro-handed-responsive-v8'
+export const classifierVersion = 'gyro-handed-responsive-v9'
 export const SWING_LIMITS = Object.freeze({ start: 200, minPeak: 280 })
+// Keep the real peak and at least 40 ms of post-peak direction evidence. A
+// sustained 18% drop is sufficient deceleration; waiting for a 28% drop and
+// then another 24 ms added one or two sensor frames to otherwise valid hits.
+// The hold spans at least two readings at 60 Hz; a one-sample dip cannot fire.
+const FAST_DROP_RATIO = .82
+const FAST_DROP_HOLD_MS = 16
+const FAST_POST_PEAK_MS = 40
 const axes = ['Alpha', 'Beta', 'Gamma']
 const valid = sample => Number.isFinite(sample.timeMs) && axes.every(axis => Number.isFinite(sample[`rotation${axis}`]))
 const speed = sample => Math.hypot(...axes.map(axis => sample[`rotation${axis}`]))
@@ -143,13 +150,13 @@ export function classifySwings(samples, { hand = 'Right', sport = 'Tennis', fina
     if (window.length) {
       peak = Math.max(peak, speed(sample))
       quietSince = speed(sample) < Math.max(120, peak * 0.35) ? quietSince ?? sample.timeMs : null
-      fastQuietSince = speed(sample) < peak * 0.72 ? fastQuietSince ?? sample.timeMs : null
+      fastQuietSince = speed(sample) < peak * FAST_DROP_RATIO ? fastQuietSince ?? sample.timeMs : null
       // A weaker return to the starting grip can resemble the opposite shot.
       // Accelerate a gentle stroke only after observed stillness, not a gap.
       if (fast && peak >= (gentleStart ? SWING_LIMITS.minPeak : 800) &&
-          fastQuietSince !== null && sample.timeMs - fastQuietSince >= 24) {
+          fastQuietSince !== null && sample.timeMs - fastQuietSince >= FAST_DROP_HOLD_MS) {
         const peakSample = window.reduce((best, value) => speed(value) > speed(best) ? value : best)
-        if (sample.timeMs - peakSample.timeMs >= 40 && completeWindow(true)) return results
+        if (sample.timeMs - peakSample.timeMs >= FAST_POST_PEAK_MS && completeWindow(true)) return results
       }
       if (quietSince !== null && sample.timeMs - quietSince >= 100) {
         completeWindow()

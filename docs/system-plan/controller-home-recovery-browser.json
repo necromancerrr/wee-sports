@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "TV departure is explained; Go home stops the controller, preserves its private return shortcut and reclaims the same seat",
+    "Closing the TV room sends the phone home and clears its stale seat",
+    "A room closed while the phone was home is rejected on return and its stale shortcut disappears",
+    "An expired return proof is rejected and forgotten rather than looping in reconnect",
+    "Forget room removes the local return proof without creating another room",
+    "Go home and explicit Leave both work offline; only Go home keeps the return shortcut",
+    "A late motion-permission reply cannot undo Go home or leave a half-joined active seat"
+  ],
+  "errors": [],
+  "limitations": [
+    "Synthetic browser permissions and touch controllers; physical iPhone motion is not measured."
+  ]
+}

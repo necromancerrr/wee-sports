@@ -13,6 +13,7 @@ test('simple motion maps a deliberate swing to the chosen shot and suppresses fo
     results.push(...stream.analyze());
   }
   expect(results.map(result => result.label)).toEqual(['Backhand', 'Backhand']);
+  expect(results.map(result => result.startMs)).toEqual([0, 1400]);
 });
 
 test('simple motion rejects jitter and disconnected fragments', () => {
@@ -45,6 +46,56 @@ test('bowling underhand pitch releases once after slowing and scales power with 
   expect(fast[0].power).toBeGreaterThan(slow[0].power);
   expect(fast[0].power).toBeLessThanOrEqual(1);
   expect(delivery(600, value => ({ ...value, rotationAlpha: -value.rotationAlpha }))).toEqual([]);
+});
+
+test.each([[30, 466.6667], [50, 440], [60, 433.3333], [100, 430]])(
+  'a settled straight release at %i Hz removes idle confirmation time without changing power', (hz, previousReleaseMs) => {
+    const detector = createBowlingMotionDetector();
+    const rolls = [];
+    for (let frame = 0; frame <= hz; frame++) {
+      const time = frame * 1000 / hz;
+      const pitch = time < 400 ? 400 * Math.sin(Math.PI * time / 400) : 0;
+      const result = detector.push(bowlSample(time, pitch));
+      if (result) rolls.push({time, ...result});
+    }
+    expect(rolls).toHaveLength(1);
+    expect(rolls[0].time).toBeLessThanOrEqual(previousReleaseMs - 15);
+    expect(rolls[0].power).toBeCloseTo((400 - 90) / 600);
+    expect(rolls[0].spin).toBe(0);
+  });
+
+test.each([20, 70, 100])('a %i deg/s wrist turn keeps the full release window and curve', twist => {
+  const detector = createBowlingMotionDetector();
+  let roll;
+  for (let time = 0; time <= 600; time += 20) {
+    const result = detector.push(bowlSample(time, time < 400 ? 400 * Math.sin(Math.PI * time / 400) : 0, twist));
+    if (result) roll = {time, ...result};
+  }
+  expect(roll.time).toBe(440);
+  // The forward segment starts at 40 ms; twist integrates only its next 400 ms.
+  expect(roll.spin).toBeCloseTo((twist * .4 - 6) / 45 * .55);
+});
+
+test('one quiet sensor sample during deceleration does not prematurely release a continuing swing', () => {
+  const detector = createBowlingMotionDetector();
+  for (let time = 0; time <= 300; time += 20) expect(detector.push(bowlSample(time, 400))).toBeNull();
+  expect(detector.push(bowlSample(320, 100))).toBeNull();
+  expect(detector.push(bowlSample(340, 100))).toBeNull();
+  expect(detector.push(bowlSample(360, 0))).toBeNull();
+  expect(detector.push(bowlSample(380, 400))).toBeNull();
+  expect(detector.phase).toBe('forward');
+});
+
+test('a compact swing that settles before minimum duration can still finish qualifying', () => {
+  const detector = createBowlingMotionDetector();
+  const releases = [];
+  for (let time = 0; time <= 300; time += 20) {
+    const result = detector.push(bowlSample(time, time <= 80 ? 400 : 0));
+    if (result) releases.push({time, ...result});
+  }
+  expect(releases).toHaveLength(1);
+  expect(releases[0].time).toBeGreaterThanOrEqual(160);
+  expect(releases[0].power).toBeCloseTo((400 - 90) / 600);
 });
 
 test('backswing never charges or releases, even with strong linear acceleration', () => {
@@ -220,4 +271,24 @@ test('natural gate drops partial swings on a sensor gap, hidden page or turn los
     for (let i = 0; i < 8; i++) expect(push()).toBeNull();
     expect(gate.phase).toBe('rest');
   }
+});
+
+test('only a correlated, definite rejection unlocks a delivery, after another quiet rest', () => {
+  const gate = createBowlingDeliveryGate();
+  let time = 0;
+  const push = (pitch = 0) => gate.push(bowlSample(time += 20, pitch), {active: true, turnKey: 'turn-1', aim: .2});
+  for (let i = 0; i < 16; i++) push();
+  const rolls = [];
+  for (let i = 0; i < 35; i++) {const result = push(i < 15 ? 400 : 0); if (result) rolls.push(result);}
+  expect(rolls).toHaveLength(1);
+  expect(gate.rejectRelease('old-turn', {ok: false, error: 'network-busy'})).toBe(false);
+  for (const result of [{ok: true}, {ok: false}, ...['timeout', 'outcome-unknown', 'duplicate-roll', 'invalid-response'].map(error => ({ok: false, error}))]) {
+    expect(gate.rejectRelease('turn-1', result)).toBe(false);
+    expect(gate.phase).toBe('finished');
+  }
+  expect(gate.rejectRelease('turn-1', {ok: false, error: 'network-busy'})).toBe(true);
+  for (let i = 0; i < 30; i++) expect(push(400)).toBeNull();
+  for (let i = 0; i < 16; i++) push();
+  for (let i = 0; i < 35; i++) {const result = push(i < 15 ? 400 : 0); if (result) rolls.push(result);}
+  expect(rolls).toHaveLength(2);
 });

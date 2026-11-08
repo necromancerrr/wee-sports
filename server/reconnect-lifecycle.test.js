@@ -12,9 +12,11 @@ vi.mock('../client/src/lib/socket.js',()=>({request:h.request,socket:{connected:
   on(event,fn) {h.handlers.set(event,fn);},off(event) {h.handlers.delete(event);},emit:vi.fn()}}));
 vi.mock('../client/src/lib/reconnect.js',()=>({loadToken:()=> 'private',saveToken:h.save,clearToken:h.clear}));
 import {useReconnect} from '../client/src/lib/useReconnect.js';
+import {socket} from '../client/src/lib/socket.js';
 let cleanup;
 beforeEach(()=>{
   vi.useFakeTimers();h.refs=[];h.states=[];h.effects=[];h.handlers.clear();vi.clearAllMocks();
+  socket.connected=true;
   vi.stubGlobal('window',new EventTarget());vi.stubGlobal('document',new EventTarget());
 });
 afterEach(()=>{cleanup?.();vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
@@ -38,6 +40,35 @@ test('closing a room during the motion permission sheet invalidates its pending 
   const ticket=view.beginJoin();
   h.handlers.get(EVENTS.ROOM_CLOSED)({code:'K7PM'});
   expect(view.accept(restored,ticket)).toBe(false);expect(render().snapshot).toBe(null);
+});
+
+test.each([true,false])('leaving is immediate with an unresponsive or offline connection (connected=%s)',async connected=>{
+  h.request.mockReturnValue(new Promise(()=>{}));
+  const view=render();cleanup=h.effects[0]();view.accept(restored);
+  const ticket=view.beginJoin();socket.connected=connected;
+  expect(await view.leave()).toBe(true);
+  expect(render().snapshot).toBe(null);expect(render().reconnecting).toBe(false);
+  expect(h.clear).toHaveBeenCalledWith('player','K7PM');
+  expect(view.accept(restored,ticket)).toBe(false);
+  expect(h.request.mock.calls.filter(([event])=>event===EVENTS.PLAYER_LEAVE)).toHaveLength(connected?1:0);
+});
+
+test('going home reserves the seat, keeps its private proof and rejects a delayed resume',async()=>{
+  let reply;h.request.mockReturnValue(new Promise(resolve=>{reply=resolve;}));
+  const view=render();cleanup=h.effects[0]();const ticket=view.beginJoin();
+  cleanup();cleanup=null;
+  await vi.advanceTimersByTimeAsync(0);
+  expect(socket.emit).toHaveBeenCalledWith(EVENTS.SESSION_AWAY,{code:'K7PM'});
+  expect(h.clear).not.toHaveBeenCalled();
+  reply(restored);await Promise.resolve();
+  expect(view.accept(restored,ticket)).toBe(false);expect(h.save).not.toHaveBeenCalled();
+});
+
+test.each(['no-room','bad-session'])('a %s response clears the saved return shortcut',async error=>{
+  h.request.mockResolvedValue({ok:false,error});
+  render();cleanup=h.effects[0]();await Promise.resolve();
+  expect(h.clear).toHaveBeenCalledWith('player','K7PM');
+  expect(render().snapshot).toBe(null);expect(render().reconnecting).toBe(false);
 });
 
 test('a saved-room account mismatch stops reconnecting without discarding a valid seat token', async()=>{

@@ -19,6 +19,10 @@
 .remote-manual .join-form { flex-wrap: wrap; }
 .remote-manual .code-input { flex: 1 1 120px; }
 .remote-connect .remote-notice { font-size: .9em; margin-top: 16px; }
+.remote-return { display: grid; gap: 10px; margin: 24px 0; padding: 18px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); }
+.remote-return .btn { min-height: 48px; justify-content: center; }
+.remote-return p { margin: 0; color: var(--text-muted); font-size: .85em; }
+.remote-return .btn--ghost { justify-self: center; font-size: .85em; }
 .remote-footer { width: 100%; max-width: 420px; margin: auto auto 0; padding-top: 24px; }
 .remote-footer a { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 14px 18px; border: 1px solid var(--border); border-radius: 18px; color: var(--text); background: var(--surface); text-decoration: none; font-weight: 750; }
 .remote-footer p { font-size: .8em; text-align: center; color: var(--text-muted); margin-top: 14px; }

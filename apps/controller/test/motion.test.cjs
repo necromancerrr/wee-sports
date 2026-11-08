@@ -190,6 +190,28 @@ test('native tennis discards a partial swing on interruption and suppresses paus
   } finally {controller.stop();}
 });
 
+test('native tennis uses a quick new aim on the first recognized hit without a quiet pause', async () => {
+  const {MotionController}=await import('../src/motionCore.js');
+  for(const hand of ['Right','Left']) {
+    let now=120000; const strokes=[];
+    const session={seat:{sport:'tennis'},inputSetup:'motion',playing:()=>true};
+    const controller=new MotionController({session,hand,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},
+      now:()=>now,onSwing:stroke=>strokes.push(stroke)});
+    const push=(rate,count)=>{for(let i=0;i<count;i++){now+=20;controller.sample({...rate,timestamp:50+now/1000});}};
+    try {
+      await controller.calibrate();
+      push({x:0,y:0,z:0},20);
+      push({x:0,y:-.6,z:0},25);
+      push({x:0,y:1.2,z:0},25);
+      assert.deepEqual(strokes,[],'a quick aiming adjustment is not a stroke');
+      push(hand==='Right' ? {x:6,y:12,z:0} : {x:7,y:-4,z:0},12);
+      push({x:0,y:0,z:0},20);
+      assert.equal(strokes.length,1);
+      assert.ok(strokes[0].aim>.29 && strokes[0].aim<.31,'first hit uses the new rightward aim');
+    }finally{controller.stop();}
+  }
+});
+
 test('only the current native bowler streams aim, with fresh gravity samples', async () => {
   const {MotionController} = await import('../src/motionCore.js');
   let now = 1000;

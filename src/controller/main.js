@@ -355,7 +355,7 @@ function roll(power, measuredSpin = null) {
   cancelArmedRoll();
   const event = { type: 'roll', id: createInputId(), power,
     aim, spin: measuredSpin ?? Number(element('spin').value) };
-  pendingRoll = { id: event.id, at: performance.now() };
+  pendingRoll = { id: event.id, turnKey: bowlingTurn, at: performance.now() };
   post({ type: 'wee:player-roll', event });
   element('delivery').textContent = 'Sending your roll…';
   element('latest').textContent = measuredSpin === null ? `${Math.round(power * 100)}% power` : 'Roll sent';
@@ -391,7 +391,11 @@ function analyze() {
     const recognitionMs = Number.isFinite(swing.detectionDelayMs) ? swing.detectionDelayMs
       : Number.isFinite(swing.startMs) ? performance.now() - started - swing.startMs : undefined;
     if (swing.label !== 'Unknown') {motionDiagnostics.count('swing.recognized'); motionDiagnostics.observe('swing.recognitionMs',recognitionMs);}
-    if ((swing.complete || swing.early || swing.fast) && swing.label !== 'Unknown') send(swing.label, power, recognitionMs, tennisAim.capture());
+    if ((swing.complete || swing.early || swing.fast) && swing.label !== 'Unknown') {
+      // The stream uses time relative to recording start; aim history uses
+      // the canonical absolute phone sample clock. Never mix those epochs.
+      send(swing.label, power, recognitionMs, tennisAim.capture(started + swing.startMs));
+    }
   }
 }
 function stop(message = 'Motion paused. Tap Resume motion when you are ready.', user = false) {
@@ -506,7 +510,9 @@ window.addEventListener('message', event => {
     return;
   }
   if (data?.type === 'wee:bowling-state' && bowling) {
-    if (data.canRoll === true && data.currentPlayer === player && (!canRoll || currentPlayer !== player)) bowlingTurn++;
+    // Readiness also changes on pause/reconnect. Only an actual lane/player
+    // transition can grant a new delivery while an earlier outcome is unknown.
+    if (data.phase === 'ready' && (bowlingPhase !== 'ready' || currentPlayer !== data.currentPlayer)) bowlingTurn++;
     canRoll = data.canRoll === true;
     currentPlayer = data.currentPlayer;
     bowlingPhase = data.phase;
@@ -520,7 +526,8 @@ window.addEventListener('message', event => {
     controls(); return;
   }
   if (data?.type === 'wee:roll-ack' && bowling) {
-    if (!pendingRoll || (data.result?.id && data.result.id !== pendingRoll.id)) return;
+    if (!pendingRoll || data.result?.id !== pendingRoll.id) return;
+    bowlingGate.rejectRelease(pendingRoll.turnKey, data.result);
     pendingRoll = null;
     deliveryResult(data.result ?? { ok: false }, 'roll');
     controls(); return;
@@ -528,7 +535,9 @@ window.addEventListener('message', event => {
   if (data?.type !== 'wee:lobby-state' || typeof data.paused !== 'boolean') return;
   const generation = data.generation ?? data.inputGeneration;
   if (generation !== undefined && generation !== inputGeneration || data.gameId !== tennisGameId) {
-    inputGeneration = generation; bowlingTurn++; cancelArmedRoll();
+    inputGeneration = generation;
+    if (data.gameId !== tennisGameId) bowlingTurn++;
+    cancelArmedRoll();
   }
   if (['tennis', 'bowling'].includes(data.sport) && bowling !== (data.sport === 'bowling')) {
     // The same controller document owns permission and gyro zero across sports.

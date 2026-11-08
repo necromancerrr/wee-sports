@@ -941,8 +941,8 @@ test('natural motion sends one roll, never retries after ACK or timeout, and wai
   await import('../src/controller/main.js');
   for (let i = 0; i < 10; i++) tick();
   state({playing: true, paused: false, sport: 'bowling', gameId: 'auto-bowl', generation: 1});
-  const bowlingState = (phase, currentPlayer = 1) => emit('message', {source: parent, origin: location.origin,
-    data: {type: 'wee:bowling-state', phase, currentPlayer, canRoll: phase === 'ready'}});
+  const bowlingState = (phase, currentPlayer = 1, canRoll = phase === 'ready') => emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', phase, currentPlayer, canRoll}});
   const rest = () => {for (let i = 0; i < 16; i++) tick();};
   const bowl = () => {for (let i = 0; i < 35; i++) tick(20, {alpha: i < 15 ? 400 : 0, beta: i < 20 ? 100 : 0, gamma: 0});};
   const rolls = () => messages.filter(message => message.type === 'wee:player-roll');
@@ -950,12 +950,35 @@ test('natural motion sends one roll, never retries after ACK or timeout, and wai
   bowlingState('ready'); rest(); bowl(); expect(rolls()).toHaveLength(1);
   emit('message', {source: parent, origin: location.origin, data: {type: 'wee:roll-ack', result: {id: rolls()[0].event.id, ok: true, receivers: 1}}});
   rest(); bowl(); expect(rolls()).toHaveLength(1);
-  state({playing: true, paused: true, connected: false, gameId: 'auto-bowl', generation: 1});
-  state({playing: true, paused: false, gameId: 'auto-bowl', generation: 1});
+  state({playing: true, paused: true, connected: false, gameId: 'auto-bowl', generation: 2});
+  bowlingState('ready', 1, false);
+  state({playing: true, paused: false, gameId: 'auto-bowl', generation: 3});
+  bowlingState('ready');
   rest(); bowl(); expect(rolls()).toHaveLength(1);
   bowlingState('rolling'); bowlingState('ready'); rest(); bowl(); expect(rolls()).toHaveLength(2);
   tick(4500, null); rest(); bowl(); expect(rolls()).toHaveLength(2);
   expect(permission).not.toHaveBeenCalled();
+});
+
+test.each(['network-busy', 'paused', 'disconnected'])('a bowling %s rejection permits a fresh delivery without waiting for a nonexistent turn', async error => {
+  location.search += '&sport=bowling';
+  await import('../src/controller/main.js');
+  for (let i = 0; i < 10; i++) tick();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'auto-bowl', generation: 1});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', phase: 'ready', currentPlayer: 1, canRoll: true}});
+  const rest = () => {for (let i = 0; i < 16; i++) tick();};
+  const bowl = () => {for (let i = 0; i < 35; i++) tick(20, {alpha: i < 15 ? 400 : 0, beta: 0, gamma: 0});};
+  const rolls = () => messages.filter(message => message.type === 'wee:player-roll');
+  rest(); bowl(); expect(rolls()).toHaveLength(1);
+  // A stale reply cannot clear the active release or consume its acknowledgement.
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:roll-ack', result: {id: 'old-roll', ok: false, error}}});
+  rest(); bowl(); expect(rolls()).toHaveLength(1);
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:roll-ack', result: {id: rolls()[0].event.id, ok: false, error}}});
+  rest(); bowl(); expect(rolls()).toHaveLength(2);
+  expect(rolls()[1].event.id).not.toBe(rolls()[0].event.id);
 });
 
 

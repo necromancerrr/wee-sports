@@ -15,7 +15,7 @@ import { TouchPaddleStream } from './src/touchPaddle.js';
 import { NativeBowlingActions } from './src/bowlingActions.js';
 import {PlayArtwork} from './src/PlayArtwork.jsx';
 import {startConfirmationKey} from '../../shared/startConfirmation.js';
-import {CONTROLLER_SPORTS, controllerPlayState, matchSummary, sportChoice, sportTitle as title} from './src/controllerPresentation.js';
+import {CONTROLLER_SPORTS, controllerPlayState, matchSummary, sportChoice, sportTitle as title, waitingForTv} from './src/controllerPresentation.js';
 
 const sportArtwork = {tennis:require('./assets/sports/tennis.png'),'table-tennis':require('./assets/sports/table-tennis.png'),
   bowling:require('./assets/sports/bowling.png'),golf:require('./assets/sports/golf.png')};
@@ -90,6 +90,7 @@ export default function App() {
   }
   const scrollRef = useRef(null);
   const sessionRef = useRef(null), motionRef = useRef(null), hapticsRef = useRef(true), flowRef = useRef(null);
+  const roomRevision = useRef(0), taskRevision = useRef(0);
   const scanLock = useRef(false), preferencesRef = useRef({hand,sensitivity,strokeMode});
   const padSize = useRef({width:300,height:180});
   preferencesRef.current = {hand,sensitivity,strokeMode};
@@ -109,11 +110,12 @@ export default function App() {
     const task = type === 'contact' ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium) : Haptics.selectionAsync();
     task.catch(() => {});
   };
-  const task = async work => { setBusy(true); setNotice(''); try { await work(); } catch (error) { setNotice(error.message); } finally { setBusy(false); } };
+  const task = async work => { const revision=++taskRevision.current; setBusy(true); setNotice(''); try { await work(); } catch (error) { if (revision===taskRevision.current) setNotice(error.message); } finally { if (revision===taskRevision.current) setBusy(false); } };
   const result = value => { if (!value?.ok) throw new Error(value?.error === 'outcome-unknown' ? 'The outcome is unknown. Check the TV before trying another action.' : value?.error || 'The server did not accept this action.'); return value; };
 
   useEffect(() => {
-    readPrivate('room').then(value => { if (value?.origin && value?.code && value?.token) setSavedSession(value); }).catch(() => {});
+    const revision=roomRevision.current;
+    readPrivate('room').then(value => { if (revision===roomRevision.current && value?.origin && value?.code && value?.token) setSavedSession(value); }).catch(() => {});
     readPrivate('controllerPreferences').then(value => {
       if (['Right','Left'].includes(value?.hand)) setHand(value.hand);
       if (Number.isFinite(value?.sensitivity) && value.sensitivity>=.5 && value.sensitivity<=2) setSensitivity(value.sensitivity);
@@ -150,9 +152,27 @@ export default function App() {
   useEffect(() => {
     if (!seat || seat.paused || !['game', 'ready', 'countdown'].includes(seat.phase)) motionRef.current?.resetInput();
   }, [seat?.gameState?.phase, seat?.phase, seat?.paused]);
+  function saveRoom(value) {
+    roomRevision.current++;
+    setSavedSession(value);
+    return writePrivate('room', value).catch(() => setNotice('Secure storage is unavailable. Your room can only be remembered while this app stays open.'));
+  }
+  function goHome() {
+    taskRevision.current++;
+    flowRef.current?.stop(); motionRef.current?.resetInput(); endTouch();
+    touchStream.current.stop(); rollActions.current.reset();
+    sessionRef.current?.home();
+    sessionRef.current = null;
+    setSetup(null); setMotionStatus({state:'off'}); setScanner(false); setScannedRoom(null); setManualOpen(false);
+    setOptionsOpen(false); setProfileOpen(false); setConfirmStart(null); setPlayEvent(null);
+    setSeat(null); setStatus('Ready to join'); setNotice(''); setBusy(false);
+    scrollRef.current?.scrollTo({y:0,animated:false});
+  }
   async function makeSession(address) {
+    const revision=taskRevision.current;
     flowRef.current?.stop(); rollActions.current.reset(); sessionRef.current?.dispose(); touchStream.current.stop(); touchStream.current.reset(); setSetup(null);
     const savedProfile = await readPrivate('profile').catch(() => null);
+    if (revision!==taskRevision.current) return null;
     if (savedProfile?.origin === address && savedProfile.profile?.preferences) {
       const saved = savedProfile.profile.preferences;
       setHand(saved.hand); setSensitivity(saved.sensitivity); setHaptics(saved.haptics);
@@ -160,7 +180,7 @@ export default function App() {
     }
     const session = new ControllerSession(address, {
       profileToken: savedProfile?.origin === address ? savedProfile.token : null,
-      save: value => sessionRef.current === session ? writePrivate('room', value).catch(() => setNotice('Secure storage is unavailable. Keep the app open to retain this room.')) : Promise.resolve(),
+      save: value => sessionRef.current === session ? saveRoom(value) : Promise.resolve(),
       saveClaim: (address, claim) => guestClaims.remember(address, claim),
       changed: (next, connection) => {
         if (sessionRef.current !== session) return;
@@ -171,7 +191,7 @@ export default function App() {
         const currentPlayer = next?.players?.find(value => value.slot === next.slot);
         if (currentPlayer?.setup === null) setSetup(null);
         setSeat(next); setStatus(connection);
-        if (!next) {setOptionsOpen(false);setProfileOpen(false);setConfirmStart(null);setPlayEvent(null);setSavedSession(null);}
+        if (!next) {setOptionsOpen(false);setProfileOpen(false);setConfirmStart(null);setPlayEvent(null);setScannedRoom(null);setManualOpen(false);setScanner(false);}
         if (connection !== 'online') { setSetup(null); touchStream.current.stop(); }
         flowRef.current?.update(next, connection);
       },
@@ -210,14 +230,26 @@ export default function App() {
   }
 
   async function join(room = {origin,code}) {
+    const revision=taskRevision.current;
     const playerName = cleanName(name);
     if (!playerName) throw new Error('Enter your playing name to join.');
     const address = serverOrigin(room.origin.trim(), __DEV__);
     const session = await makeSession(address);
+    if (!session || revision!==taskRevision.current) return;
     const motionAvailable = await Gyroscope.isAvailableAsync().catch(() => false);
-    result(await session.join(room.code, playerName, createControllerCapabilities({
-      sports: ['tennis', 'bowling', 'table-tennis'], motion: motionAvailable, orientation: motionAvailable, haptics, buttons: true })));
-    setName(playerName); setScannedRoom(null); setOrigin(address); setScanner(false); setOptionsOpen(false); setProfileOpen(false); setSavedSession(null); buzz('ready');
+    if (revision!==taskRevision.current || session!==sessionRef.current) return;
+    const joined=await session.join(room.code, playerName, createControllerCapabilities({
+      sports: ['tennis', 'bowling', 'table-tennis'], motion: motionAvailable, orientation: motionAvailable, haptics, buttons: true }));
+    if (revision!==taskRevision.current || session!==sessionRef.current) return;
+    result(joined);
+    setName(playerName); setScannedRoom(null); setOrigin(address); setScanner(false); setOptionsOpen(false); setProfileOpen(false); buzz('ready');
+  }
+  async function returnToRoom() {
+    const revision=taskRevision.current, saved=savedSession;
+    if (!saved) return;
+    setOrigin(saved.origin);
+    const session=await makeSession(saved.origin);
+    if (session && revision===taskRevision.current && session===sessionRef.current) await session.restore(saved);
   }
   async function release(roll = { aim, power, spin }) {
     if (!rollActions.current.ticket) animatePlay('roll');
@@ -251,9 +283,12 @@ export default function App() {
     setHistory((await profileRequest(address, '/history', { token: saved.token })).history || []);
   }
   async function scanTv() {
+    const revision=taskRevision.current;
     const granted=permission?.granted || (await requestPermission()).granted;
+    if (revision!==taskRevision.current) return;
     if(!granted) {setManualOpen(true);throw new Error('Camera permission is off. Enter the room code, or allow Camera in Settings.');}
     if(sessionRef.current?.seat) {await sessionRef.current.leave();flowRef.current?.stop();setSetup(null);}
+    if (revision!==taskRevision.current) return;
     scanLock.current = false; setScannedRoom(null); setOptionsOpen(false);setProfileOpen(false);setScanner(true);
   }
   function backToPlay() {setProfileOpen(false);setOptionsOpen(false);setConfirmReset(false);}
@@ -272,6 +307,7 @@ export default function App() {
   }
 
   const isLeader = seat?.slot === (seat?.leaderSlot ?? 0);
+  const tvAway = waitingForTv(seat);
   const inLobby = ['lobby','ready'].includes(seat?.phase);
   const playable = seat?.phase === 'game' && !seat.paused && status === 'online';
   const canRoll = playable && !optionsOpen && !profileOpen && seat?.gameState?.phase === 'ready' && seat?.gameState?.currentPlayer === seat.slot + 1;
@@ -304,8 +340,9 @@ export default function App() {
   return <SafeAreaView style={styles.safe}>{seat ? <KeepControllerAwake /> : null}<ScrollView ref={scrollRef} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled" scrollEnabled={!padDragging}>
     <View style={styles.header}><View><Text style={styles.brand}>wee<Text style={styles.brandAccent}> sports</Text></Text><Text style={styles.pill}>YOUR CONTROLLER</Text></View>
       {!optionsOpen && !profileOpen ? <Button quiet onPress={() => setOptionsOpen(true)}>Tools</Button> : null}</View>
-    <Text accessibilityLiveRegion="polite" style={styles.status}>{status === 'online' ? '● Connected to your TV' : status === 'offline' ? 'Reconnecting to your TV…' : status === 'suspended' ? 'Return to the app to reconnect' : status}</Text>
+    <Text accessibilityLiveRegion="polite" style={styles.status}>{status === 'online' ? tvAway ? 'Waiting for the TV…' : '● Connected to your TV' : status === 'offline' ? 'Reconnecting to your room…' : status === 'suspended' ? 'Return to the app to reconnect' : status}</Text>
     {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
+    {seat ? <Button quiet onPress={goHome}>Go home</Button> : null}
     {profileOpen ? <View style={styles.card}>
       <Text style={styles.heading}>Your profile</Text><Text style={styles.copy}>Your preferences and match history. Guest play is always available.</Text>
       {account ? <>
@@ -366,12 +403,18 @@ export default function App() {
       <View style={styles.card}><Text style={styles.subheading}>Your controller</Text>
         <Button quiet onPress={() => task(openProfile)}>Profile & history</Button>
         {isLeader && ['countdown','vote','tutorial','game'].includes(seat?.phase) ? <Button quiet disabled={status!=='online'} onPress={() => task(async () => {result(await sessionRef.current.request(EVENTS.PLAYER_RETURN_TO_LOBBY,{gameId:seat.gameId}));backToPlay();})}>Return to lobby</Button> : null}
-        <Button quiet disabled={busy || Boolean(seat && status!=='online')} onPress={() => task(scanTv)}>{seat ? 'Leave & scan another TV' : 'Scan TV code'}</Button>
+        <Button quiet disabled={busy} onPress={() => task(scanTv)}>{seat ? 'Leave & scan another TV' : 'Scan TV code'}</Button>
         {seat ? <Button quiet onPress={() => task(async () => {await sessionRef.current.leave();flowRef.current?.stop();setSetup(null);backToPlay();})}>Leave room</Button> : null}
       </View>
     </> : !seat ? <>
       {!scannedRoom ? <View style={styles.homeLead}><View style={styles.sportPreview}>{CONTROLLER_SPORTS.map(sport=><View key={sport} style={styles.previewIcon}><SportMark sport={sport} size={44}/><Text style={styles.previewLabel}>{title(sport)}</Text></View>)}</View>
       <Text style={styles.heading}>Ready to play?</Text><Text style={styles.copy}>Connect to your TV. Your phone does the rest.</Text></View> : null}
+      {savedSession && !scannedRoom && !scanner ? <View style={styles.card}>
+        <Text style={styles.eyebrow}>RECENT ROOM · {savedSession.code}</Text>
+        <Text style={styles.copy}>Return while the room is still available. Your place is held briefly.</Text>
+        <Button disabled={busy} onPress={() => task(returnToRoom)}>Return to room</Button>
+        <Button quiet onPress={() => {goHome();void saveRoom(null);}}>Forget room</Button>
+      </View> : null}
       {scanner && permission?.granted ? <View style={styles.cameraFrame}>
         <CameraView style={styles.camera} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => {
           if (scanLock.current) return;
@@ -396,11 +439,10 @@ export default function App() {
         <Button disabled={busy || !origin || code.length !== 4 || !cleanName(name)} onPress={() => task(() => join())}>Play</Button>
         <Button quiet disabled={!origin || code.length !== 4} onPress={() => task(async () => { const address = serverOrigin(origin.trim(), __DEV__); await Linking.openURL(`${address}/join?code=${encodeURIComponent(code)}`); })}>Continue in browser</Button>
       </View> : null}
-      {savedSession ? <Button quiet onPress={() => task(async () => { setOrigin(savedSession.origin); await (await makeSession(savedSession.origin)).restore(savedSession); })}>Reconnect to room {savedSession.code}</Button> : null}
       <Button quiet onPress={() => task(openProfile)}>Profile & history</Button><Text style={styles.small}>No account needed to play. Golf is coming soon.</Text>
     </> : <>
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>ROOM {seat.code} · PLAYER {seat.slot + 1}</Text>
+        <Text style={styles.eyebrow}>ROOM {seat.code}{Number.isInteger(seat.slot) ? ` · PLAYER ${seat.slot + 1}` : ''}</Text>
         <View style={styles.sportHeading}><SportMark sport={seat.sport} size={38}/><Text style={[styles.heading,styles.sportHeadingText]}>{title(seat.sport)}</Text></View>
         {seat.phase === 'game' ? <>
           <PlayArtwork sport={seat.sport} source={sportArtwork[seat.sport]} event={playEvent}
@@ -423,7 +465,7 @@ export default function App() {
             <Text style={styles.small}>{mode==='motion' ? 'Motion controls' : 'Touch controls'}</Text>
           </View> : null}
         </> : <>
-          <Text style={styles.copy}>{seat.resumeGame ? 'Choose Continue game or New game on the TV.' : seat.paused ? 'Waiting for the TV and controllers…' : !setup ? 'Getting ready…' : inLobby ? isLeader ? 'Start when everyone is in.' : 'Ready. Waiting for the group to start.' : 'Watch the TV. Get ready!'}</Text>
+          <Text style={styles.copy}>{status!=='online' ? 'Reconnecting. You can wait here or go home.' : tvAway ? 'Reopen this room on the TV, or go home and return while it is available.' : seat.resumeGame ? 'Choose Continue game or New game on the TV.' : seat.paused ? 'Waiting for the other controllers…' : !setup ? 'Getting ready…' : inLobby ? isLeader ? 'Start when everyone is in.' : 'Ready. Waiting for the group to start.' : 'Watch the TV. Get ready!'}</Text>
           {isLeader && inLobby && !seat.resumeGame ? <Button disabled={busy || !startKey || !setup} onPress={()=>setConfirmStart(startKey)}>Start game</Button> : null}
           {seat.phase==='countdown' ? <Text style={styles.meter}>Starting in {Math.ceil((seat.countdown?.msLeft || 0)/1000)}</Text> : null}
           {inLobby ? <Text style={styles.small}>{seat.players?.map(joined=>`${joined.name}${joined.ready ? ' ✓' : ''}`).join(' · ')}</Text> : null}
