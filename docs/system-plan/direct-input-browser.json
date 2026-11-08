@@ -1,0 +1,16 @@
+{
+  "recordedAt": "2026-11-08T20:29:50.633Z",
+  "mode": "expected-no-ice-fallback",
+  "checks": [
+    "tennis: real SDP offer/answer completes with zero signaled ICE candidates under browser policy; existing relay delivers the unsent input once",
+    "tennis: server pause revokes the negotiating peer even when direct connectivity is unavailable",
+    "table-tennis: real SDP offer/answer completes with zero signaled ICE candidates under browser policy; existing relay delivers the unsent input once",
+    "table-tennis: server pause revokes the negotiating peer even when direct connectivity is unavailable"
+  ],
+  "errors": [],
+  "timings": {},
+  "limitations": [
+    "Direct data-channel delivery, RTT and route-bypass speed were NOT verified: managed Chromium disables non-proxied UDP; offer/answer completes but no usable ICE candidates are signaled.",
+    "The managed-policy mode verifies fallback only; the default mode requires successful direct delivery."
+  ]
+}

@@ -18,6 +18,7 @@ test('an idle native touch paddle stays fresh before the first drag and after fi
   assert.equal(sent.length,91);
   assert.ok(sent.every(pose=>pose.angularVelocity.x===0 && pose.angularVelocity.y===0));
   assert.deepEqual(sent.at(-1).reach,{x:0,y:0});
+  assert.ok(sent.every(pose=>pose.sourceTime===pose.time/1000));
   stream.move({x:.4,y:-.2},true);tick();stream.release();
   for(let i=0;i<60;i++) tick();
   assert.deepEqual(sent.at(-1).reach,{x:.4,y:-.2},'lifting a finger holds the paddle in place');

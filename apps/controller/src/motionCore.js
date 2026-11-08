@@ -181,7 +181,7 @@ export class MotionController {
         this.controlsSuspended=true;
       }
       if(seat.sport==='table-tennis' && seat.gameState?.phase!=='complete') {
-        this.session.latest('pose',{...this.idlePose,angularVelocity:{x:0,y:0,z:0}});
+        this.session.latest('pose',{...this.idlePose,sourceTime:corrected.timeSeconds,angularVelocity:{x:0,y:0,z:0}});
       }
       return;
     }
@@ -189,7 +189,7 @@ export class MotionController {
       const rate=Math.hypot(corrected.angularVelocity.x,corrected.angularVelocity.y,corrected.angularVelocity.z);
       this.controlsQuietSince=rate<=.55 ? this.controlsQuietSince ?? time : null;
       if(this.controlsQuietSince===null || time-this.controlsQuietSince<120) {
-        if(seat.sport==='table-tennis') this.session.latest('pose',{...this.idlePose,angularVelocity:{x:0,y:0,z:0}});
+        if(seat.sport==='table-tennis') this.session.latest('pose',{...this.idlePose,sourceTime:corrected.timeSeconds,angularVelocity:{x:0,y:0,z:0}});
         return;
       }
       this.resetInput();this.controlsSuspended=false;this.controlsQuietSince=null;
@@ -224,7 +224,7 @@ export class MotionController {
         this.lastPose={orientation,reach,calibrationRevision};
         const gesture = this.visualStroke.push({...intent, hand:this.hand}, time / 1000);
         if (gesture) this.onPaddleSwing(gesture);
-        this.session.latest('pose', { orientation, angularVelocity, reach, calibrationRevision });
+        this.session.latest('pose', { orientation, angularVelocity, reach, calibrationRevision, sourceTime:corrected.timeSeconds });
       }
     }
     if (time - this.lastUi > 100) {

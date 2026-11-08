@@ -1,0 +1,15 @@
+{
+  "recordedAt": "2026-11-08T20:17:05.282Z",
+  "checks": [
+    "First remote start requests fullscreen only after the lobby; real browser denial still fills the viewport",
+    "A real TV Enter on the stage completes fullscreen on the first press without opening Display",
+    "An intentional fullscreen exit is respected without remounting the match",
+    "Saved-match choices stay windowed; Continue enters fullscreen on its first real TV click"
+  ],
+  "errors": [],
+  "limitations": [
+    "Chrome requires a gesture on the TV document when automatic fullscreen permission is unavailable. A phone tap cannot grant it.",
+    "Headless Chromium DOM Fullscreen API state was observed; this does not prove that a physical TV or managed browser hides its browser chrome. The environment has FullscreenAllowed=false.",
+    "Chromium software rendering; physical TV browser and remote were not measured."
+  ]
+}

@@ -1,6 +1,7 @@
 const finiteVector = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]));
 const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
 const aimOf = input => ({x: clamp(input.reach?.x || 0, -1, 1), y: clamp(input.reach?.y || 0, -1, 1)});
+const PROMPT_STROKE_RATE = 1.7;
 
 /** Screen-relative angular motion describes wrist rotation, not tracked arm
  * position. Lateral yaw (or roll for a flat grip) gives a repeatable arcade
@@ -45,12 +46,17 @@ export function createStrokeIntentDetector() {
       if (!Number.isFinite(rate)) return null;
       if (previous && now - previous.time > .25) reset();
       if (!previous) {
-        previous = {time: now, rate}; stableAim = aimOf(input);
+        previous = {time: now, rate, aim: aimOf(input), rotation: {...input.angularVelocity}}; stableAim = aimOf(input);
         return null;
       }
       const dt = now - previous.time;
       const travel = (rate + previous.rate) * .5 * dt;
-      previous = {time: now, rate};
+      const rising = rate - previous.rate >= .08;
+      const steady = Math.abs(rate - previous.rate) < .12;
+      const changeOfAxis = previous.rate > .55 && previous.rate < PROMPT_STROKE_RATE && rate >= PROMPT_STROKE_RATE &&
+        Math.abs(['x','y','z'].reduce((sum,axis)=>sum + previous.rotation[axis] * input.angularVelocity[axis],0)) < previous.rate * rate * .4;
+      if (armed && changeOfAxis) {stableAim = {...previous.aim}; candidate = null;}
+      previous = {time: now, rate, aim: aimOf(input), rotation: {...input.angularVelocity}};
       if (rate <= .55) {
         aimingSince = null;
         stableAim = aimOf(input);
@@ -63,9 +69,9 @@ export function createStrokeIntentDetector() {
       // Gentle repositioning is aiming, even without a complete stop. Keep
       // the onset frozen for a quick swing, but don't reuse a seconds-old aim
       // when someone moves to a new target at a steady, sub-stroke speed.
-      if (rate < 1.1) {
+      if (rate < PROMPT_STROKE_RATE && steady) {
         aimingSince ??= now;
-        if (armed && now - aimingSince >= .08) {
+        if (armed && now - aimingSince >= .06 && (!candidate || candidate.rises < 2)) {
           stableAim = aimOf(input);
           candidate = null;
         }
@@ -86,18 +92,23 @@ export function createStrokeIntentDetector() {
         armed = true; stableAim = {...valley.aim}; candidate = null; valley = null;
       }
       if (!candidate || now - candidate.startedAt > .24) {
-        candidate = {startedAt: now - dt, travel: 0, peak: 0, duration: 0,
+        candidate = {startedAt: now - dt, travel: 0, peak: 0, duration: 0, rises: 0,
           rotation: {x: 0, y: 0, z: 0}, aim: {...stableAim}};
       }
       candidate.travel += travel;
       candidate.peak = Math.max(candidate.peak, rate);
       candidate.duration += dt;
+      if (rising) candidate.rises++;
       for (const axis of ['x', 'y', 'z']) candidate.rotation[axis] += input.angularVelocity[axis] * dt;
       // Recognize a compact wrist movement promptly, while requiring travel
       // as well as a peak so single-sample noise and slow aiming stay quiet.
-      if (candidate.peak < 1.1 || candidate.travel < .06) return null;
-      // Classify the accumulated swing, not the last noisy sensor sample.
-      // This uses the existing recognition window: no extra input delay.
+      // Moderate pointing may accelerate smoothly too. A gentle hit needs a
+      // compact rise and fall; a held aiming rate must not consume the next
+      // hit. Strong strokes qualify immediately without waiting for a peak.
+      if (candidate.peak < 1.1 || candidate.travel < .06 ||
+        candidate.peak < PROMPT_STROKE_RATE && (candidate.rises < 2 || rate > candidate.peak - .08)) return null;
+      // Classify the accumulated swing so one noisy final sample cannot
+      // reverse the direction already established by the movement.
       const motion = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, candidate.rotation[axis] / candidate.duration]));
       current = {id: ++identity, strength: Math.min(candidate.peak, 30),
         aim: {...candidate.aim}, spin: motion, startedAt: candidate.startedAt,

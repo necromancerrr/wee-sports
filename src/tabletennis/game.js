@@ -15,7 +15,7 @@ const INPUT_GRACE = .5;
 // flight. Its individual deadline comes from the predicted reachable contact.
 const FRIENDLY_STROKE_BUFFER = .45;
 const newPlayer = () => ({input: {reach: {x: 0, y: 0}, orientation: [0, 0, 0, 1], angularVelocity: v3()},
-  inputAt: -Infinity, remote: false, remoteStale: false, settling: false, settleUntil: 0,
+  inputAt: -Infinity, sourceTime: null, remote: false, remoteStale: false, settling: false, settleUntil: 0,
   strokeDetector: createStrokeIntentDetector(), pendingStroke: null, stroke: newStroke(),
   localStrokeRequested: false, aimTarget: null, idleReach: {x: 0, y: 0}});
 
@@ -210,6 +210,7 @@ export class TableTennisGame {
     this.flight = null;
     for (const controller of player ? [this.players[player - 1]] : this.players) {
       controller.strokeDetector.reset();
+      controller.sourceTime = null;
       controller.pendingStroke = null;
       controller.localStrokeRequested = false;
       controller.stroke = newStroke(controller.input.hand);
@@ -232,11 +233,17 @@ export class TableTennisGame {
       !input.orientation.every(finite) || input.orientation.some(n => Math.abs(n) > 1.01) ||
       !input.angularVelocity || !['x', 'y', 'z'].every(k => finite(input.angularVelocity[k]) && Math.abs(input.angularVelocity[k]) <= 50) ||
       (input.hand !== undefined && !['Left', 'Right'].includes(input.hand)) ||
+      (input.sourceTime !== undefined && (!finite(input.sourceTime) || input.sourceTime < 0 || input.sourceTime > 1e9)) ||
       (input.reach && !['x', 'y'].every(k => finite(input.reach[k]) && Math.abs(input.reach[k]) <= 1))) return false;
     const norm = Math.hypot(...input.orientation);
     if (norm < .9 || norm > 1.1) return false;
     const now = this.now();
     if (!finite(now)) return false;
+    const sourceTime = input.sourceTime ?? null;
+    if (sourceTime !== null && controller.sourceTime !== null && sourceTime <= controller.sourceTime) return false;
+    // Sensor intervals describe the gesture. Packet receipt still owns input
+    // freshness and stroke expiry; phone and TV clocks are never subtracted.
+    if ((sourceTime === null) !== (controller.sourceTime === null)) this.clearStrokeInput(player);
     if (remote && (now - controller.inputAt > INPUT_GRACE || input.calibrationRevision !== controller.input.calibrationRevision)) {
       controller.settling = true;
       controller.settleUntil = this.time + .15;
@@ -245,11 +252,12 @@ export class TableTennisGame {
     controller.input = {...input, orientation: input.orientation.map(n => n / norm), reach: input.reach || {x: 0, y: 0}};
     if (controller.stroke.phase === 'ready') controller.stroke.hand = input.hand === 'Left' ? 'Left' : 'Right';
     controller.inputAt = now;
+    controller.sourceTime = sourceTime;
     controller.remote = remote;
     controller.remoteStale = false;
     // Recognition runs once per received sample, independently of the TV's
     // animation frames. A short swing followed by rest cannot disappear.
-    const gesture = controller.strokeDetector.push(controller.input, now);
+    const gesture = controller.strokeDetector.push(controller.input, sourceTime ?? now);
     const active = controller.strokeDetector.active;
     // Preserve the peak even if the entire burst and quiet rearm occur before
     // the next render frame. The request stays one-shot and keeps its aim.

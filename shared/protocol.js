@@ -403,6 +403,8 @@ export function isPose(event) {
   return norm >= .9 && norm <= 1.1 && isRecord(event.angularVelocity) &&
     ['x', 'y', 'z'].every(axis => Number.isFinite(event.angularVelocity[axis]) && Math.abs(event.angularVelocity[axis]) <= 100) &&
     Number.isSafeInteger(event.calibrationRevision) && event.calibrationRevision >= 0 &&
+    // Seconds on the originating phone's monotonic clock, never a TV timestamp.
+    (event.sourceTime === undefined || Number.isFinite(event.sourceTime) && event.sourceTime >= 0 && event.sourceTime <= 1e9) &&
     (event.hand === undefined || ['Left', 'Right'].includes(event.hand)) &&
     (event.reach === undefined || isRecord(event.reach) && ['x', 'y'].every(axis => Number.isFinite(event.reach[axis]) && Math.abs(event.reach[axis]) <= 1));
 }

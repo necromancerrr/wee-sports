@@ -248,6 +248,7 @@ test('Tools hold a fresh neutral table-tennis paddle and require quiet before ga
     for(let i=0;i<40;i++)sample(3);
     assert.equal(poses.length-first,40,'a peer does not freeze while Tools is open');
     assert.ok(poses.slice(first).every(pose=>Object.values(pose.angularVelocity).every(value=>value===0)));
+    assert.ok(poses.slice(first).every(pose=>pose.sourceTime===pose.time/1000));
     session.controlsActive=true;
     for(let i=0;i<20;i++)sample(3);
     assert.ok(poses.slice(first).every(pose=>Object.values(pose.angularVelocity).every(value=>value===0)),'finishing a movement from Tools cannot hit');
@@ -257,6 +258,22 @@ test('Tools hold a fresh neutral table-tennis paddle and require quiet before ga
     const before=poses.length;session.seat.gameState.phase='complete';for(let i=0;i<20;i++)sample(3);
     assert.equal(poses.length,before,'results do not stream more gameplay');
   }finally{controller.stop();}
+});
+
+test('table-tennis poses use capture time rather than a delayed native callback time', async () => {
+  const {MotionController}=await import('../src/motionCore.js');
+  let now=1000;const poses=[];
+  const session={seat:{sport:'table-tennis',gameState:{phase:'rally'}},inputSetup:'motion',controlsActive:true,playing:()=>true,
+    latest:(kind,pose)=>poses.push(pose)};
+  const controller=new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now});
+  try {
+    await controller.calibrate();
+    for(let i=0;i<20;i++){now=1000+i*20;controller.sample({timestamp:100+i*.02,x:0,y:0,z:0});}
+    now=1440;controller.sample({timestamp:100.4,x:0,y:0,z:0});
+    assert.ok(Math.abs(poses.at(-1).sourceTime-1.4)<1e-9);
+    assert.notEqual(poses.at(-1).sourceTime,now/1000);
+    for(let i=1;i<poses.length;i++) assert.ok(poses[i].sourceTime>poses[i-1].sourceTime);
+  } finally {controller.stop();}
 });
 
 test('table-tennis animation events follow recognized strokes and stop with Tools, pause or completion', async () => {

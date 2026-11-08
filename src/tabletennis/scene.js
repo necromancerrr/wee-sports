@@ -10,8 +10,8 @@ import {browserDiagnostics} from '../../shared/diagnostics.js';
  * only disabled windup/recovery poses receive a decorative follow-through. */
 export function createTableTennisScene(container, game, {onMove, onAction, labels = []} = {}) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#6c9fa7');
-  scene.fog = new THREE.Fog('#6c9fa7', 12, 32);
+  scene.background = new THREE.Color('#78a8b0');
+  scene.fog = new THREE.Fog('#78a8b0', 12, 32);
   const views = createTableTennisViews(), camera = views.cameras[0];
   const frameQuality = createFrameQuality({maxPixelRatio: Math.min(devicePixelRatio || 1, 1.75)});
   const diagnostics = browserDiagnostics('render.table-tennis');
@@ -23,9 +23,9 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   renderer.info.autoReset = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = .94;
+  renderer.toneMappingExposure = 1.02;
   container.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight('#cee2de', '#324b3b', 1.65));
+  scene.add(new THREE.HemisphereLight('#cee2de', '#3f5946', 1.8));
   const light = new THREE.DirectionalLight('#ffedce', 1.7);
   light.position.set(-3, 7, 4); light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);

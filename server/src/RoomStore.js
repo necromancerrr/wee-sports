@@ -56,6 +56,8 @@ import {
 const MAX_CODE_ATTEMPTS = 50;
 const COUNTDOWN_MS = COUNTDOWN_SECONDS * 1000;
 const VOTE_MS = VOTE_SECONDS * 1000;
+const POSE_BURST_CAPACITY = 6;
+const POSE_TOKENS_PER_MS = 60 / 1000;
 
 const BEFORE_PLAY = new Set([PHASES.LOBBY, PHASES.READY]);
 /** After the countdown and before the game: the vote and the tutorial. */
@@ -399,16 +401,37 @@ export class RoomStore {
     const last = room.streams.get(key);
     if (last && event.seq <= last.seq) return {ok: false, error: 'stale-sequence'};
     const now = this.#now();
-    // Admit ordinary 60 Hz paddle updates with transport jitter. The relay is
-    // latest-state/volatile; reject bursts instead of building an input queue.
-    if (last && now - last.at < 12) {
+    const timedPose = kind === 'pose' && event.sourceTime !== undefined;
+    if (timedPose && last?.sourceTime !== undefined && event.sourceTime <= last.sourceTime) {
+      return {ok: false, error: 'stale-source-time'};
+    }
+    // Legacy poses and bowling aim retain their existing admission interval.
+    if (!timedPose && last && now - last.at < 12) {
       last.seq = event.seq; return {ok: false, error: 'rate-limited'};
     }
-    room.streams.set(key, {seq: event.seq, at: now});
+    const stream = {seq: event.seq, at: now};
+    if (kind === 'pose') {
+      // A normal network packet can contain several fresh 60 Hz samples. Keep
+      // at most six of them instead of deleting the short swing between them.
+      // Only server elapsed time earns credit: phone clock jumps cannot grant
+      // a larger burst. Legacy samples also spend credit, preventing resets by
+      // alternately omitting sourceTime. No packets are buffered for later.
+      const budgetAt = Math.max(now, last?.budgetAt ?? now);
+      const tokens = Math.min(POSE_BURST_CAPACITY,
+        (last?.tokens ?? POSE_BURST_CAPACITY) + Math.max(0, now - (last?.budgetAt ?? now)) * POSE_TOKENS_PER_MS);
+      Object.assign(stream, {budgetAt, tokens: Math.max(0, tokens - 1),
+        ...(timedPose || last?.sourceTime !== undefined ? {sourceTime: event.sourceTime ?? last.sourceTime} : {})});
+      if (timedPose && tokens < 1 - 1e-9) {
+        room.streams.set(key, {...stream, at: last?.at ?? now, tokens});
+        return {ok: false, error: 'rate-limited'};
+      }
+    }
+    room.streams.set(key, stream);
     if (room.streams.size > 32) room.streams.delete(room.streams.keys().next().value);
     const clean = {gameId: room.gameId, generation: room.inputGeneration, hostEpoch: room.hostEpoch, seq: event.seq, player: player.slot + 1};
     if (kind === 'aim') Object.assign(clean, {aim: event.aim, locked: event.locked});
     else Object.assign(clean, {orientation: [...event.orientation], angularVelocity: {x: event.angularVelocity.x, y: event.angularVelocity.y, z: event.angularVelocity.z}, calibrationRevision: event.calibrationRevision,
+      ...(event.sourceTime !== undefined ? {sourceTime: event.sourceTime} : {}),
       ...(event.hand ? {hand: event.hand} : {}),
       ...(event.reach ? {reach: {x: event.reach.x, y: event.reach.y}} : {})});
     return {ok: true, code: room.code, hostSocketId: this.#members.get(room.hostId)?.socketId, event: clean};

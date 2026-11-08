@@ -13,7 +13,7 @@ export function createIslandCourt(scene) {
   };
   const box = (size, position, material, shadow = false) => mesh(new THREE.BoxGeometry(...size), material, position, {shadow});
 
-  const water = mesh(new THREE.PlaneGeometry(90,90), matte('#267fa4'), [0,-.52,0]);
+  const water = mesh(new THREE.PlaneGeometry(90,90), matte('#2a8eaf'), [0,-.52,0]);
   water.rotation.x = -Math.PI/2;
   mesh(new THREE.CylinderGeometry(5.35,5.8,.4,48), [stone,grass,stone], [0,-.29,0]);
   box([5.2,.16,6.7], [0,-.10,0], stone);

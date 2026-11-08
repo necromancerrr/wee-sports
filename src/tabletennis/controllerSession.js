@@ -148,6 +148,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       if (!value || mode === 'motion' && (now < value.sampleTime || now - value.sampleTime > .12)) return null;
       if (mode === 'motion' && value.sequence === sentSampleSequence) return null;
       const event = {seq: sequence++, hand: playingHand, orientation: value.orientation,
+        sourceTime: mode === 'motion' ? value.sampleTime : now,
         angularVelocity: mode === 'motion' && neutralPose ? {x: 0, y: 0, z: 0} : value.angularVelocity,
         reach: {...value.reach}, calibrationRevision: value.calibrationRevision};
       neutralPose = false;

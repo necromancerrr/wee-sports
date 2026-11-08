@@ -1,6 +1,6 @@
 /** Shared TV lobby: scan, join and start from the lead player's phone. */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { EVENTS, PHASES } from '@wee/shared/protocol.js';
 import { QrCode } from '../components/QrCode.jsx';
@@ -17,7 +17,7 @@ import { request } from '../lib/socket.js';
 import { useReconnect } from '../lib/useReconnect.js';
 import { ReconnectNotice } from '../components/ReconnectNotice.jsx';
 import { sportName } from '../lib/sports.js';
-import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement } from '../lib/fullscreen.js';
+import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement, isFullscreenStartGesture } from '../lib/fullscreen.js';
 import { useTvAudio } from '../lib/useTvAudio.jsx';
 import { useRevealHold } from '../lib/useRevealHold.js';
 import '../styles/game-shell.css';
@@ -50,22 +50,22 @@ export default function HostStub() {
   const displayCleanup = useRef(null);
   const countdownDisplay = useRef(null);
 
-  function leaveGameView() {
+  const leaveGameView = useCallback(() => {
     setImmersive(false);
     requestedFullscreen.current = false;
     void exitFullscreen(document);
-  }
+  }, []);
 
-  function enterGameView() {
+  const enterGameView = useCallback(() => {
     setImmersive(true);
     requestedFullscreen.current = true;
-    // Called directly by the Full screen button, before a network await consumes the gesture.
+    // Local gestures request synchronously; remote starts try the same API and
+    // retain a viewport-filling stage when the browser requires a TV gesture.
     void enterFullscreen(document).then(entered => {
       if (entered && !requestedFullscreen.current) void exitFullscreen(document);
     });
-  }
+  }, []);
 
-  const active = lobby?.phase === PHASES.GAME;
   useEffect(() => {
     clearTimeout(displayCleanup.current);
     const changed = () => {
@@ -90,28 +90,39 @@ export default function HostStub() {
       displayCleanup.current = setTimeout(() => {if (requestedFullscreen.current) void exitFullscreen(document);}, 0);
     };
   }, []);
-  useEffect(() => {
-    if (active) setImmersive(true);
-
-  }, [active]);
-
   // A failed request is old news once the phase moves.
   const phase = lobby?.phase;
   useEffect(() => setStartError(null), [phase]);
-  useEffect(() => {
-    if (phase === PHASES.COUNTDOWN && countdownDisplay.current !== lobby.gameId) {
+  useLayoutEffect(() => {
+    // Recovery may first publish GAME, with no countdown snapshot. Both paths
+    // prepare the full viewport before paint and attempt browser fullscreen.
+    if ([PHASES.COUNTDOWN, PHASES.GAME].includes(phase) && countdownDisplay.current !== lobby.gameId) {
       countdownDisplay.current = lobby.gameId;
       enterGameView();
     } else if ([PHASES.LOBBY, PHASES.READY].includes(phase)) {
       countdownDisplay.current = null;
       leaveGameView();
     }
-  }, [phase, lobby?.gameId]);
+  }, [phase, lobby?.gameId, enterGameView, leaveGameView]);
+
+  useEffect(() => {
+    if (![PHASES.COUNTDOWN, PHASES.GAME].includes(phase)) return;
+    const retry = event => {
+      if (requestedFullscreen.current && !fullscreenElement(document) && isFullscreenStartGesture(event)) enterGameView();
+    };
+    document.addEventListener('click', retry);
+    document.addEventListener('keydown', retry);
+    return () => {
+      document.removeEventListener('click', retry);
+      document.removeEventListener('keydown', retry);
+    };
+  }, [phase, enterGameView]);
 
   // Nobody presses Play on the TV any more: the phones start the countdown.
   // Browsers only start sound after the page has been interacted with, so
   // unlock it on the first click or key press here, and try again as the
-  // countdown starts (the click that opened this lobby usually counts).
+  // countdown starts. Audio's persistent activation differs from fullscreen's
+  // short-lived TV gesture; a phone's Start tap cannot authorize TV fullscreen.
   const { activateForPlay } = audio;
   useEffect(() => {
     if (!lobby?.code) return;

@@ -263,6 +263,12 @@ For phone sensors, keep using a trusted HTTPS tunnel or deployment and provide
 its origin through `PUBLIC_GAME_URL` when needed. The bottom tennis swing-status
 pill is hidden; scores and the serving marker remain in the top scoreboard.
 
+Browser tennis and table-tennis controllers try a direct connection to the TV
+to reduce input delay on reachable local networks. They fall back to Railway
+when that connection is unavailable; bowling keeps its existing route.
+See [input, first-shot placement and fullscreen](docs/direct-input-and-first-shot.md)
+for the behavior and browser restrictions.
+
 For an already built deployment, `npm start` serves the existing assets without
 building again. Follow the [Railway runbook](docs/railway.md) for origins,
 persistent storage, health checks and shutdown settings; the

@@ -8,6 +8,7 @@ import { RoomStore } from './RoomStore.js';
 import { waitForSwingTransport } from '../../src/network/swingRequest.js';
 import {createDiagnostics, DIAGNOSTICS_PROBE} from '../../shared/diagnostics.js';
 import {createEventLimiter} from './eventLimits.js';
+import {createDirectInputBroker} from './directInputBroker.js';
 
 /** Importable server for tests. index.js owns the listening port. */
 export function createGameServer({ store = new RoomStore(), origins = [], tickMs = 250, requestHandler, profiles } = {}) {
@@ -58,6 +59,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     } catch {return null;}
   };
   const reply = (ack, value) => { if (typeof ack === 'function') ack(value); };
+  const directInput = createDirectInputBroker({io, store});
   const diagnosticClients = new Set();
   const diagnosticFor = peer => {
     const entry = peer?.data?.weeDiagnostics;
@@ -78,6 +80,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     }
   };
   const broadcast = code => {
+    directInput.sync();
     const lobby = store.lobby(code);
     if (lobby) for (const socketId of io.sockets.adapter.rooms.get(code) ?? []) {
       io.to(socketId).emit(EVENTS.LOBBY_UPDATE, store.lobbyForSocket(socketId, lobby));
@@ -85,6 +88,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
   };
   function publish(result) {
     if (!result) return;
+    directInput.sync();
     if (result.closed) {
       if (result.recoverySource && profiles) {
         try {profiles.store.releaseRecovery(result.recoverySource.matchId,result.recoverySource.claimId);} catch { /* lease expiration handles a storage outage */ }
@@ -422,7 +426,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     for (const code of store.reconnectingCodes) broadcast(code);
   }, tickMs);
   timer.unref();
-  const beginShutdown = () => {closing = true; clearInterval(timer);};
+  const beginShutdown = () => {closing = true; clearInterval(timer); directInput.close();};
   const close = () => {
     beginShutdown();
     return closePromise ??= new Promise(resolve => io.close(resolve));

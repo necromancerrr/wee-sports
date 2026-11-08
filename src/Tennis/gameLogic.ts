@@ -831,23 +831,33 @@ export class GameLogic {
             transform.elements[14] += playerZ[step] - player.group.position.z;
             return target.compose(position, rotation, scale).premultiply(transform);
         };
-        // Choose a broad contact window within the remaining animation. Equal
-        // windows favor less skipped wind-up; the ball is never rewound.
+        // Favor the earliest robust contact in the remaining animation. A
+        // later, wider window should not add another wind-up after the phone's
+        // stroke. Prefer two swept samples when available; the ball is never
+        // rewound and normal live collision still decides whether a hit occurs.
         let bestStart = 0;
         let mostContactSteps = 0;
+        let earliestContact = Infinity;
         for (let sample = 0; sample <= 26; sample++) {
             const start = sample / 40;
             let contactSteps = 0;
+            let firstContact = Infinity;
             for (let step = 1; step < path.length; step++) {
                 const before = start + (step - 1) / (120 * duration);
                 const after = start + step / (120 * duration);
                 if (after > .8) break;
                 if (contactWindowCrossed(before, after, backhand) &&
                     sweptRacketContact(hitbox.bounds, poseAt(before, step - 1, previousRacket), poseAt(after, step, nextRacket),
-                        path[step - 1], path[step], BALL_RADIUS)) contactSteps++;
+                        path[step - 1], path[step], BALL_RADIUS)) {
+                    contactSteps++;
+                    firstContact = Math.min(firstContact, step);
+                }
             }
-            if (contactSteps > mostContactSteps) {
+            const robustness = Math.min(2, contactSteps), bestRobustness = Math.min(2, mostContactSteps);
+            if (robustness > bestRobustness || robustness > 0 && robustness === bestRobustness &&
+                (firstContact < earliestContact || firstContact === earliestContact && contactSteps > mostContactSteps)) {
                 mostContactSteps = contactSteps;
+                earliestContact = firstContact;
                 bestStart = start * duration;
             }
         }
@@ -885,7 +895,7 @@ export class GameLogic {
                 action.setEffectiveWeight(1);
                 // The real phone swing already happened. Skip only the serve
                 // wind-up; the ball must still cross the authored racket path.
-                action.time = heldServe ? action.getClip().duration * 0.2
+                action.time = heldServe ? action.getClip().duration * 0.35
                     : plannedStart ?? this.assistedStartTime(player, animation, isBackhand, number) ?? 0;
             }
         }

@@ -4,6 +4,7 @@ import { request, requestSwing, requestRoll, socket, useConnection } from '../li
 import { createInputId } from '../../../src/network/inputId.js';
 import {createControllerSetupRelay} from '../lib/controllerSetupRelay.js';
 import {browserDiagnostics, DIAGNOSTICS_PROBE} from '../../../shared/diagnostics.js';
+import {createDirectInput} from '../lib/directInput.js';
 
 const NO_PLAYERS = [];
 /** Authenticated bridge between the lobby and an isolated WebGL game/controller.
@@ -45,6 +46,12 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
   const [attempt, setAttempt] = useState(0);
   const [height, setHeight] = useState(1050);
   const connection = useConnection();
+  const directInput = useRef(null), directHandlers = useRef({});
+  const inputContext = useRef(null);
+  const inputKey = `${code}:${sport}:${gameId}:${generation}:${hostEpoch}`;
+  inputContext.current = {key: inputKey, active: playing && !paused && connection === 'online'};
+  const admittedInputs = useRef(null);
+  if (admittedInputs.current?.key !== inputKey) admittedInputs.current = {key: inputKey, swings: new Set(), poses: new Map()};
   const setupRelay = useRef(null);
   const setupLifecycle = useRef(0);
   if (!setupRelay.current) setupRelay.current = createControllerSetupRelay({
@@ -59,6 +66,31 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
   // A sport change is a bridge message, not a controller navigation: keep the
   // phone’s sensor permission and verified setup alive for the next game.
   const src = `/${controller ? sport === 'table-tennis' ? 'table-tennis-controller' : 'controller' : sport === 'table-tennis' ? 'table-tennis' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}${diagnostics.enabled ? '&diagnostics=1' : ''}`;
+  useEffect(() => {
+    if (!playing || paused || connection !== 'online' || !gameId || !['tennis', 'table-tennis'].includes(sport)) return;
+    let peer = null, disposed = false;
+    const current = () => !disposed && inputContext.current?.key === inputKey && inputContext.current.active && socket.connected && !document.hidden;
+    const close = () => {
+      if (directInput.current === peer) directInput.current = null;
+      peer?.dispose(); peer = null;
+    };
+    const connect = () => {
+      close();
+      if (!current()) return;
+      // Negotiate while the game loads. Admission still requires its ready /
+      // recovery handshake, and every input shares the server-path dedup gate.
+      peer = createDirectInput({socket, context: {role: controller ? 'player' : 'host', code, sport, gameId, generation, hostEpoch, player}, diagnostics,
+        onSwing: event => current() ? directHandlers.current.swing?.(event) ?? false : false,
+        onPose: event => current() ? directHandlers.current.pose?.(event) ?? false : false,
+        onStrokeResult: event => {if (current()) directHandlers.current.strokeResult?.(event);},
+      });
+      directInput.current = peer;
+    };
+    const visibility = () => {if (document.hidden) close(); else connect();};
+    document.addEventListener('visibilitychange', visibility);
+    connect();
+    return () => {disposed = true; document.removeEventListener('visibilitychange', visibility); close();};
+  }, [code, controller, sport, gameId, generation, hostEpoch, player, playing, paused, connection, src, attempt, diagnostics, inputKey]);
   useEffect(() => {
     if (!diagnostics.enabled || connection !== 'online') return;
     let active = true, waiting = false;
@@ -185,11 +217,18 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         const inputGame = data.event.gameId;
         const inputToken = inputGeneration.current;
         const control = currentControl.current;
-        const result = !ready.current || !playing || sport !== 'tennis' || !gameId || inputGame !== gameId
+        let result = !ready.current || !playing || sport !== 'tennis' || !gameId || inputGame !== gameId
           ? { ok: false, error: 'not-playing' }
-          : paused || connection !== 'online' ? { ok: false, error: 'paused' }
-          : await requestSwing(EVENTS.PLAYER_SWING, {...data.event, generation, hostEpoch},
+          : paused || connection !== 'online' ? { ok: false, error: 'paused' } : null;
+        if (!result) {
+          const envelope = {...data.event, generation, hostEpoch};
+          const direct = directInput.current?.sendSwing(envelope);
+          diagnostics.count(direct ? 'swingRoute.direct' : 'swingRoute.server');
+          // Only an unsent action may fall back. A missing direct ACK is an
+          // unknown outcome, never permission to send the same stroke twice.
+          result = direct ? await direct : await requestSwing(EVENTS.PLAYER_SWING, envelope,
             () => currentGame.current === inputGame && inputGeneration.current === inputToken && currentControl.current === control);
+        }
         diagnostics.mark(data.event.id, 'deliveryAck');
         diagnostics.measure(data.event.id, 'sendRequested', 'deliveryAck', 'swingDeliveryRoundTripMs');
         diagnostics.count(result?.ok ? 'swingDelivered' : 'swingRejected');
@@ -200,7 +239,8 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         const envelope = {...data.event, seq: data.event?.seq ?? data.event?.sequence, gameId, generation, hostEpoch};
         if (data.type === 'wee:player-pose' && sport === 'table-tennis' && isPose(envelope)) {
           diagnostics.count('poseSendAttempts'); diagnostics.mark(`p${player}.pose.${envelope.seq}`, 'sendRequested');
-          socket.volatile.emit(EVENTS.PLAYER_POSE, envelope);
+          if (directInput.current?.sendPose(envelope)) diagnostics.count('poseRoute.direct');
+          else {diagnostics.count('poseRoute.server'); socket.volatile.emit(EVENTS.PLAYER_POSE, envelope);}
         }
         if (data.type === 'wee:player-aim' && sport === 'bowling' && isAim(envelope)) socket.volatile.emit(EVENTS.PLAYER_AIM, envelope);
       } else if (controller && data?.type === 'wee:player-roll' && isRoll(data.event)) {
@@ -242,7 +282,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           data.gameId === gameId && isStrokeResult(data)) {
         diagnostics.mark(data.id, data.result === 'hit' ? 'contactReported' : 'strokeResult');
         if (data.result === 'hit') diagnostics.measure(data.id, 'tvReceived', 'contactReported', 'tvBridgeReceiveToContactMs');
-        socket.volatile.emit(EVENTS.HOST_STROKE_RESULT, data);
+        if (!directInput.current?.sendStrokeResult(data)) socket.volatile.emit(EVENTS.HOST_STROKE_RESULT, data);
       } else if (!controller && data?.type === 'wee:game-hit' &&
           ready.current && playing && !paused && connection === 'online' && socket.connected && data.gameId === gameId) {
         const hit = { id: createInputId(), gameId, player: data.player, kind: sport };
@@ -271,13 +311,20 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       }
     };
     const swing = (event, ack) => {
-      const ok = !controller && sport === 'tennis' && ready.current && playing && !paused &&
-        connection === 'online' && Boolean(gameId) && event?.gameId === gameId && isSwing(event);
+      const ok = inputContext.current?.key === inputKey && inputContext.current.active &&
+        !controller && sport === 'tennis' && ready.current && !recovering.current && playing && !paused &&
+        connection === 'online' && socket.connected && Boolean(gameId) && event?.gameId === gameId && isSwing(event) &&
+        [1, 2].includes(event.player) && (event.generation === undefined || event.generation === generation && event.hostEpoch === hostEpoch);
       if (ok) {
-        diagnostics.mark(event.id, 'tvReceived'); diagnostics.count('swingsReceived');
-        post({ type: 'wee:game-swing', event });
+        const identity = `${event.player}:${event.id}`, seen = admittedInputs.current.swings;
+        if (!seen.has(identity)) {
+          seen.add(identity); if (seen.size > 256) seen.delete(seen.values().next().value);
+          diagnostics.mark(event.id, 'tvReceived'); diagnostics.count('swingsReceived');
+          post({ type: 'wee:game-swing', event });
+        } else diagnostics.count('duplicateSwingDropped');
       }
       if (typeof ack === 'function') ack({ ok });
+      return ok;
     };
     const roll = (event, ack = () => {}) => {
       if (controller || sport !== 'bowling' || !playing || !ready.current || recovering.current || paused || connection !== 'online' || event?.gameId !== gameId || !isRoll(event) ||
@@ -305,11 +352,18 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       post({ type: 'wee:game-command', command: event });
     };
     const pose = event => {
-      if (!controller && sport === 'table-tennis' && ready.current && !recovering.current && playing && !paused &&
+      if (inputContext.current?.key === inputKey && inputContext.current.active &&
+          !controller && sport === 'table-tennis' && ready.current && !recovering.current && playing && !paused &&
+          connection === 'online' && socket.connected && [1, 2].includes(event?.player) &&
           event.gameId === gameId && event.generation === generation && event.hostEpoch === hostEpoch && isPose(event)) {
+        const seen = admittedInputs.current.poses;
+        if (event.seq <= (seen.get(event.player) ?? -1)) return false;
+        seen.set(event.player, event.seq);
         diagnostics.count('posesReceived'); diagnostics.mark(`p${event.player}.pose.${event.seq}`, 'tvReceived');
         post({type: 'wee:table-tennis-pose', event});
+        return true;
       }
+      return false;
     };
     const aim = event => {
       if (!controller && sport === 'bowling' && ready.current && !recovering.current && playing && !paused &&
@@ -332,6 +386,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         post({ ...event, type: 'wee:stroke-result' });
       }
     };
+    directHandlers.current = {swing, pose, strokeResult};
     window.addEventListener('message', receive);
     if (!controller) { socket.on(EVENTS.GAME_SWING, swing); socket.on(EVENTS.GAME_ROLL, roll); socket.on(EVENTS.GAME_COMMAND, command); socket.on(EVENTS.GAME_POSE, pose); socket.on(EVENTS.GAME_AIM, aim); }
     else { socket.on(EVENTS.GAME_HIT, hit); socket.on(EVENTS.GAME_STROKE_RESULT, strokeResult); }

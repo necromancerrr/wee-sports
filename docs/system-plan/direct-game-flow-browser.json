@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-11-08T20:27:01.913Z",
+  "checks": [
+    "Tennis: real phone Forehand uses server delivery and reaches the TV game exactly once",
+    "Tennis: Go home unmounts the controller, closes both peers and stops input",
+    "Table Tennis: real touch controller streams server poses to the TV with increasing source timestamps",
+    "Table Tennis: Go home unmounts the controller, closes both peers and stops input"
+  ],
+  "errors": [],
+  "measurements": {
+    "tennis": {
+      "route": "server"
+    },
+    "table-tennis": {
+      "route": "server"
+    }
+  },
+  "directStatus": "Blocked by confirmed browser ICE policy; server fallback verified",
+  "limitations": [
+    "Native offer/answer negotiation ran, but managed browser policy produced no local ICE candidates. No direct input delivery or direct RTT was measured.",
+    "Synthetic touch phone contexts; physical motion sensors and TV hardware are not exercised."
+  ]
+}

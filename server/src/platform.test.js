@@ -81,6 +81,7 @@ test('pose validation rejects invalid input before it can poison the latest acce
     {angularVelocity: {x: 0, y: 101, z: 0}}, {reach: {x: 2, y: 0}},
     {calibrationRevision: -1}, {seq: -1}, {seq: 1.5}, {hostEpoch: 0},
     {hand: 'Both'}, {hand: 1},
+    ...[null, NaN, Infinity, -.01, '1', 1e9 + 1].map(sourceTime => ({sourceTime})),
   ];
   for (const corruption of corruptions) {
     assert.equal(f.store.continuousTarget('p1', {...f.pose(999), ...corruption}, 'pose').error, 'bad-input');
@@ -97,6 +98,20 @@ test('pose routing preserves a validated hand preference and keeps legacy poses 
   const legacy = f.store.continuousTarget('p1', f.pose(2), 'pose');
   assert.equal(legacy.ok, true);
   assert.equal(legacy.event.hand, undefined);
+});
+
+test('pose routing preserves the phone sample clock without translating it to server time', () => {
+  const f = fixture();
+  for (const [index, sourceTime] of [0, 120.125, 1e9].entries()) {
+    f.advance(16);
+    const result = f.store.continuousTarget('p1', {...f.pose(index + 1), sourceTime}, 'pose');
+    assert.equal(result.ok, true);
+    assert.equal(result.event.sourceTime, sourceTime);
+  }
+  f.advance();
+  const legacy = f.store.continuousTarget('p1', f.pose(4), 'pose');
+  assert.equal(legacy.ok, true);
+  assert.equal(Object.hasOwn(legacy.event, 'sourceTime'), false);
 });
 
 test('continuous streams keep the latest sequence, discard burst samples and never replay a backlog', () => {
@@ -142,6 +157,55 @@ test('pause cancels old-generation pose, and resume requires a fresh envelope', 
   assert.ok(f.view().inputGeneration > before.generation);
   assert.equal(f.store.continuousTarget('p1', {...before, seq: 3}, 'pose').error, 'wrong-generation');
   assert.equal(f.store.continuousTarget('p1', f.pose(0), 'pose').ok, true);
+});
+
+test('timestamped poses admit six batched samples with bounded server-clock credit and no replay', () => {
+  const f = fixture();
+  const pose = seq => ({...f.pose(seq), sourceTime:100 + seq / 60});
+  for(let seq=0;seq<6;seq++) assert.equal(f.store.continuousTarget('p1', pose(seq), 'pose').ok,true);
+  assert.equal(f.store.continuousTarget('p1', pose(6), 'pose').error,'rate-limited');
+  f.advance(100);
+  assert.equal(f.store.continuousTarget('p1', pose(6), 'pose').error,'stale-sequence');
+  for(let seq=7;seq<13;seq++) assert.equal(f.store.continuousTarget('p1', pose(seq), 'pose').ok,true);
+  assert.equal(f.store.continuousTarget('p1', pose(13), 'pose').error,'rate-limited');
+  f.advance(16);
+  assert.equal(f.store.continuousTarget('p1', pose(14), 'pose').error,'rate-limited');
+  f.advance(1);
+  assert.equal(f.store.continuousTarget('p1', pose(15), 'pose').ok,true);
+});
+
+test('phone source-clock jumps or rewinds cannot create relay capacity or reorder a gesture', () => {
+  const f=fixture();
+  for(let seq=0;seq<6;seq++) assert.equal(f.store.continuousTarget('p1',{...f.pose(seq),sourceTime:100+seq/60},'pose').ok,true);
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(100),sourceTime:99},'pose').error,'stale-source-time');
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(6),sourceTime:1e8},'pose').error,'rate-limited');
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(7),sourceTime:1e8+1},'pose').error,'rate-limited');
+  // Rewinding the server clock also cannot refill or double-count elapsed time.
+  f.advance(-100);
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(8),sourceTime:1e8+2},'pose').error,'rate-limited');
+  f.advance(100);
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(9),sourceTime:1e8+3},'pose').error,'rate-limited');
+  f.advance(17);
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(10),sourceTime:1e8+4},'pose').ok,true);
+});
+
+test('omitting sourceTime cannot reset an exhausted timestamped-pose bucket', () => {
+  const f=fixture();
+  for(let seq=0;seq<6;seq++) assert.equal(f.store.continuousTarget('p1',{...f.pose(seq),sourceTime:seq/60},'pose').ok,true);
+  f.advance(12);
+  assert.equal(f.store.continuousTarget('p1',f.pose(6),'pose').ok,true,'legacy cadence remains compatible');
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(7),sourceTime:1},'pose').error,'rate-limited');
+});
+
+test('a new input generation resets pose sequence, source clock and bounded burst budget', () => {
+  const f=fixture();
+  const old=f.pose(0);
+  for(let seq=0;seq<6;seq++) assert.equal(f.store.continuousTarget('p1',{...f.pose(seq),sourceTime:100+seq/60},'pose').ok,true);
+  assert.equal(f.store.setPaused('p1',{gameId:old.gameId,paused:true},'player').ok,true);
+  assert.equal(f.store.setPaused('p1',{gameId:old.gameId,paused:false},'player').ok,true);
+  assert.equal(f.store.continuousTarget('p1',{...old,seq:10,sourceTime:101},'pose').error,'wrong-generation');
+  for(let seq=0;seq<6;seq++) assert.equal(f.store.continuousTarget('p1',{...f.pose(seq),sourceTime:seq/60},'pose').ok,true);
+  assert.equal(f.store.continuousTarget('p1',{...f.pose(6),sourceTime:.1},'pose').error,'rate-limited');
 });
 
 test('host replacement advances the epoch and routes only new-generation input to the replacement', () => {

@@ -21,7 +21,7 @@ body:not(.tt-diagnostics) .tt-debug,body:not(.tt-diagnostics) .tt-controls,body:
 .tt-connection[hidden]{display:none;}
 
 /* Readable against the island's water and foliage, with small quiet backplates. */
-:root {background:#6c9fa7;}
+:root {background:#78a8b0;}
 .tt-message strong,.tt-message span {justify-self:center;padding:4px 12px;border-radius:18px;background:#173739ed;}
 .tt-message span:empty {display:none;}
 .tt-help {left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);padding:7px 12px;border-radius:18px;background:#173739ed;color:#e0ebe5;}

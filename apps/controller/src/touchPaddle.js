@@ -25,7 +25,7 @@ export class TouchPaddleStream {
   publish() {
     if (this.timer === null || !this.playing()) { this.clearGesture(); return; }
     const angularVelocity = this.pressed && this.now() - this.updated < 70 ? {...this.velocity} : still();
-    this.send({orientation:[0,0,0,1],reach:{...this.reach},angularVelocity,calibrationRevision:0});
+    this.send({orientation:[0,0,0,1],reach:{...this.reach},angularVelocity,calibrationRevision:0,sourceTime:this.now()/1000});
   }
 
   start() {

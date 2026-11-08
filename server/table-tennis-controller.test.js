@@ -163,6 +163,7 @@ test('fresh motion reaches the bridge at sensor cadence even while display frame
     const now = .22 + step / 60;
     const pose = f.session.sample(sample(now, 11 + step, {x: 2 + step / 100, y: 0, z: 0}));
     expect(pose?.angularVelocity.x).toBeCloseTo(2 + step / 100);
+    expect(pose?.sourceTime).toBe(now);
     expect(f.session.frame(now + .001)).toBeNull();
   }
   const sent = f.messages.filter(message => message.type === 'wee:player-pose').slice(before);
@@ -182,9 +183,22 @@ test('high-rate sensor bursts coalesce to the newest pose and never replay skipp
     expect(f.session.sample(sample(.22 + step / 1000, 11 + step, {x: step, y: 0, z: 0}))).toBeNull();
   }
   expect(f.messages.filter(message => message.type === 'wee:player-pose')).toHaveLength(before);
-  expect(f.session.frame(.237).angularVelocity.x).toBe(10);
+  const flushed = f.session.frame(.237);
+  expect(flushed.angularVelocity.x).toBe(10);
+  expect(flushed.sourceTime).toBeCloseTo(.23, 12); // Capture time, not the later flush.
   expect(f.session.frame(.26)).toBeNull();
   expect(f.messages.filter(message => message.type === 'wee:player-pose')).toHaveLength(before + 1);
+});
+
+test('touch poses preserve their local sampling interval through heartbeat and pulse', () => {
+  const f = create(); f.session.select('touch'); f.acknowledge();
+  f.session.lobby({connected:true,playing:true,paused:false,gameId:'touch-clock',generation:1});
+  expect(f.session.frame(120).sourceTime).toBe(120);
+  f.session.stroke(120.02);
+  const pulse = f.session.frame(120.04);
+  expect(pulse.sourceTime).toBe(120.04);
+  expect(pulse.angularVelocity.x).toBeGreaterThan(0);
+  expect(f.session.frame(120.06).sourceTime).toBe(120.06);
 });
 
 

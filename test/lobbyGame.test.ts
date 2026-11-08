@@ -78,6 +78,20 @@ test('phone strength changes an actual serve only after racket contact', async (
     expect(speeds[1]).toBeGreaterThan(speeds[0]);
 });
 
+test('a confirmed phone serve reaches real racket contact within two physics steps', async () => {
+    for (const hand of ['Right', 'Left'] as const) for (const label of ['Forehand', 'Backhand'] as const) {
+        const {game, ball, strokes} = await court();
+        game.swing({id: 'quick-serve', hand, label, player: 1});
+        expect((ball.userData as BallUserData).waitingForRacketHit).toBe(true);
+        expect(strokes).toEqual([]); // Advancing the animation cannot award a hit.
+        for (let step = 0; step < 2; step++) game.update(1 / 120);
+        expect(strokes.filter(stroke => stroke.id === 'quick-serve')).toEqual([
+            expect.objectContaining({result: 'hit', reason: 'Serve contact'}),
+        ]);
+        expect((ball.userData as BallUserData).waitingForRacketHit).toBe(false);
+    }
+});
+
 test.each(['Right', 'Left'] as const)('P2 %s-hand phone returns a real serve with the bot disabled, scores, and starts the next point', async hand => {
     const { game, ball, player2, feedback } = await court();
     game.swing({ label: 'Forehand', hand: 'Right', player: 2 });
@@ -258,6 +272,37 @@ test('early acceptance immediately prepares a non-contact pose and still needs r
     expect(result.receivedToPreparationMs).toBeGreaterThanOrEqual(0);
     expect(result.receivedToContactMs!).toBeGreaterThanOrEqual(result.receivedToPreparationMs!);
     expect(state.player2.isPreparing).toBe(false);
+});
+
+test('timing assistance chooses an earlier reachable backhand instead of a wider later contact window', async () => {
+    const state = await court();
+    state.game.swing({label: 'Forehand', hand: 'Right', player: 1});
+    swingNearArrival(state, 2, 'Left', 'Backhand', .3, 120, {id: 'responsive-backhand'});
+    expect(state.player2.isPreparing).toBe(true);
+    expect(state.strokes.some(stroke => stroke.id === 'responsive-backhand')).toBe(false);
+    for (let step = 0; step < 30; step++) state.game.update(1 / 120);
+    expect(state.strokes.find(stroke => stroke.id === 'responsive-backhand')).toMatchObject({result: 'hit'});
+    expect((state.ball.userData as BallUserData).lastHitBy).toBe('player2');
+});
+
+test('40–120 ms delivery delays use the arriving ball state without adding another full wind-up', async () => {
+    for (const fps of [30, 60, 144]) for (const delay of [.04, .08, .12]) {
+        for (const label of ['Forehand', 'Backhand'] as const) {
+            const state = await court();
+            state.game.swing({label: 'Forehand', hand: 'Right', player: 1});
+            // The player responds 160 ms before the baseline arrival. Delivery
+            // consumes part of that lead while the live simulation continues.
+            swingNearArrival(state, 2, 'Right', label, .16 - delay, fps, {id: 'delayed-input'});
+            let elapsed = 0;
+            const deadline = .16 - delay + 1 / fps;
+            while (elapsed < deadline && !state.strokes.some(stroke => stroke.id === 'delayed-input')) {
+                state.game.update(1 / fps); elapsed += 1 / fps;
+            }
+            expect(state.strokes.find(stroke => stroke.id === 'delayed-input'),
+                `${fps} FPS ${label}, ${delay * 1000} ms delivery delay`).toMatchObject({result: 'hit'});
+            expect(state.strokes.filter(stroke => stroke.id === 'delayed-input')).toHaveLength(1);
+        }
+    }
 });
 
 test('shorter standard assistance rejects a very early stroke while beginner retains more help', async () => {

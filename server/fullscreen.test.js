@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement } from '../client/src/lib/fullscreen.js';
+import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement, isFullscreenStartGesture } from '../client/src/lib/fullscreen.js';
 
 describe('host fullscreen request', () => {
   it('requests synchronously in the user gesture, before waiting for a server start', async () => {
@@ -55,5 +55,28 @@ describe('host fullscreen request', () => {
     await exitFullscreen(doc);
     await exitFullscreen(doc);
     expect(doc.webkitExitFullscreen).toHaveBeenCalledOnce();
+  });
+
+  it('coalesces an in-flight entry and allows a fresh gesture after rejection', async () => {
+    let reject;
+    const doc = {fullscreenElement:null,documentElement:{requestFullscreen:vi.fn(() => new Promise((_,fail) => {reject = fail;}))}};
+    const first = enterFullscreen(doc), second = enterFullscreen(doc);
+    expect(second).toBe(first);
+    expect(doc.documentElement.requestFullscreen).toHaveBeenCalledOnce();
+    reject(new Error('User activation required'));
+    expect(await first).toBe(false);
+    doc.documentElement.requestFullscreen.mockImplementation(function () {doc.fullscreenElement=this;});
+    expect(await enterFullscreen(doc)).toBe(true);
+    expect(doc.documentElement.requestFullscreen).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries only a real stage tap or remote Enter, leaving menus and Escape alone', () => {
+    const event = {type:'keydown',key:'Enter',isTrusted:true,target:{closest:() => null}};
+    expect(isFullscreenStartGesture(event)).toBe(true);
+    expect(isFullscreenStartGesture({...event,type:'click',key:undefined})).toBe(true);
+    for (const change of [{isTrusted:false},{key:'Escape'},{key:'P'},{repeat:true},{defaultPrevented:true},
+      {altKey:true},{ctrlKey:true},{metaKey:true},{target:{closest:() => ({})}}]) {
+      expect(isFullscreenStartGesture({...event,...change})).toBe(false);
+    }
   });
 });
