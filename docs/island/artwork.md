@@ -53,9 +53,34 @@ convert docs/island/source/homepage-ocean.png -strip -define webp:method=6 -qual
 convert docs/island/source/landing-ocean.png -strip -define webp:method=6 -quality 88 public/island/landing-ocean.webp
 ```
 
-Small SVG highlights are restricted to authored open-water masks; a few dashed
-streaks follow the waterfall. CSS provides the animation. Buildings and shore
-geometry do not warp. Image and connectors share the same small pointer offset.
+The original WebP files also supply the optional WebGL motion layers. No artwork
+is regenerated, resized on disk, or recompressed for animation. `IslandMotion`
+paints at display resolution (up to 2× device scale); the underlying image stays
+available if WebGL is absent, initialization fails, or its context is lost.
+The image and canvas share one edge mask, avoiding double-opacity seams.
+
+`client/src/lib/islandMotion.js` keeps effect coordinates in source-image space:
+
+- The water texture stays fixed; broken reflected-light crests travel over it.
+  Broad texture wobble has been removed.
+- Clearly moving light streaks descend inside the waterfall, with localized
+  foam at its base. Its original pixels and silhouette are never warped.
+- Each boat has a rigid inner mask over the entire mast, sail, and hull, with
+  feathering confined to surrounding water. Boats bob by up to 0.75 source pixels,
+  drift horizontally by up to 8 pixels (2.5 for the distant boat), and rock by
+  about 0.2 degrees at independent phases. The rigid mask includes the full
+  travel range so neither the original nor the moving boat can duplicate.
+- Clouds drift horizontally by up to 32 source pixels over a slow cycle,
+  fading out before hills and the lighthouse. There is no vertical sky motion.
+- Water masks exclude the coastline, venues, and both landing foreground islets.
+
+The ocean extension has its own motion layer so ultrawide edges remain alive.
+Rendering targets 30 frames per second without reducing artwork resolution.
+Motion off, system reduced motion, hidden pages, and leaving the island stop
+rendering and release animation resources. Device frame rate is not guaranteed;
+the original full-quality image remains the fallback. The camera, island, and venue
+anchors stay completely still when the pointer moves. Text and buttons remain
+live UI. Motion off restores the untouched artwork.
 
 ## Selector targets
 

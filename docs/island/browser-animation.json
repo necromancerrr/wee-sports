@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "checks": [
+    "shore: camera stays fixed under pointer movement; cloud, water, boats and waterfall move while venues stay still",
+    "bay: camera stays fixed under pointer movement; cloud, water, boats and waterfall move while venues stay still",
+    "System reduced motion stops rendering and restoring the preference resumes it",
+    "Hidden-document visibility events stop rendering and returning resumes it",
+    "Leaving the island releases both animation loops",
+    "WebGL context loss stops the affected renderer and reveals the original artwork",
+    "Both pages retain static artwork when WebGL is unavailable"
+  ],
+  "pixels": {
+    "shore": {
+      "cloud": 5767,
+      "water": 2243,
+      "boat": 10720,
+      "distantBoat": 3042,
+      "waterfall": 853,
+      "bowling": 0,
+      "tennis": 0,
+      "foregroundPlants": 0
+    },
+    "bay": {
+      "cloud": 7353,
+      "water": 1828,
+      "boat": 16165,
+      "distantBoat": 5458,
+      "waterfall": 1268,
+      "bowling": 0,
+      "tennis": 0
+    }
+  },
+  "errors": [],
+  "note": "Software-rendered browser regression; not physical TV performance evidence."
+}

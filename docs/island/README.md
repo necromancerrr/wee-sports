@@ -48,11 +48,15 @@ is served locally for the island, menu and remote hub. It is licensed under the
 bundled SIL Open Font License. The [artwork record](artwork.md) contains sources,
 prompts, compression settings and coordinates.
 
-Small SVG water highlights and waterfall streaks animate through CSS. Fine
-pointer movement adds up to four pixels of depth while moving art and venue
-markers together. Motion off, system reduced motion and page hiding stop these
-effects. Unmounting releases observers and listeners. Dark mode changes control
-surfaces while keeping the sunlit artwork.
+The original scenery now supplies localized WebGL water highlights, flowing falls,
+gently bobbing/rocking boats, and slow cloud drift. No replacement images or
+video assets are required. The island, buildings, coast, and UI retain their
+existing design; authored masks confine movement to environmental details.
+The renderer targets 30 fps at display resolution and preserves the still image
+for unsupported or lost WebGL contexts. The camera and venue markers remain fixed;
+there is no cursor-driven scene drift or whole-ocean texture wobble. Motion off, system
+reduced motion, and page hiding stop rendering. Unmounting releases renderers,
+observers, and listeners. Dark mode changes controls while keeping sunlit art.
 
 ## Validation
 
@@ -88,9 +92,32 @@ To repeat against a disposable production server with Playwright and Chromium:
 
 ```sh
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-island-smoke.cjs
+WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-island-animation-smoke.cjs
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-remote-home-smoke.cjs
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-platform-smoke.cjs
 ```
 
 Use `WEE_SMOKE_REPORT` for a new JSON report path and
 `WEE_SMOKE_SCREENSHOTS` for screenshots. Reports are not overwritten by a run.
+
+The focused animation check samples actual WebGL output immediately after a
+draw on both pages. It checks moving water, clouds, both boats, and waterfall
+pixels against unchanged venue/foreground-plant samples. It also verifies
+a fixed camera under pointer movement, reduced motion, page visibility, route cleanup, context loss, and unavailable
+WebGL. These software-rendered checks do not establish physical TV frame rate.
+Set `WEE_SMOKE_CHROMIUM` when Chromium is not installed at `/usr/bin/chromium`.
+
+
+## Repository-local preview
+
+The implementation lives in this checkout on `feat/sports-platform`. Run the
+normal source preview with `npm run dev:local`, or use an isolated build and
+disposable profile data inside the ignored `.local-preview/` directory:
+
+```sh
+WEE_BUILD_DIR=.local-preview/dist npm run build
+PORT=5198 WEE_PROFILE_DB=.local-preview/profiles.sqlite WEE_BUILD_DIR=.local-preview/dist node server/main.js --production
+```
+
+This preview does not depend on `/tmp`. Generated preview files are ignored;
+source code, tests and documentation remain normal repository files.

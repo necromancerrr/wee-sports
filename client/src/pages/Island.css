@@ -28,12 +28,13 @@
 .island-screen :focus-visible { outline: 3px solid #006d91; outline-offset: 5px; }
 .island-screen h1[tabindex]:focus { outline: none; }
 .island-scenery { position: absolute; inset: 0; overflow: hidden; }
-.island-scenery__ocean { position: absolute; left: -8px; width: calc(100% + 16px); object-fit: fill; user-select: none; pointer-events: none; mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); }
-.island-scenery__plane { position: absolute; transform: translate(var(--depth-x, 0px), var(--depth-y, 0px)); }
-.island-scenery__image { display: block; width: 100%; height: 100%; user-select: none; mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent), linear-gradient(transparent, #000 6%, #000 94%, transparent); mask-composite: intersect; }
-.island-water { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; fill: none; stroke: #e0ffff; stroke-width: 1.3; }
-.island-water__glints { opacity: 0; }
-.island-water__falls { stroke-width: 1.5; stroke-dasharray: 5 11; opacity: .25; }
+.island-scenery__ocean { position: absolute; left: -8px; width: calc(100% + 16px); user-select: none; pointer-events: none; mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); }
+.island-scenery__ocean > img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.island-scenery__plane { position: absolute; }
+.island-scenery__artwork { position: absolute; inset: 0; pointer-events: none; mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent), linear-gradient(transparent, #000 6%, #000 94%, transparent); mask-composite: intersect; }
+.island-scenery__image { display: block; width: 100%; height: 100%; user-select: none; }
+.island-motion { position: absolute; inset: 0; width: 100%; height: 100%; display: block; visibility: hidden; pointer-events: none; }
+.island-motion[data-ready='true'] { visibility: visible; }
 .island-scenery[data-image-state='loading'] .island-scenery__image { opacity: 0; }
 .island-image-error { position: absolute; left: 50%; top: 45%; transform: translateX(-50%); max-width: 28rem; padding: 16px; border-radius: 16px; background: var(--island-surface); color: var(--island-ink); text-align: center; }
 .island-landing__wordmark {
@@ -142,16 +143,10 @@
 .island-games-dialog__content > p:empty { display: none; }
 :root[data-theme='dark'] .island-screen :focus-visible { outline-color: #59d8f6; }
 :root[data-theme='dark'] .island-screen { --island-ink: #edf4f8; --island-surface: #1a2934f5; --island-secondary: #c2d0da; --island-border: #465b6aaa; }
-.island-screen[data-motion='true'] .island-scenery[data-image-state='ready'] .island-scenery__image { animation: island-arrive 400ms ease-out both; }
-.island-screen[data-motion='true'] .island-scenery__plane { transition: transform 900ms ease-out; }
-.island-screen[data-motion='true'] .island-scenery[data-image-state='ready'] .island-water { opacity: 1; }
-.island-screen[data-motion='true'] .island-water__glints { animation: island-ripple var(--ripple-duration) var(--ripple-delay) ease-in-out infinite; }
-.island-screen[data-motion='true'] .island-water__falls { animation: island-fall 2.8s linear infinite; }
+.island-screen[data-motion='true'] .island-scenery[data-image-state='ready'] .island-scenery__artwork { animation: island-arrive 400ms ease-out both; }
 .island-screen[data-motion='true'] .island-venue { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
 .island-screen[data-motion='true'] .island-venue[data-highlighted='true']:not(:disabled) { transform: translateY(-2px); }
 @keyframes island-arrive { from {opacity: 0;} to {opacity: 1;} }
-@keyframes island-ripple { 0%, 100% {opacity: 0; transform: translateX(-2px);} 40% {opacity: .3;} 80% {opacity: 0; transform: translateX(4px);} }
-@keyframes island-fall { to {stroke-dashoffset: -32;} }
 @media (max-width: 53.125em), (max-aspect-ratio: 1/1) {
   .island-home { --island-compact-gutter: 20px; display: flex; flex-direction: column; height: auto; min-height: 100svh; padding: 22px var(--island-compact-gutter) 20px; overflow: visible; }
   .island-home .island-scenery { position: relative; inset: auto; flex: 0 0 auto; order: 1; height: min(56.28vw, 430px); width: calc(100% + var(--island-compact-gutter) * 2); margin-inline: calc(var(--island-compact-gutter) * -1); }
