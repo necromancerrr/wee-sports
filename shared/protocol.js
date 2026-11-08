@@ -175,7 +175,8 @@ export function isSwing(event) {
   return event?.type === 'swing' && typeof event.id === 'string' && event.id.length > 0 &&
     event.id.length <= 100 && ['Forehand', 'Backhand'].includes(event.label) &&
     ['Left', 'Right'].includes(event.hand) &&
-    (event.power === undefined || (Number.isFinite(event.power) && event.power >= 0 && event.power <= 1));
+    (event.power === undefined || (Number.isFinite(event.power) && event.power >= 0 && event.power <= 1)) &&
+    ['aim','depth'].every(key => event[key] === undefined || Number.isFinite(event[key]) && Math.abs(event[key]) <= 1);
 }
 
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -201,7 +202,8 @@ export function isGameCommand(event, sport) {
       fields.push('settings');
       valid = isRecord(event.settings) && Object.keys(event.settings).length > 0 &&
         Object.entries(event.settings).every(([key, value]) => key === 'assistance'
-          ? ['friendly', 'standard'].includes(value) : key === 'sensitivity' && Number.isFinite(value) && value >= .25 && value <= 2);
+          ? ['friendly', 'standard'].includes(value) : key === 'botStyle' ? ['rally','challenge'].includes(value)
+          : key === 'sensitivity' && Number.isFinite(value) && value >= .25 && value <= 2);
     } else valid = ['new-match', 'practice-start', 'practice-stop', 'feed', 'recenter'].includes(event.action);
   }
   else if (sport === 'tennis') {
@@ -226,6 +228,7 @@ export function isGameOptions(snapshot, sport) {
   if (sport === 'table-tennis') return isRecord(snapshot.settings) &&
     ['friendly', 'standard'].includes(snapshot.settings.assistance) &&
     Number.isFinite(snapshot.settings.sensitivity) && snapshot.settings.sensitivity >= .25 && snapshot.settings.sensitivity <= 2 &&
+    (snapshot.settings.botStyle === undefined || ['rally','challenge'].includes(snapshot.settings.botStyle)) &&
     typeof snapshot.practice?.active === 'boolean';
   return sport === 'tennis' && isRecord(snapshot.settings) &&
     Object.entries(optionValidators).every(([key, validate]) => validate(snapshot.settings[key])) &&
@@ -288,6 +291,8 @@ export function isStrokeResult(event) {
     typeof event.gameId === 'string' && event.gameId.length > 0 && event.gameId.length <= 100 &&
     [1, 2].includes(event.player) && ['hit', 'miss', 'rejected'].includes(event.result) &&
     typeof event.reason === 'string' && event.reason.length <= 160 &&
+    (event.receivedToPreparationMs === undefined || (Number.isFinite(event.receivedToPreparationMs) &&
+      event.receivedToPreparationMs >= 0 && event.receivedToPreparationMs <= 10000)) &&
     (event.receivedToContactMs === undefined || (event.result === 'hit' &&
       Number.isFinite(event.receivedToContactMs) && event.receivedToContactMs >= 0 && event.receivedToContactMs <= 10000));
 }

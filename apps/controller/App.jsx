@@ -354,8 +354,11 @@ export default function App() {
         {gameOptions ? <>
           {seat.sport==='tennis' ? <>
             <Button quiet disabled={optionsLocked} onPress={() => task(() => configure('assistance',settings.assistance==='beginner' ? 'standard' : 'beginner'))}>Timing: {settings.assistance==='beginner' ? 'Easier' : 'Standard'}</Button>
-            {!gameOptions.humanOpponent ? <Button quiet disabled={optionsLocked} onPress={() => task(() => configure('botDifficulty',settings.botDifficulty==='beginner' ? 'standard' : 'beginner'))}>Bot: {settings.botDifficulty==='beginner' ? 'Easier' : 'Standard'}</Button> : null}
-          </> : seat.sport==='table-tennis' ? <Button quiet disabled={optionsLocked} onPress={() => task(() => configure('assistance',settings.assistance==='friendly' ? 'standard' : 'friendly'))}>Assistance: {settings.assistance==='friendly' ? 'Friendly' : 'Standard'}</Button> : null}
+            {!gameOptions.humanOpponent ? <Button quiet disabled={optionsLocked} onPress={() => task(() => configure('botDifficulty',settings.botDifficulty==='beginner' ? 'standard' : 'beginner'))}>Opponent: {settings.botDifficulty==='beginner' ? 'Rally' : 'Challenge'}</Button> : null}
+          </> : seat.sport==='table-tennis' ? <>
+            <Button quiet disabled={optionsLocked} onPress={() => task(() => configure('assistance',settings.assistance==='friendly' ? 'standard' : 'friendly'))}>Assistance: {settings.assistance==='friendly' ? 'Friendly' : 'Standard'}</Button>
+            {seat.players.length===1 ? <Button quiet disabled={optionsLocked} onPress={() => task(() => configure('botStyle',settings.botStyle==='challenge' ? 'rally' : 'challenge'))}>Opponent: {settings.botStyle==='challenge' ? 'Challenge' : 'Rally'}</Button> : null}
+          </> : null}
           {seat.players.length===1 ? <Button quiet disabled={optionsLocked} onPress={() => task(() => command(gameOptions.practice?.active ? 'practice-stop' : 'practice-start',seat.sport==='tennis' && !gameOptions.practice?.active ? {stroke:'alternate',hand} : {}))}>{gameOptions.practice?.active ? seat.sport==='tennis' ? 'Return to match' : 'Start a scored game' : seat.sport==='tennis' ? 'Practice returns' : 'Practice · resets score'}</Button> : null}
           {confirmReset ? <><Text style={styles.copy}>Start again with a fresh score for everyone?</Text><Button disabled={optionsLocked} onPress={() => task(async () => {await newMatch();setConfirmReset(false);backToPlay();})}>Reset score and start</Button><Button quiet onPress={() => setConfirmReset(false)}>Keep this game</Button></> : <Button quiet disabled={optionsLocked} onPress={() => setConfirmReset(true)}>New match</Button>}
         </> : <Text style={styles.copy}>Waiting for the TV’s game options…</Text>}

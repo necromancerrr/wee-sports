@@ -14,6 +14,8 @@ import { createCalibrationMemory, createCalibrationResume } from './calibrationM
 import { createPhoneFeedback, createScreenAwake } from './phoneExperience.js';
 import { isTennisState, isStrokeResult } from '../../shared/protocol.js';
 import { createTimingStats } from '../network/timingStats.js';
+import {createTennisAim} from '../../shared/tennisAim.js';
+import {browserDiagnostics} from '../../shared/diagnostics.js';
 import '../theme.js';
 import '../../client/src/styles/tokens.css';
 import '../play.css';
@@ -22,6 +24,7 @@ import './controller.css';
 const element = id => document.getElementById(id);
 const embedded = window.parent !== window;
 const query = new URLSearchParams(location.search);
+const motionDiagnostics = browserDiagnostics('phone.tennis');
 let bowling = query.get('sport') === 'bowling';
 const room = query.get('room');
 if (!/^[a-zA-Z0-9-]{6,40}$/.test(room ?? '')) throw new Error('Open the controller link from the game to join its room.');
@@ -67,6 +70,7 @@ let rehearsal = null;
 let rehearsalStream = null;
 let rehearsalStarted = 0;
 let stream = null;
+let tennisAim = createTennisAim();
 let recording = false;
 let motionWanted = false;
 let userPaused = false;
@@ -333,11 +337,11 @@ const connection = connectSwings({ room, role: 'phone',
     deliveryResult(event);
   },
 });
-function send(label, power = 0.5, recognitionMs) {
+function send(label, power = 0.5, recognitionMs, placement) {
   if (bowling || lobbyPaused || !gameActive || !connected || settingsOpen || rehearsal || document.hidden || tennisState?.phase === 'complete') return;
   strokeNoticeUntil = 0;
   nextRecognitionMs = recognitionMs;
-  const sent = connection.sendSwing(label, element('hand').value, power);
+  const sent = connection.sendSwing(label, element('hand').value, power, placement);
   nextRecognitionMs = undefined;
   if (sent) phoneFeedback.swing(label);
   element('delivery').textContent = sent ? 'Sending stroke…' : 'Disconnected: the stroke was not sent.';
@@ -387,7 +391,8 @@ function analyze() {
       : 'Stroke classified after completion.';
     const recognitionMs = Number.isFinite(swing.detectionDelayMs) ? swing.detectionDelayMs
       : Number.isFinite(swing.startMs) ? performance.now() - started - swing.startMs : undefined;
-    if ((swing.complete || swing.early || swing.fast) && swing.label !== 'Unknown') send(swing.label, power, recognitionMs);
+    if (swing.label !== 'Unknown') {motionDiagnostics.count('swing.recognized'); motionDiagnostics.observe('swing.recognitionMs',recognitionMs);}
+    if ((swing.complete || swing.early || swing.fast) && swing.label !== 'Unknown') send(swing.label, power, recognitionMs, tennisAim.capture());
   }
 }
 function stop(message = 'Motion paused. Tap Resume motion when you are ready.', user = false) {
@@ -396,6 +401,7 @@ function stop(message = 'Motion paused. Tap Resume motion when you are ready.', 
   recording = false;
   lastTiltReading = null;
   stream = null; // Never flush an unfinished gesture when stopping or disconnecting.
+  tennisAim.reset();
   cancelArmedRoll();
   if (wasRecording || user) element('motion').textContent = message;
   controls();
@@ -407,6 +413,7 @@ function startMotion() {
   stream = bowling ? null : mode === 'auto' ? createSwingStream(element('hand').value, {
     early: element('response').value === 'early', fast: element('response').value === 'fast', suppressReturns: element('suppress-returns').checked,
   }) : createSimpleSwingStream(mode);
+  tennisAim = createTennisAim({sensitivity:motionSensitivity});
   started = performance.now();
   recording = true;
   element('latest').textContent = '';
@@ -576,20 +583,26 @@ function motion(event) {
     screenAngle: window.screen?.orientation?.angle ?? window.orientation ?? 0 });
   if (!reading) return;
   const rate = reading.rate;
+  if (!bowling) {
+    motionDiagnostics.count('sensor.received');
+    if (lastReading !== null) motionDiagnostics.observe('sensor.intervalMs',now-lastReading);
+  }
   validReadings++;
   lastReading = now;
   latestRate = { alpha: rate.alpha, beta: rate.beta, gamma: rate.gamma };
   let sample = reading.legacy;
+  let canonical = reading.sample;
   if (automaticSetupPending && !calibration && !buttonMode && !document.hidden && pageActive) {
     enabled = true;
     const setup = automaticMotion.push(reading.sample, {safeBoundary: !recording || (bowling
       ? bowlingGate.phase === 'rest' || bowlingGate.phase === 'ready'
-      : stream?.phase === 'ready')});
+      : false)});
     if (!setup.ready) {
       if (bias) { bias = null; stop('Reconnecting motion…'); }
       return;
     }
     const degrees = 180 / Math.PI;
+    canonical = setup.sample;
     bias = {alpha: setup.calibration.bias.x * degrees, beta: setup.calibration.bias.y * degrees, gamma: setup.calibration.bias.z * degrees};
     sample = toLegacyMotionSample(setup.sample, {timeOriginSeconds: (rehearsal ? rehearsalStarted : started) / 1000});
     if (setup.justReady) {
@@ -637,7 +650,11 @@ function motion(event) {
       showBowlingReadout(bowlingReadout);
     }
     if (result) roll(Math.min(1, result.power * motionSensitivity), result.spin);
-  } else { stream.push(sample); if (element('response').value !== 'complete') analyze(); }
+  } else {
+    const radians = Math.PI / 180;
+    tennisAim.push({...canonical, angularVelocity:{x:sample.rotationAlpha * radians,y:sample.rotationBeta * radians,z:sample.rotationGamma * radians}});
+    stream.push(sample); if (element('response').value !== 'complete') analyze();
+  }
 }
 function currentSetupIntent(intent) { return intent === setupIntent && pageActive && !document.hidden; }
 async function requestMotion(intent, reusePermission = false) {

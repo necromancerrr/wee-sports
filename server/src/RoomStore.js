@@ -621,7 +621,9 @@ export class RoomStore {
     if (room.pendingStrokes.size > 128) room.pendingStrokes.delete(room.pendingStrokes.keys().next().value);
     return { ok: true, code: room.code, inputGeneration: room.inputGeneration, hostSocketId: this.#members.get(room.hostId)?.socketId,
       event: { type: 'swing', id: event.id, label: event.label, hand: event.hand,
-        ...(event.power === undefined ? {} : { power: event.power }), player: player.slot + 1, gameId: room.gameId,
+        ...(event.power === undefined ? {} : { power: event.power }),
+        ...(event.aim === undefined ? {} : {aim:event.aim}), ...(event.depth === undefined ? {} : {depth:event.depth}),
+        player: player.slot + 1, gameId: room.gameId,
         ...(!member.capabilities?.legacy ? {generation:room.inputGeneration,hostEpoch:room.hostEpoch} : {}) } };
   }
 
@@ -645,6 +647,7 @@ export class RoomStore {
     if (!target?.socketId) return { ok: false, error: 'disconnected' };
     return { ok: true, phoneSocketId: target.socketId, event: {
       id: event.id, gameId: room.gameId, player: event.player, result: event.result, reason: event.reason,
+      ...(event.receivedToPreparationMs === undefined ? {} : { receivedToPreparationMs: event.receivedToPreparationMs }),
       ...(event.receivedToContactMs === undefined ? {} : { receivedToContactMs: event.receivedToContactMs }),
     } };
   }

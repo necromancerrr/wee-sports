@@ -1,5 +1,7 @@
 import { io } from 'socket.io-client';
 import { EVENTS, PROTOCOL_VERSION, isRoomCode, normalizeCode } from '../../../shared/protocol.js';
+import {sendSwingRequest} from '../../../src/network/swingRequest.js';
+import {nativeDiagnostics} from '../../../shared/diagnostics.js';
 
 export function serverOrigin(value, allowLocal = false) {
   const url = new URL(value);
@@ -34,6 +36,7 @@ export class ControllerSession {
     this.saveClaim = saveClaim;
     this.claimMatch = null;
     this.now = now;
+    this.diagnostics = nativeDiagnostics('phone.native.session');
     this.seat = null;
     this.token = null;
     this.active = true;
@@ -65,6 +68,7 @@ export class ControllerSession {
   }
 
   clearTransient({clearFeedback = true} = {}) {
+    this.transientGeneration = (this.transientGeneration || 0) + 1;
     this.lastSent = { pose: -Infinity, aim: -Infinity };
     if (clearFeedback) this.feedbackIds.clear();
     this.socket.sendBuffer.length = 0;
@@ -183,14 +187,15 @@ export class ControllerSession {
     // The gyro provides about 60 samples/second. A little scheduling headroom
     // keeps alternate 16 ms callbacks from being dropped by a 16.67 ms gate.
     // Congestion still drops the current sample; no old pose is queued.
-    if (now - this.lastSent[kind] < 12) return false;
+    if (now - this.lastSent[kind] < 12) {this.diagnostics.count(`${kind}.coalesced`); return false;}
     const transport = this.socket.io?.engine?.transport;
-    if (transport && !transport.writable) return false;
+    if (transport && !transport.writable) {this.diagnostics.count(`${kind}.congested`); return false;}
     this.lastSent[kind] = now;
     const { gameId, inputGeneration, hostEpoch } = this.seat;
     this.socket.volatile.emit(kind === 'pose' ? EVENTS.PLAYER_POSE : EVENTS.PLAYER_AIM, {
       ...value, ...(kind === 'pose' ? {hand:this.hand} : {}), gameId, generation: inputGeneration, hostEpoch, seq: this.sequence++,
     });
+    this.diagnostics.count(`${kind}.sent`);
     return true;
   }
 
@@ -200,7 +205,20 @@ export class ControllerSession {
     const id = actionId();
     const generation = [EVENTS.PLAYER_ROLL, EVENTS.PLAYER_SWING].includes(event)
       ? { generation: this.seat.inputGeneration, hostEpoch: this.seat.hostEpoch } : {};
-    const result = await this.request(event, { ...payload, ...generation, id, gameId: this.seat.gameId });
+    const envelope = { ...payload, ...generation, id, gameId: this.seat.gameId };
+    const boundary = this.transientGeneration;
+    if (event === EVENTS.PLAYER_SWING) {this.diagnostics.count('swing.attempted'); this.diagnostics.mark(id,'request');}
+    const result = event === EVENTS.PLAYER_SWING
+      ? await sendSwingRequest(this.socket, event, envelope, () => this.controlsPlaying() &&
+        boundary === this.transientGeneration && this.seat.gameId === envelope.gameId &&
+        this.seat.inputGeneration === envelope.generation && this.seat.hostEpoch === envelope.hostEpoch)
+      : await this.request(event, envelope);
+    if (event === EVENTS.PLAYER_SWING) {
+      this.diagnostics.mark(id,'result'); this.diagnostics.measure(id,'request','result','swing.requestResultMs');
+      this.diagnostics.count(result?.ok ? 'swing.accepted' : 'swing.rejected');
+    }
+    if (!result) return {ok:false,error:'invalid-response',id};
+    if (event === EVENTS.PLAYER_SWING && result.error === 'timeout') return {ok:false,error:'outcome-unknown',id};
     return { ...result, id };
   }
 

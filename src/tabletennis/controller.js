@@ -3,7 +3,8 @@ import '../../client/src/styles/tokens.css';
 import {focusControllerSection} from '../controller/focusSection.js';
 import {createWebMotionAdapter} from '../controller/webMotionAdapter.js';
 import {createScreenAwake} from '../controller/phoneExperience.js';
-import {createTableTennisControllerSession} from './controllerSession.js';
+import {createTableTennisControllerSession, createTableTennisTouchPump} from './controllerSession.js';
+import {browserDiagnostics} from '../../shared/diagnostics.js';
 import './controller.css';
 
 const $ = id => document.getElementById(id);
@@ -14,12 +15,14 @@ let haptics = true, notice = '', noticeUntil = 0, motionStartedAt = null, motion
 let frameTime = 0;
 let humanOpponent = false;
 const screenAwake = createScreenAwake({navigator, document});
-const session = createTableTennisControllerSession({send(message) {
+const session = createTableTennisControllerSession({diagnostics: browserDiagnostics('phone.table-tennis'),
+  player: Number(new URLSearchParams(location.search).get('player')) === 2 ? 2 : 1, send(message) {
   post(message);
   if (!embedded && message.type === 'wee:controller-setup') {
     queueMicrotask(() => session.acknowledge(message.requestId, {ok: true}));
   }
 }, onChange: render});
+const touchPump = createTableTennisTouchPump(session);
 
 function render() {
   const state = session.state;
@@ -165,14 +168,17 @@ window.addEventListener('message', event => {
   }
 });
 
-document.addEventListener('visibilitychange', () => document.hidden ? session.suspend() : session.resume());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {touchPump.stop(); session.suspend();}
+  else {session.resume(); touchPump.start();}
+});
 document.addEventListener('pointerdown', () => screenAwake.retry());
-window.addEventListener('pagehide', () => session.suspend());
-window.addEventListener('pageshow', () => session.resume());
+window.addEventListener('pagehide', () => {touchPump.stop(); session.suspend();});
+window.addEventListener('pageshow', () => {if (!document.hidden) {session.resume(); touchPump.start();}});
 function frame(now) {
   // rAF's frame timestamp can precede a sensor callback already delivered in
   // this turn. Freshness must use the same receipt clock as the motion adapter.
-  session.frame(performance.now() / 1000);
+  if (session.state.mode !== 'touch') session.frame(performance.now() / 1000);
   if (session.state.mode === 'motion' && motionStartedAt !== null && !motionAcquired && !document.hidden &&
       now - motionStartedAt > 3000) useTouch('Motion isn’t available here. Touch controls are ready.');
   if (now - frameTime > 500) {frameTime = now; render();}
@@ -185,4 +191,5 @@ if (typeof ResizeObserver !== 'undefined') {
 if (!embedded) session.lobby({connected: true, playing: true, paused: false, gameId: 'standalone', generation: 0});
 render();
 post({type: 'wee:bridge-ready'});
+if (!document.hidden) touchPump.start();
 requestAnimationFrame(frame);

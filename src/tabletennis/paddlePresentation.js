@@ -15,7 +15,9 @@ export function paddlePresentation({phase = 'ready', kind = 'drive', hand = 'Rig
   const side = landingSide;
   const rest = {pitch: -.12, yaw: .04 * handSign, roll: .17 * handSign};
   if (phase === 'queued') {
-    const amount = ease(elapsed / .10);
+    // A small visible preparation starts on the first accepted-input frame;
+    // the remainder eases in without claiming that contact already happened.
+    const amount = .20 + .80 * ease(elapsed / .08);
     return {x: side * .045 * amount, y: -.012 * amount, z: -.04 * amount,
       pitch: rest.pitch - (side ? .15 : .25) * amount,
       yaw: rest.yaw + side * .30 * amount,

@@ -44,16 +44,24 @@ reference artwork, responsive behavior and validation evidence.
   aim automatically. Button controls provide aim, power, curve and a deliberate roll.
 - **Table Tennis:** one or two players. Solo starts a scored bot game; two phones
   play head to head with a separate camera view from each end of the table. Games finish at 12 with a two-point lead; practice feeds are optional. Use compact motion or the touch paddle. The
-  standalone diagnostic view also supports pointer/arrow movement, click/Space
+  standalone diagnostic view (`/table-tennis.html?diagnostics=1`) also supports pointer/arrow movement, click/Space
   to stroke, and P to pause. In Friendly mode, aim selects a landing area and
   power changes pace. Direction locks at stroke onset; the ball follows its
-  physical flight after contact. Standard mode uses unassisted contact physics.
+  physical flight after contact. Standard mode uses unassisted player contact physics.
   A still phone holds a steady ready paddle. In Friendly mode, a forehand tends
   left and a backhand right in each player’s view; deliberate aim can override that tendency. Winners and final scores stay on the TV, even after controller input stops.
+  Tilt gently for short/deep placement. The TV keeps scores and brief match
+  announcements; instructions and diagnostic labels require the diagnostic URL.
 - **Tennis:** best of three sets, each first to **7 points, win by 2**, against a
   bot or a second phone controller. There are no games within sets. Each set
   gets an announcement and a short break before the next serve. Solo uses one camera; two humans use split screen.
   Forehand/backhand motion and button controls remain available.
+  Motion captures aim and depth before the swing, so follow-through cannot
+  redirect a shot. Both racket sports offer Rally/Challenge opponents in phone
+  settings and optional practice targets after three legal returns.
+
+Developer measurements are opt-in: see [diagnostics](docs/developer-diagnostics.md)
+and the [motion research and implementation notes](docs/sports-motion-research.md).
 
 Tennis keyboard controls:
 

@@ -3,6 +3,7 @@ import { EVENTS, isRoll, isSwing, isGameHit, isTennisState, isBowlingState, isSt
 import { request, requestSwing, socket, useConnection } from '../lib/socket.js';
 import { createInputId } from '../../../src/network/inputId.js';
 import {createControllerSetupRelay} from '../lib/controllerSetupRelay.js';
+import {browserDiagnostics, DIAGNOSTICS_PROBE} from '../../../shared/diagnostics.js';
 
 const NO_PLAYERS = [];
 /** Authenticated bridge between the lobby and an isolated WebGL game/controller.
@@ -10,6 +11,10 @@ const NO_PLAYERS = [];
  */
 export function GameFrame({ code, controller = false, controllerIntent = null, onControllerMode, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
   const frame = useRef(null);
+  const diagnosticScope = `bridge.${controller ? 'phone' : 'tv'}.${sport}`;
+  const diagnosticRef = useRef(null);
+  if (diagnosticRef.current?.scope !== diagnosticScope) diagnosticRef.current = {scope: diagnosticScope, value: browserDiagnostics(diagnosticScope)};
+  const diagnostics = diagnosticRef.current.value;
   const ready = useRef(false);
   const pending = useRef(new Map());
   const pendingCommands = useRef(new Map());
@@ -53,7 +58,27 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
   const room = `lobby-${code}`;
   // A sport change is a bridge message, not a controller navigation: keep the
   // phone’s sensor permission and verified setup alive for the next game.
-  const src = `/${controller ? sport === 'table-tennis' ? 'table-tennis-controller' : 'controller' : sport === 'table-tennis' ? 'table-tennis' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}`;
+  const src = `/${controller ? sport === 'table-tennis' ? 'table-tennis-controller' : 'controller' : sport === 'table-tennis' ? 'table-tennis' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}${diagnostics.enabled ? '&diagnostics=1' : ''}`;
+  useEffect(() => {
+    if (!diagnostics.enabled || connection !== 'online') return;
+    let active = true, waiting = false;
+    const probe = async () => {
+      if (waiting || !socket.connected) return;
+      waiting = true;
+      const started = performance.now();
+      const response = await request(DIAGNOSTICS_PROBE, {enabled: true});
+      waiting = false;
+      if (!active) return;
+      if (response?.ok) {
+        diagnostics.observe('serverRoundTripMs', performance.now() - started);
+        diagnostics.count(`transport.${response.transport === 'websocket' ? 'websocket' : 'polling'}`);
+        diagnostics.remote('serverRelay', response.diagnostics);
+      } else diagnostics.count('probeRejected');
+    };
+    void probe();
+    const timer = setInterval(probe, 2000);
+    return () => {active = false; clearInterval(timer); if (socket.connected) socket.emit(DIAGNOSTICS_PROBE, {enabled: false});};
+  }, [diagnostics, connection]);
   useEffect(() => {setSaveIssue('');}, [stateKey, src, attempt]);
   useEffect(() => {setupLifecycle.current++; setupRelay.current.reset();}, [connection, src, attempt, sport]);
   function publishState() {
@@ -155,6 +180,8 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           }) });
         }
       } else if (controller && data?.type === 'wee:player-swing' && isSwing(data.event)) {
+        diagnostics.mark(data.event.id, 'sendRequested');
+        diagnostics.count('swingRequests');
         const inputGame = data.event.gameId;
         const inputToken = inputGeneration.current;
         const control = currentControl.current;
@@ -163,12 +190,18 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           : paused || connection !== 'online' ? { ok: false, error: 'paused' }
           : await requestSwing(EVENTS.PLAYER_SWING, {...data.event, generation, hostEpoch},
             () => currentGame.current === inputGame && inputGeneration.current === inputToken && currentControl.current === control);
+        diagnostics.mark(data.event.id, 'deliveryAck');
+        diagnostics.measure(data.event.id, 'sendRequested', 'deliveryAck', 'swingDeliveryRoundTripMs');
+        diagnostics.count(result?.ok ? 'swingDelivered' : 'swingRejected');
         // A late acknowledgement belongs to the old controller game, not its replacement.
         if (currentGame.current === gameId && currentControl.current === control) post({ type: 'wee:swing-ack', gameId: inputGame, result: { ...result, id: data.event.id } });
       } else if (controller && ['wee:player-pose', 'wee:player-aim'].includes(data?.type)) {
         if (!ready.current || !playing || paused || connection !== 'online' || !socket.connected) return;
         const envelope = {...data.event, seq: data.event?.seq ?? data.event?.sequence, gameId, generation, hostEpoch};
-        if (data.type === 'wee:player-pose' && sport === 'table-tennis' && isPose(envelope)) socket.volatile.emit(EVENTS.PLAYER_POSE, envelope);
+        if (data.type === 'wee:player-pose' && sport === 'table-tennis' && isPose(envelope)) {
+          diagnostics.count('poseSendAttempts'); diagnostics.mark(`p${player}.pose.${envelope.seq}`, 'sendRequested');
+          socket.volatile.emit(EVENTS.PLAYER_POSE, envelope);
+        }
         if (data.type === 'wee:player-aim' && sport === 'bowling' && isAim(envelope)) socket.volatile.emit(EVENTS.PLAYER_AIM, envelope);
       } else if (controller && data?.type === 'wee:player-roll' && isRoll(data.event)) {
         const control = currentControl.current;
@@ -200,6 +233,8 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       } else if (!controller && sport === 'tennis' && data?.type === 'wee:stroke-result' &&
           ready.current && playing && !paused && connection === 'online' && socket.connected &&
           data.gameId === gameId && isStrokeResult(data)) {
+        diagnostics.mark(data.id, data.result === 'hit' ? 'contactReported' : 'strokeResult');
+        if (data.result === 'hit') diagnostics.measure(data.id, 'tvReceived', 'contactReported', 'tvBridgeReceiveToContactMs');
         socket.volatile.emit(EVENTS.HOST_STROKE_RESULT, data);
       } else if (!controller && data?.type === 'wee:game-hit' &&
           ready.current && playing && !paused && connection === 'online' && socket.connected && data.gameId === gameId) {
@@ -231,7 +266,10 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
     const swing = (event, ack) => {
       const ok = !controller && sport === 'tennis' && ready.current && playing && !paused &&
         connection === 'online' && Boolean(gameId) && event?.gameId === gameId && isSwing(event);
-      if (ok) post({ type: 'wee:game-swing', event });
+      if (ok) {
+        diagnostics.mark(event.id, 'tvReceived'); diagnostics.count('swingsReceived');
+        post({ type: 'wee:game-swing', event });
+      }
       if (typeof ack === 'function') ack({ ok });
     };
     const roll = (event, ack = () => {}) => {
@@ -259,6 +297,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
     const pose = event => {
       if (!controller && sport === 'table-tennis' && ready.current && !recovering.current && playing && !paused &&
           event.gameId === gameId && event.generation === generation && event.hostEpoch === hostEpoch && isPose(event)) {
+        diagnostics.count('posesReceived'); diagnostics.mark(`p${event.player}.pose.${event.seq}`, 'tvReceived');
         post({type: 'wee:table-tennis-pose', event});
       }
     };
@@ -278,6 +317,8 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
     const strokeResult = event => {
       if (controller && sport === 'tennis' && ready.current && playing && !paused &&
           connection === 'online' && event.gameId === gameId && event.player === player && isStrokeResult(event)) {
+        diagnostics.mark(event.id, 'strokeResult');
+        diagnostics.measure(event.id, 'sendRequested', 'strokeResult', 'sendToResultRoundTripMs');
         post({ ...event, type: 'wee:stroke-result' });
       }
     };

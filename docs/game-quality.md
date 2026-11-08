@@ -215,3 +215,58 @@ For a quick phone trial: aim at one table-tennis spot and repeat five compact
 strokes, then keep the aim and vary power; try left/right placement, complete a
 12-point game, and background/resume once. In bowling, confirm the visible
 arrow follows aim and stops changing when the delivery starts.
+
+## Racket-sport response and playability follow-up
+
+The November 2026 follow-up implements the priorities in the
+[motion research](sports-motion-research.md). Both games acknowledge accepted
+swings with preparation before contact, preserve the captured target during
+the stroke, and retain finite racket/ball collisions. Table Tennis bounds
+Friendly assistance at 450 ms using predicted arrival; Tennis caps preparation
+waiting at 360 ms standard / 460 ms beginner. These are maximum assistance
+windows, not measured phone-to-TV latency.
+
+Tennis now carries pre-swing lateral aim and depth through both web and Expo.
+Expo swings use the same 80 ms writable-transport deadline as web and cannot
+replay after session changes. Native capture timestamps reject stale sensor
+batches after establishing a local clock baseline. Durable bowling actions
+retain their existing delivery behavior.
+
+Web table-tennis touch pulses and heartbeats run independently of animation
+frames, as they already do in Expo. A stalled drawing callback no longer
+swallows the short touch stroke. Hidden pages still stop delivery, and resume
+requires current setup; the stale-input deadline is unchanged.
+
+Table Tennis forecasts receives with its own drag/spin/bounce solver, cached
+at 30 Hz with a bounded one-second horizon. Friendly pitch selects 0.6–1.2 m
+depth around the familiar 0.9 m target. Both sports offer Rally and Challenge
+opponents, and optional practice unlocks landing targets after three legal
+returns. Scoring remains Table Tennis to 12, win by two, and Tennis best of
+three sets to seven, win by two.
+
+The ordinary table-tennis TV view keeps the score, serve marker, connection
+status when needed, and brief point/winner announcements. Persistent help,
+rule labels, floating player tags and verification controls require
+`?diagnostics=1`. No developer readings appear during ordinary play.
+Both sports lower pixel density and shadow refresh under sustained render
+pressure. Continued severe delays can temporarily disable shadows; recovery
+is gradual, including on displays capped at 30 Hz. A single stall or hidden
+tab does not trigger this fallback. The physics timestep is unchanged.
+
+[Developer diagnostics](developer-diagnostics.md) record local stage durations,
+coalescing/drops, render-frame percentiles and server round trips. Each device
+keeps its own clock scope. These cannot establish physical motion-to-screen
+latency, and software WebGL browser checks are not a device performance benchmark.
+Real iPhone Safari/Expo testing is still needed for motion comfort, grip,
+drift, haptics, Wi-Fi congestion and visible response.
+
+Validation for this follow-up: **671 game tests in 77 files, 74 native
+controller tests and 171 standalone server tests passed**, along with
+TypeScript, the six-page production build, and iOS/Android Hermes bundle
+exports. The [browser evidence](system-plan/sports-upgrade-browser.json)
+records clean normal/diagnostic TV views, motion-driven legal returns and
+target-practice progression, both human players making real rally contacts,
+eight-player bowling/reconnect, persistent TV winners, and exact saved-game
+recovery for all three sports. All recorded browser runs had no uncaught page
+errors. Two-player contact checks use a 960×640 software-rendered viewport;
+they do not establish performance on a physical TV or phone.

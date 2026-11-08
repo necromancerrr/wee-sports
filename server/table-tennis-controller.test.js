@@ -1,5 +1,5 @@
 import {expect, test} from 'vitest';
-import {createTableTennisControllerSession} from '../src/tabletennis/controllerSession.js';
+import {createTableTennisControllerSession, createTableTennisTouchPump} from '../src/tabletennis/controllerSession.js';
 
 const sample = (time, sequence, velocity = {x: 0, y: 0, z: 0}) => ({schemaVersion: 1,
   timeSeconds: time, sequence, calibrationRevision: 0, screenAngle: 0,
@@ -15,6 +15,30 @@ function create() {
   };
   return {session, messages, lastSetup, acknowledge, warm};
 }
+
+test('touch pulse and freshness keep flowing during a renderer stall, without replay after resume', () => {
+  const f = create(); f.session.select('touch'); f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'stalled-renderer', generation: 1});
+  let now = 1, tick = null, schedules = 0;
+  const pump = createTableTennisTouchPump(f.session, {now: () => now,
+    schedule: callback => {schedules++; tick = callback; return 1;}, cancel: () => {tick = null;}});
+  pump.start(); pump.start(); expect(schedules).toBe(1);
+  f.session.stroke(now);
+  // Only the independent timer runs: no animation frame or sensor callback.
+  for (let i = 0; i < 40; i++) {now += .016; tick();}
+  const poses = f.messages.filter(message => message.type === 'wee:player-pose');
+  expect(poses).toHaveLength(40);
+  expect(poses.some(message => message.event.angularVelocity.x > 10)).toBe(true);
+  expect(poses.at(-1).event.angularVelocity.x).toBe(0);
+  f.session.stroke(now); f.session.suspend(); pump.stop(); expect(tick).toBeNull();
+  now += 2; f.session.resume(); pump.start(); tick();
+  expect(f.messages.filter(message => message.type === 'wee:player-pose')).toHaveLength(40);
+  f.acknowledge(); now += .016; tick();
+  expect(f.messages.at(-1).event.angularVelocity.x).toBe(0);
+  f.session.lobby({connected: true, playing: false, paused: true, gameId: null, generation: 2});
+  const count = f.messages.length; now += .016; tick(); expect(f.messages).toHaveLength(count);
+  pump.stop();
+});
 
 test('ordinary 15–19 ms sensor jitter sends each fresh pose without alternating-frame delay', () => {
   const f = create(); f.session.select('motion'); f.warm(); f.acknowledge();

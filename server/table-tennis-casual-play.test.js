@@ -57,7 +57,9 @@ function casualMatch({periods = [.7, .9], carry = .7, hz = 60, delay = .04, seco
 
 test('two independently moving phones can rally without stopping between strokes or timing a collider', () => {
   for (const periods of [[.7, .9], [.4, .6], [1.2, 1.6]]) {
-    const result = casualMatch({periods});
+    // Slower independent swings need a longer observation, rather than keeping
+    // an old action alive through most of the incoming ball's flight.
+    const result = casualMatch({periods, seconds: periods[1] > 1 ? 22 : 16});
     expect(result.returns.length, `periods ${periods}`).toBeGreaterThanOrEqual(12);
     for (const player of [1, 2]) expect(result.returns.filter(hit => hit.player === player).length).toBeGreaterThanOrEqual(5);
     expect(result.returns.every(hit => hit.assisted)).toBe(true);
@@ -68,4 +70,39 @@ test('a lower-rate sensor and slower relay still accept continuously moving hand
   const result = casualMatch({hz: 30, delay: .08, carry: .8});
   expect(result.returns.length).toBeGreaterThanOrEqual(12);
   expect(result.game.snapshot().stale).toBe(false);
+});
+
+test('two touch controllers produce real rally contacts with independent button timing', () => {
+  let now = 0;
+  const game = new TableTennisGame({now: () => now}), packets = [], returns = [];
+  game.startMatch({players: 2});
+  const collision = game.physics.onEvent;
+  game.physics.onEvent = event => {
+    if (event.kind === 'hit' && !game.serveMotion) returns.push(event);
+    collision(event);
+  };
+  const phones = [1, 2].map(player => {
+    let setup;
+    const session = createTableTennisControllerSession({send: message => {
+      if (message.type === 'wee:controller-setup') setup = message.requestId;
+      if (message.type === 'wee:player-pose') packets.push({at: now + .04, player, event: message.event});
+    }});
+    session.lobby({connected: true, playing: true, paused: false, gameId: 'touch-match', generation: 1});
+    session.select('touch'); session.acknowledge(setup, {ok: true});
+    return {session, nextTap: player === 1 ? 0 : .17, period: player === 1 ? .35 : .48};
+  });
+  for (let frame = 0; frame < 20 * 60; frame++) {
+    now = frame / 60;
+    for (const phone of phones) {
+      phone.session.setPhase(game.rules.phase);
+      if (now >= phone.nextTap) {phone.session.stroke(now); phone.nextTap += phone.period;}
+      phone.session.frame(now);
+    }
+    while (packets.length && packets[0].at <= now) {
+      const packet = packets.shift(); game.setInput(packet.event, {player: packet.player, remote: true});
+    }
+    if (frame % 2 === 1) game.update(1 / 30);
+  }
+  for (const player of [1, 2]) expect(returns.filter(hit => hit.player === player).length).toBeGreaterThanOrEqual(5);
+  expect(game.snapshot().stale).toBe(false);
 });

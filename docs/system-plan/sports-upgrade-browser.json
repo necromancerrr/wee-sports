@@ -1,0 +1,145 @@
+{
+  "recordedAt": "2026-11-08T07:59:21.991654+00:00",
+  "branch": "feat/sports-platform",
+  "baseRevision": "1a67d4116bd44bc2d42a1507ec453fcba2c8d6cf",
+  "automated": {
+    "gameTests": 671,
+    "gameTestFiles": 77,
+    "nativeControllerTests": 74,
+    "standaloneServerTests": 171,
+    "typescript": "passed",
+    "productionBuild": "passed; six pages and required assets verified",
+    "expoExports": [
+      "iOS Hermes bundle",
+      "Android Hermes bundle"
+    ]
+  },
+  "browserReports": {
+    "cleanTableTennis": {
+      "recordedAt": "2026-11-08T07:33:11.724Z",
+      "checks": [
+        "Normal play keeps the score and removes instructional, diagnostic, mode and floating-player text",
+        "Explicit diagnostics restores verification text and bounded local-clock frame percentiles"
+      ],
+      "errors": [],
+      "limitations": [
+        "Software WebGL and synthetic browser input; no physical iPhone latency measurement."
+      ]
+    },
+    "motion": {
+      "recordedAt": "2026-11-08T07:58:42.704Z",
+      "base": "http://127.0.0.1:5219",
+      "runtime": "v24.22.1",
+      "browser": "156.0.8078.79",
+      "rendering": "headless Chromium software WebGL; 960x640 functional viewport",
+      "sensorSource": "Generated motion at 16 ms; gentle 20 degrees/s aim with attitude every 100 ms, then continuous 3 rad/s sine gestures with a 700 ms period and attitude at sensor cadence",
+      "checks": [
+        "Play joins and the leader starts a scored table-tennis motion game without a calibration checklist",
+        "An idle motion controller produces no automatic player hit or credited return",
+        "Gentle horizontal aiming keeps advancing with 100 ms attitude updates and fresh gyro samples",
+        "Holding an off-centre phone keeps its aim through a quiet period",
+        "Y sideways continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+        "Z screen-up continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+        "Hidden controller stops pose delivery and foreground resumes only with fresh input",
+        "Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt",
+        "The same controller can enter the twelve-point bot game",
+        "No uncaught browser errors"
+      ],
+      "axisResults": [
+        {
+          "axis": "Y sideways",
+          "hostHits": 3,
+          "legalReturns": 3,
+          "elapsedMs": 6215
+        },
+        {
+          "axis": "Z screen-up",
+          "hostHits": 3,
+          "legalReturns": 3,
+          "elapsedMs": 6344
+        }
+      ],
+      "errors": [],
+      "limitations": [
+        "Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.",
+        "No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established."
+      ]
+    },
+    "party": {
+      "recordedAt": "2026-11-08T07:52:21.091Z",
+      "base": "http://127.0.0.1:5219",
+      "viewport": {
+        "width": 960,
+        "height": 640
+      },
+      "checks": [
+        "The lobby grows as friends join; eight ready controllers wait for their leader and a ninth is rejected",
+        "The real bowling renderer shows all eight names without horizontal page overflow",
+        "Player eight reconnects into the original seat and the bowling game resumes",
+        "Two phones start a scored table-tennis match with independent touch controls and no solo practice actions",
+        "Both human table-tennis players produce real rally contacts through their own controller, excluding assisted serves",
+        "Ordinary scroll, blur and duplicate pageshow do not pause the room",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Generated browser/button input and software WebGL at the recorded viewport; not physical phone comfort, hardware frame-rate or end-to-end latency measurements."
+      ]
+    },
+    "allSportStartFlow": {
+      "recordedAt": "2026-11-08T07:36:13.785Z",
+      "base": "http://127.0.0.1:5219",
+      "checks": [
+        "Bowling: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "Tennis: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "Table Tennis keeps the score while removing instructional, diagnostic and floating player text",
+        "Table Tennis restores a 12\u201310 winner on the TV, retains it through sensor silence and phone disconnect, and does not force a phone result modal",
+        "Table Tennis: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Synthetic touch phones and software WebGL; result seeded through the existing checkpoint recovery path. Does not measure physical iPhone motion or wireless latency."
+      ]
+    },
+    "finalTableTennisStartAndResult": {
+      "recordedAt": "2026-11-08T07:57:37.281Z",
+      "base": "http://127.0.0.1:5219",
+      "checks": [
+        "Table Tennis keeps the score while removing instructional, diagnostic and floating player text",
+        "Table Tennis restores a 12\u201310 winner on the TV, retains it through sensor silence and phone disconnect, and does not force a phone result modal",
+        "Table Tennis: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Synthetic touch phones and software WebGL; result seeded through the existing checkpoint recovery path. Does not measure physical iPhone motion or wireless latency."
+      ]
+    },
+    "savedGameRecovery": {
+      "recordedAt": "2026-11-08T07:56:46.779Z",
+      "checks": [
+        "Tennis: scan asks for a name, lobby stays windowed, fullscreen starts at countdown and tutorials skip automatically",
+        "Tennis: leaving the TV returns the phone to the lobby; Continue restores the nonzero score with the original player",
+        "Tennis: New game starts fresh; closing the room releases the controller",
+        "Table Tennis: scan asks for a name, lobby stays windowed, fullscreen starts at countdown and tutorials skip automatically",
+        "Table Tennis: leaving the TV returns the phone to the lobby; Continue restores the nonzero score with the original player",
+        "Table Tennis: New game starts fresh; closing the room releases the controller",
+        "Bowling: scan asks for a name, lobby stays windowed, fullscreen starts at countdown and tutorials skip automatically",
+        "Bowling: leaving the TV returns the phone to the lobby; Continue restores the nonzero score with the original player",
+        "Bowling: New game starts fresh; closing the room releases the controller"
+      ],
+      "errors": [],
+      "limitations": [
+        "Synthetic touch phone; nonzero stable checkpoints seeded through the trusted TV recovery bridge. Physical iPhone motion and wireless latency require device testing."
+      ]
+    }
+  },
+  "limits": [
+    "Synthetic browser input and software WebGL validate behavior, not physical iPhone motion accuracy or end-to-end latency.",
+    "Two-human contact checks use a 960x640 software-rendered viewport; hardware TV frame rates are not established.",
+    "The TV winner test seeds a legal completed checkpoint; it is not a full human-played match.",
+    "Expo exports are bundles, not signed installable apps. Grip comfort, drift, haptics and wireless response still need a physical-device trial.",
+    "WebRTC remains a conditional future route experiment; this implementation retains the authenticated relay."
+  ]
+}

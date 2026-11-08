@@ -18,8 +18,8 @@ import {
     NEUTRAL_INPUT,
     type PlayerInput,
 } from '../Controllers/playerInput';
-import { planCourtShot } from './shotTrajectory';
-import { chooseBotStroke, type BotStroke } from './botPlayer';
+import { planCourtShot, type ShotIntent } from './shotTrajectory';
+import { chooseBotStroke, chooseBotPlacement, type BotStroke } from './botPlayer';
 import { predictBaselineIntercept, lateralSteering } from './autoPosition';
 import { sweptRacketContact, contactWindowCrossed } from './components/racketContact';
 import { ScoreSystem, type Score, type PointResult, type MatchFormat, type TennisScoreCheckpoint } from './scoreSystem';
@@ -30,7 +30,7 @@ const PHYSICS_STEP = 1 / 120;
 // A phone reports a stroke after it has begun. Buffer a slightly early input,
 // then time the authored animation to the incoming ball; contact still has to
 // pass the normal swept racket test. Never replay inputs into a later shot.
-const SWING_BUFFER_SECONDS = 0.65;
+const PREPARATION_WAIT = {standard: .36, beginner: .46};
 const STRIKE_PROGRESS = 0.45;
 // The authored backhand rises through contact later than the forehand.
 const BACKHAND_PROGRESS = 0.65;
@@ -41,6 +41,7 @@ interface PendingSwing {
     remaining: number;
     lastHitBy: BallPlayer;
     power: number;
+    deadline: number;
     retryIn?: number;
 }
 
@@ -67,17 +68,22 @@ export interface PracticeState {
     returns: number;
     streak: number;
     bestStreak: number;
+    cleanReturns: number;
+    targetHits: number;
+    target: {x: number; z: number} | null;
 }
 export interface StrokeResult {
     id: string;
     player: 1 | 2;
     result: 'hit' | 'miss' | 'rejected';
     reason: string;
+    receivedToPreparationMs?: number;
     receivedToContactMs?: number;
 }
 interface StrokeTrace {
     id?: string;
     receivedAt: number;
+    preparedAt?: number;
     reason: string;
     timing: number;
 }
@@ -114,12 +120,15 @@ export class GameLogic {
     private scoreSystem = new ScoreSystem();
     private readonly onStrokeResult: (result: StrokeResult) => void;
     private readonly settings: TennisSettings = {format: 'full', assistance: 'standard', botDifficulty: 'standard', timingAssist: true, autoMove: true};
-    private practice: PracticeState = {active: false, stroke: 'alternate', hand: 'Right', attempts: 0, returns: 0, streak: 0, bestStreak: 0};
+    private practice: PracticeState = {active: false, stroke: 'alternate', hand: 'Right', attempts: 0, returns: 0, streak: 0, bestStreak: 0, cleanReturns: 0, targetHits: 0, target: null};
     private practiceTimer = 0;
     private practiceReturned = false;
+    private practiceLanded = false;
     private practiceResume: {attempt: 1 | 2; status: BallUserData['serveStatus']} | null = null;
     private strokes: [StrokeTrace | null, StrokeTrace | null] = [null, null];
     private swingTimings = [0, 0];
+    private swingPlacement: [Pick<ShotIntent, 'aim' | 'depth'>, Pick<ShotIntent, 'aim' | 'depth'>] = [{}, {}];
+    private botShot = 0;
     private simulationTime = 0;
     private botReadyAt = 0;
     private showHitboxes = false;
@@ -195,6 +204,7 @@ export class GameLogic {
             if (!settings.timingAssist) {
                 for (const number of [1, 2] as const) if (this.pendingSwings[number - 1]) {
                     this.pendingSwings[number - 1] = null;
+                    (number === 1 ? this.player1 : this.player2).stopAnimation();
                     this.reportStroke(number, 'rejected', 'Timing assistance changed');
                 }
             }
@@ -206,7 +216,7 @@ export class GameLogic {
         const data = this.ball.userData as BallUserData;
         return {attempt: data.serveAttempt, side: data.serviceSide, status: data.serveStatus};
     }
-    public getPracticeState(): PracticeState { return {...this.practice}; }
+    public getPracticeState(): PracticeState { return {...this.practice, target: this.practice.target && {...this.practice.target}}; }
     public startPractice(stroke: PracticeState['stroke'] = 'alternate', hand: 'Right' | 'Left' = 'Right'): void {
         this.clearPendingInputs();
         if (!this.practice.active) {
@@ -216,7 +226,7 @@ export class GameLogic {
         }
         if (!['forehand', 'backhand', 'alternate'].includes(stroke)) stroke = 'alternate';
         if (hand !== 'Left') hand = 'Right';
-        this.practice = {active: true, stroke, hand, attempts: 0, returns: 0, streak: 0, bestStreak: 0};
+        this.practice = {active: true, stroke, hand, attempts: 0, returns: 0, streak: 0, bestStreak: 0, cleanReturns: 0, targetHits: 0, target: null};
         this.practiceTimer = .3;
         this.practiceReturned = false;
         this.player1.group.position.set(0, this.player1.group.position.y, TENNIS_COURT.rallyDepth);
@@ -246,6 +256,7 @@ export class GameLogic {
         if (!trace) return;
         this.strokes[player - 1] = null;
         if (trace.id) this.onStrokeResult({id: trace.id, player, result, reason,
+            ...(trace.preparedAt !== undefined ? {receivedToPreparationMs: Math.max(0, trace.preparedAt - trace.receivedAt)} : {}),
             ...(result === 'hit' ? {receivedToContactMs: Math.max(0, performance.now() - trace.receivedAt)} : {})});
     }
     private setServerPosition(): void {
@@ -274,6 +285,7 @@ export class GameLogic {
         this.accumulatedTime = 0;
         this.pendingSwings = [null, null];
         this.swingPowers = [0.5, 0.5];
+        this.swingPlacement = [{}, {}];
         this.player1Input = { ...NEUTRAL_INPUT };
         this.player2Input = { ...NEUTRAL_INPUT };
         this.player1.stopAnimation();
@@ -312,11 +324,15 @@ export class GameLogic {
         hand: 'Left' | 'Right';
         player?: 1 | 2;
         power?: number;
+        aim?: number;
+        depth?: number;
         id?: string;
     }): void {
         const number = event.player ?? 1;
         const currentPlayer = number === 1 ? this.player1 : this.player2;
-        if (currentPlayer.isSwinging && this.strokes[number - 1]) {
+        // A racket can also be swinging without a phone trace (keyboard or
+        // bot). Reject before replacing its trace, timing or locked placement.
+        if (currentPlayer.isSwinging) {
             const reason = 'Finish the current stroke';
             this.feedback(`Player ${number}: ${reason}`);
             if (event.id) this.onStrokeResult({id: event.id, player: number, result: 'rejected', reason});
@@ -366,12 +382,16 @@ export class GameLogic {
             serveBall(this.ball, new THREE.Vector3(), data.servingPlayer);
         }
         const power = Number.isFinite(event.power) ? THREE.MathUtils.clamp(event.power!, 0, 1) : 0.5;
+        this.swingPlacement[number - 1] = {
+            ...(Number.isFinite(event.aim) ? {aim: THREE.MathUtils.clamp(event.aim!, -1, 1)} : {}),
+            ...(Number.isFinite(event.depth) ? {depth: THREE.MathUtils.clamp(event.depth!, -1, 1)} : {}),
+        };
         const player = number === 1 ? this.player1 : this.player2;
         const backhand = event.label === 'Backhand';
         const animation = this.swingAnimation(backhand, event.hand);
         const action = player.actions[animation];
         const intercept = this.strokeIntercept(player, animation, number, backhand);
-        const contactTime = action?.getClip().duration * (backhand ? BACKHAND_PROGRESS : STRIKE_PROGRESS);
+        const contactTime = (action?.getClip().duration ?? 0) * (backhand ? BACKHAND_PROGRESS : STRIKE_PROGRESS);
         const trace = this.strokes[number - 1];
         if (trace) {
             trace.timing = intercept && Number.isFinite(contactTime)
@@ -386,14 +406,17 @@ export class GameLogic {
             this.swingTimings[number - 1] = trace.timing;
         }
         if (player.isSwinging) { reject('Finish the current stroke'); return; }
+        const preparationWait = PREPARATION_WAIT[this.settings.assistance];
         if (this.settings.timingAssist && action && intercept &&
-            intercept.time <= (this.settings.assistance === 'beginner' ? .75 : SWING_BUFFER_SECONDS) &&
+            intercept.time <= contactTime + preparationWait &&
             intercept.time > action.getClip().duration * (backhand ? BACKHAND_PROGRESS : STRIKE_PROGRESS) &&
             data.lastHitBy && !player.isSwinging) {
             this.pendingSwings[number - 1] = {
-                backhand, hand: event.hand, remaining: this.settings.assistance === 'beginner' ? .75 : SWING_BUFFER_SECONDS,
-                lastHitBy: data.lastHitBy, power,
+                backhand, hand: event.hand, remaining: Math.min(preparationWait, intercept.time - contactTime + .08),
+                deadline: performance.now() + preparationWait * 1000, lastHitBy: data.lastHitBy, power,
             };
+            player.prepareSwing?.(animation, backhand);
+            if (trace && player.isPreparing) trace.preparedAt = performance.now();
             this.feedback(`Player ${number}: ${event.label} ready · meeting the incoming ball`);
             return;
         }
@@ -438,6 +461,7 @@ export class GameLogic {
         this.botAttempted = false;
         this.practice.attempts++;
         this.practiceReturned = false;
+        this.practiceLanded = false;
         this.practiceTimer = 0;
         this.feedback(`Player ${number} practice ${backhand ? 'backhand' : 'forehand'} feed · swing as the ball reaches your racket`);
     }
@@ -469,6 +493,7 @@ export class GameLogic {
         prepareServe(this.ball, 0);
         this.setServerPosition();
         this.botAttempted = false;
+        this.botShot = 0;
         this.hasShotTarget = false;
         this.feedback('New match · Player 1 serves when ready');
     }
@@ -524,6 +549,20 @@ export class GameLogic {
             this.onGameEvent({kind: call === 'let' ? 'let' : 'fault', player, reason: call});
         });
         const resetDuringStep = !wasWaiting && data.isWaitingForServe;
+        if (this.practice.active && this.practiceReturned && !this.practiceLanded && data.lastHitBy === 'player1' &&
+            data.bounceCount === 1 && data.firstBounceInBounds) {
+            this.practiceLanded = true;
+            this.practice.cleanReturns++;
+            const target = this.practice.target;
+            if (target && Math.hypot(this.ball.position.x - target.x, this.ball.position.z - target.z) <= 1) {
+                this.practice.targetHits++;
+                this.feedback('Target hit');
+            }
+            if (this.practice.cleanReturns >= 3) {
+                const index = this.practice.targetHits % 3;
+                this.practice.target = {x: [-1.6, 1.6, 0][index], z: [-7, -8.7, -5.7][index]};
+            }
+        }
         if (resetDuringStep) {
             this.clearPendingInputs('Point ended before racket contact');
             if (!this.practice.active) this.setServerPosition();
@@ -595,6 +634,7 @@ export class GameLogic {
             if (assisted && !player.hitConsumed) player.move(moveX, moveZ, delta);
             return;
         }
+        if (this.pendingSwings[number - 1]) {player.move(moveX, moveZ, delta); return;}
         if (!swing) player.move(moveX, moveZ, delta);
         const moving = !swing && Math.abs(moveX) + Math.abs(moveZ) > 0.01;
         if (swing) this.performSwing(swing === 'left', number);
@@ -647,6 +687,11 @@ export class GameLogic {
         }
         this.shotTargetMarker.visible = this.hasShotTarget && (this.showHitboxes || this.practice.active) &&
             !(data.isWaitingForServe);
+        this.shotTargetMarker.scale.setScalar(this.practice.active && this.practice.target ? 4 : 1);
+        if (this.practice.active && this.practice.target) {
+            this.shotTargetMarker.position.set(this.practice.target.x, .08, this.practice.target.z);
+            this.shotTargetMarker.visible = true;
+        }
     }
 
     private updateBot(): void {
@@ -666,6 +711,7 @@ export class GameLogic {
             position: this.ball.position, velocity: data.velocity, gravity: data.gravity, bounceCount: data.bounceCount
         }, this.player2.group.position, strokes);
         if (!stroke) return;
+        this.swingPlacement[1] = chooseBotPlacement(this.player1.group.position.x, this.botShot, this.settings.botDifficulty);
         this.performSwing(stroke.backhand, 2, 'Right', false, this.settings.botDifficulty === 'beginner' ? .25 : .5);
         this.botAttempted = this.player2.isSwinging;
     }
@@ -700,10 +746,11 @@ export class GameLogic {
             const pending = this.pendingSwings[number - 1];
             if (!pending) continue;
             pending.remaining -= delta;
-            if (pending.remaining <= 0 || data.isWaitingForServe ||
+            if (pending.remaining <= 0 || performance.now() >= pending.deadline || data.isWaitingForServe ||
                 data.waitingForRacketHit || data.lastHitBy !== pending.lastHitBy) {
                 this.pendingSwings[number - 1] = null;
-                const reason = pending.remaining <= 0
+                player.stopAnimation();
+                const reason = pending.remaining <= 0 || performance.now() >= pending.deadline
                     ? pending.retryIn === undefined ? 'Too early' : 'Ball is out of reach'
                     : 'Point ended before racket contact';
                 this.feedback(`Player ${number}: ${reason}`);
@@ -819,6 +866,8 @@ export class GameLogic {
         player.swingBackhand = isBackhand;
         this.swingPowers[number - 1] = power;
         player.playAnimation(animation);
+        const trace = this.strokes[number - 1];
+        if (trace && trace.preparedAt === undefined) trace.preparedAt = performance.now();
         this.updateAutoTargets();
         // Avoid adding a full wind-up after the phone's physical stroke. This
         // advances only the animation, never the ball or the contact result.
@@ -884,7 +933,7 @@ export class GameLogic {
         }
         const serving = data.waitingForRacketHit || data.isWaitingForServe;
         const plan = planCourtShot(this.ball.position, number, player.swingBackhand, data.gravity,
-            this.swingPowers[number - 1], {timing: this.swingTimings[number - 1],
+            this.swingPowers[number - 1], {timing: this.swingTimings[number - 1], ...this.swingPlacement[number - 1],
                 ...(serving ? {serve: data.serviceSide} : {}), beginner: this.settings.assistance === 'beginner'});
         if (!plan) {
             player.hitConsumed = true;
@@ -894,6 +943,7 @@ export class GameLogic {
             return;
         }
         hitBall(this.ball, plan.velocity, id, serving);
+        if (number === 2 && this.botEnabled) this.botShot++;
         this.hasShotTarget = true;
         this.shotTargetMarker.position.set(plan.target.x, 0.08, plan.target.z);
         this.shotTargetMarker.visible = this.showHitboxes;

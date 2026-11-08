@@ -12,6 +12,7 @@ export interface PlayerController {
     actions: Record<string, THREE.AnimationAction>;
     currentAnimation: string | null;
     isSwinging: boolean;
+    isPreparing?: boolean;
     hitbox: RacketHitbox | null;
     contactActive: boolean;
     hitConsumed: boolean;
@@ -21,6 +22,7 @@ export interface PlayerController {
     movementSpeed: number;
 
     playAnimation: (name: string) => void;
+    prepareSwing?: (name: string, backhand: boolean) => void;
     stopAnimation: () => void;
     update: (delta: number) => void;
     move: (dx: number, dz: number, delta: number) => void;
@@ -79,6 +81,7 @@ export function createPlayer(
         actions: {},
         currentAnimation: null,
         isSwinging: false,
+        isPreparing: false,
         hitbox: null,
         contactActive: false,
         hitConsumed: false,
@@ -94,9 +97,10 @@ export function createPlayer(
                 return;
             }
 
-            if (this.currentAnimation === name) {
+            if (this.currentAnimation === name && !this.isPreparing) {
                 return;
             }
+            this.isPreparing = false;
 
             clearHandOffset();
             const previous = this.currentAnimation
@@ -108,6 +112,7 @@ export function createPlayer(
             }
 
             next.reset();
+            next.paused = false;
             next.enabled = true;
             next.setEffectiveTimeScale(1);
             next.setEffectiveWeight(1);
@@ -126,6 +131,19 @@ export function createPlayer(
             if (isSwing) this.hitConsumed = false;
         },
 
+        prepareSwing(name: string, backhand: boolean): void {
+            this.stopAnimation();
+            this.swingBackhand = backhand;
+            this.playAnimation(name);
+            const action = this.actions[name];
+            if (!action) return;
+            action.stopFading(); action.setEffectiveWeight(1);
+            action.time = action.getClip().duration * .12;
+            action.paused = true;
+            this.isSwinging = false; this.isPreparing = true; this.contactActive = false;
+            this.mixer?.update(0);
+        },
+
         stopAnimation(): void {
             clearHandOffset();
             Object.values(this.actions).forEach((action) => {
@@ -133,6 +151,7 @@ export function createPlayer(
             });
             this.currentAnimation = null;
             this.isSwinging = false;
+            this.isPreparing = false;
             this.contactActive = false;
         },
 

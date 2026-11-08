@@ -94,11 +94,11 @@ async function visibility(frame, hidden) {
     assert.equal(permission.length, 2); assert.ok(permission.every(call => call.active));
     assert.deepEqual(await controller.evaluate(() => window.__permissionCalls), []);
     assert.equal(await phone.getByRole('button', {name: 'Ready', exact: true}).count(), 0);
-    await game.getByText('First to 12 · win by 2', {exact: true}).waitFor();
+    await game.locator('#table-tennis-app[data-mode="bot"],#table-tennis-app[data-mode="versus"]').waitFor();
     pass('Play joins and the leader starts a scored table-tennis motion game without a calibration checklist');
     await controller.locator('details summary').click();
     await controller.locator('#tt-practice-phone').click();
-    await game.getByText('Friendly practice', {exact: true}).waitFor();
+    await game.locator('#table-tennis-app[data-mode="practice"]').waitFor();
 
     const playerHits = () => host.evaluate(() => window.__gameFeedback.filter(message => message.type === 'wee:game-hit' && message.player === 1).length);
     await phone.waitForTimeout(4500);
@@ -140,6 +140,8 @@ async function visibility(frame, hidden) {
       await setPattern(controller);
       const afterHits = await playerHits();
       assert.ok(afterHits - beforeHits >= 3, 'successive legal returns must follow real host contacts');
+      assert.equal(await game.locator('#table-tennis-app').getAttribute('data-challenge'), 'target', 'three physical legal returns unlock target practice');
+      if (process.env.WEE_SMOKE_SCREENSHOT) await host.screenshot({path:process.env.WEE_SMOKE_SCREENSHOT.replace(/\.png$/, `-${axis}-practice.png`)});
       axisResults.push({axis: name, hostHits: afterHits - beforeHits, legalReturns: Number(await game.locator('#tt-you').innerText()), elapsedMs: Date.now() - started});
       pass(`${name} continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset`);
     }
@@ -160,7 +162,7 @@ async function visibility(frame, hidden) {
     pass('Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt');
 
     await controller.locator('#tt-match-phone').click();
-    await game.getByText('First to 12 · win by 2', {exact: true}).waitFor();
+    await game.locator('#table-tennis-app[data-mode="bot"],#table-tennis-app[data-mode="versus"]').waitFor();
     pass('The same controller can enter the twelve-point bot game');
     assert.deepEqual(errors, []); pass('No uncaught browser errors');
     if (process.env.WEE_SMOKE_SCREENSHOT) await host.screenshot({path: process.env.WEE_SMOKE_SCREENSHOT});

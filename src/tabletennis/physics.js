@@ -218,3 +218,26 @@ export class TableTennisPhysics {
     }
   }
 }
+
+/** Bounded receiving forecast using the live solver, with paddle contacts off.
+ * One instance is reused per game and callers cache its result between inputs.
+ * This includes drag, Magnus, table friction and net contacts without inventing
+ * a second set of flight equations or changing the authoritative ball. */
+export function createBallForecast() {
+  const simulation = new TableTennisPhysics();
+  for (const paddle of simulation.paddles) paddle.enabled = false;
+  return (ball, horizon = 1) => {
+    const samples = [{time: 0, position: {...ball.position}}], bounces = [];
+    simulation.launch(ball.position, ball.velocity, ball.spin || v3());
+    simulation.time = 0;
+    simulation.onEvent = event => {
+      if (event.kind === 'bounce') bounces.push({time: simulation.time, side: event.side, position: {...event.position}});
+    };
+    const steps = Math.ceil(clamp(horizon, 0, 1) / FIXED_STEP);
+    for (let i = 0; i < steps && simulation.ball.active; i++) {
+      simulation.step();
+      samples.push({time: simulation.time, position: {...simulation.ball.position}});
+    }
+    return {samples, bounces};
+  };
+}

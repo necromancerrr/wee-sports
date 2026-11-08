@@ -82,9 +82,10 @@ export function checkpoint(sport, value) {
         !['practice', 'bot', 'versus'].includes(value.mode) || !Number.isSafeInteger(value.practiceReturns) || value.practiceReturns < 0) fail('unstable-checkpoint');
     keys(value.rules, ['firstServer', 'score', 'pointId', 'phase', 'winner', 'targetPoints']);
     if (value.rules.targetPoints !== undefined && ![11, 12].includes(value.rules.targetPoints)) fail('invalid-state');
-    keys(value.settings, ['assistance', 'sensitivity']);
+    keys(value.settings, ['assistance', 'sensitivity', 'botStyle']);
     if (!['friendly', 'standard'].includes(value.settings.assistance) || !Number.isFinite(value.settings.sensitivity) ||
-        value.settings.sensitivity < .25 || value.settings.sensitivity > 2) fail('invalid-state');
+        value.settings.sensitivity < .25 || value.settings.sensitivity > 2 ||
+        (value.settings.botStyle !== undefined && !['rally','challenge'].includes(value.settings.botStyle))) fail('invalid-state');
   } else if (sport === 'tennis') {
     keys(value, ['version', 'boundary', 'score', 'settings', 'humanOpponent']);
     if (value.boundary !== 'point' || typeof value.humanOpponent !== 'boolean') fail('unstable-checkpoint');

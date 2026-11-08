@@ -5,12 +5,16 @@ import {TABLE, BALL, FIXED_STEP, MATERIAL, v3, add, sub, scale, length, clamp} f
 export function shotIntent(input, player = 1, stroke = null) {
   const sign = player === 1 ? -1 : 1;
   const aim = clamp(input.reach?.x || 0, -1, 1);
+  // Pre-swing pitch selects depth; a small central band preserves the familiar
+  // neutral return. The captured intent keeps follow-through from changing it.
+  const pitch = clamp(input.reach?.y || 0, -1, 1);
+  const depth = .9 + Math.sign(pitch) * Math.max(0, Math.abs(pitch) - .08) / .92 * .30;
   const direction = stroke?.direction || 0;
   // Forehand goes left and backhand right in the player's own camera view.
   // Deliberate pointing remains stronger than this gentle stroke tendency.
   const placement = clamp(aim * .55 + direction * .20 * (1 - Math.abs(aim) * .65), -.58, .58);
   return {
-    target: v3(-sign * placement || 0, TABLE.height + BALL.radius, sign * .9),
+    target: v3(-sign * placement || 0, TABLE.height + BALL.radius, sign * depth),
     kind: stroke?.kind || 'drive', hand: stroke?.hand || (input.hand === 'Left' ? 'Left' : 'Right'), direction,
     // Deliberate wrist rotation shapes the flight slightly. Swing pitch is
     // power, not an accidental source of alternating top/backspin.

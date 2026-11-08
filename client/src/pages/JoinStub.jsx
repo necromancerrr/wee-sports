@@ -113,7 +113,7 @@ export default function JoinStub() {
     saveName(playerName);
     rememberControllerIntent(intent); setControllerIntent(intent);
     if (!accept(result, joinOperation)) return;
-    setParams({ code }, { replace: true });
+    setParams({ code, ...(params.get('diagnostics') === '1' ? {diagnostics: '1'} : {}) }, { replace: true });
   }
 
   async function leave() {

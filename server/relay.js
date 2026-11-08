@@ -30,7 +30,8 @@ export function attachRelay(server) {
           throw new Error('Invalid swing message');
         }
         const message = JSON.stringify({ type: 'swing', id: event.id, label: event.label, hand: event.hand,
-          ...(event.power === undefined ? {} : { power: event.power }) });
+          ...(event.power === undefined ? {} : { power: event.power }),
+          ...(event.aim === undefined ? {} : {aim:event.aim}), ...(event.depth === undefined ? {} : {depth:event.depth}) });
         let receivers = 0;
         for (const peer of relay.clients) {
           if (peer.role === 'game' && peer.room === client.room && peer.readyState === WebSocket.OPEN) {

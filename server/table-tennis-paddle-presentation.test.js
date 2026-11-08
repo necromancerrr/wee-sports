@@ -34,3 +34,12 @@ test('the held paddle stays still and reduced motion removes decorative offsets'
       .toEqual({x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0});
   }
 });
+
+test('an accepted waiting swing visibly prepares on its first frame without moving an enabled face', () => {
+  const resting = paddlePresentation({kind:'forehand'});
+  const accepted = paddlePresentation({phase:'queued',kind:'forehand',elapsed:0});
+  expect(accepted.x).toBeLessThan(0);
+  expect(accepted.roll).not.toBe(resting.roll);
+  expect(paddlePresentation({phase:'queued',kind:'forehand',elapsed:0,enabled:true}))
+    .toEqual({x:0,y:0,z:0,pitch:0,yaw:0,roll:0});
+});

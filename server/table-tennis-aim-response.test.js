@@ -39,7 +39,7 @@ test('a newer deliberate swing replaces the waiting shot and cannot replay on th
     const game = new TableTennisGame({now: () => now}); game.startMatch({players: 2});
     const sign = player === 1 ? 1 : -1, controller = game.players[player - 1];
     game.nextFeed = Infinity;
-    game.physics.launch({x: 0, y: 1.1, z: -.9 * sign}, {x: 0, y: 1, z: 3 * sign});
+    game.physics.launch({x: 0, y: 1.1, z: .4 * sign}, {x: 0, y: 1, z: 3 * sign});
     const sample = (aim, rate) => {now += .01; game.setInput(pose(aim, rate), {player});};
     sample(-.7, 0);
     for (const rate of [-2, -4, -7]) sample(-.7, rate);
@@ -73,7 +73,7 @@ test('a forward stroke keeps its target and does not queue a second gesture from
     const game = new TableTennisGame({now: () => now}); game.startMatch({players: 2});
     const sign = player === 1 ? 1 : -1, controller = game.players[player - 1];
     game.nextFeed = Infinity;
-    game.physics.launch({x: 0, y: 1.1, z: -.9 * sign}, {x: 0, y: 1, z: 3 * sign});
+    game.physics.launch({x: 0, y: 1.1, z: .4 * sign}, {x: 0, y: 1, z: 3 * sign});
     const sample = (aim, rate) => {now += .01; game.setInput(pose(aim, rate), {player});};
     sample(-.7, 0);
     for (const rate of [-2, -4, -7]) sample(-.7, rate);

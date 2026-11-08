@@ -55,6 +55,15 @@ const shots=process.env.WEE_SMOKE_SCREENSHOTS;
       if(sport==='Tennis')await game.locator('html[data-views="1"]').waitFor();
       if(sport==='Table Tennis') {
         await game.locator('#table-court[data-views="1"]').waitFor();
+        await game.locator('#table-tennis-app[data-stale="false"]').waitFor();
+        await game.locator('#tt-connection').waitFor({state:'hidden'});
+        assert.equal(await game.locator('#tt-connection').isVisible(),false,'connected touch input keeps the TV active');
+        for (const selector of ['.tt-message','#tt-help','#tt-mode','#tt-player-tag','#tt-bot-tag','.tt-controls']) {
+          assert.equal(await game.locator(selector).isVisible(),false,`${selector} stays out of normal play`);
+        }
+        assert.equal(await game.locator('.tt-score').isVisible(),true);
+        await capture(tv,'table-tennis-clean-court');
+        pass('Table Tennis keeps the score while removing instructional, diagnostic and floating player text');
         assert.equal(await game.locator('#tt-result').isVisible(),false,'result is hidden during active play');
         const {TableTennisGame}=await import(pathToFileURL(resolve(__dirname,'../src/tabletennis/game.js')).href);
         const match=new TableTennisGame();match.startMatch();
@@ -68,7 +77,8 @@ const shots=process.env.WEE_SMOKE_SCREENSHOTS;
         await phone.waitForTimeout(8000);
         assert.equal(await phone.getByRole('dialog').count(),0,'completion does not force a phone modal');
         assert.equal(await game.locator('#tt-result').isVisible(),true,'winner persists after the old seven-second announcement window');
-        assert.notEqual(await game.locator('#tt-status').innerText(),'Waiting for your controller');
+        assert.equal(await game.locator('#table-tennis-app').getAttribute('data-phase'),'complete');
+        assert.equal(await game.locator('#tt-connection').isVisible(),false);
         await capture(tv,'table-tennis-tv-winner');
         await phone.close();await tv.waitForTimeout(1200);
         assert.equal(await tv.locator('.game-frame__pause').count(),0,'disconnect cannot cover the final result');

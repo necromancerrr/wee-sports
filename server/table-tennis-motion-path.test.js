@@ -184,12 +184,14 @@ test('gentle strokes survive realistic one-way input delay without moving their 
   }
 });
 
-test('casual early and late reactions have a broad receive window, with no return after the ball is lost', () => {
-  for (const native of [false, true]) for (const onset of [.1, .2, .3, .4, .5, .6, .7]) {
+test('contact-aware help accepts the current receive but not an excessively early or lost ball', () => {
+  for (const native of [false, true]) for (const onset of [.3, .4, .5, .6, .7]) {
     const result = receive({native, onset, peak: 2, networkDelay: .04, fps: 30});
     expect(result.hits, `${native ? 'native' : 'web'} reaction at ${onset}s`).toHaveLength(1);
     expect(result.landing?.side).toBe(2);
   }
+  expect(receive({onset: .1, peak: 2, networkDelay: .04}).hits).toHaveLength(0);
+  expect(receive({onset: .2, peak: 2, networkDelay: .04}).hits).toHaveLength(0);
   expect(receive({onset: .8, peak: 2, networkDelay: .04}).hits).toHaveLength(0);
 });
 
@@ -199,6 +201,9 @@ test('a fresh swing during paddle resynchronization is buffered until the legal 
   const collision = game.physics.onEvent;
   game.physics.onEvent = event => {events.push(event); collision(event);};
   game.feed();
+  // Reconnect while a return is approaching, not while it is still a full
+  // flight away. The narrower assistance window intentionally rejects that.
+  for (let i = 0; i < 36; i++) game.update(1 / 120);
   for (let frame = 0; frame < 150; frame++) {
     now = 1 + frame / 60;
     const elapsed = frame / 60;

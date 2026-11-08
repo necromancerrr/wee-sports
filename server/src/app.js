@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import { ERRORS, EVENTS } from '../../shared/protocol.js';
 import { RoomStore } from './RoomStore.js';
 import { waitForSwingTransport } from '../../src/network/swingRequest.js';
+import {createDiagnostics, DIAGNOSTICS_PROBE} from '../../shared/diagnostics.js';
 
 /** Importable server for tests. index.js owns the listening port. */
 export function createGameServer({ store = new RoomStore(), origins = [], tickMs = 250, requestHandler, profiles } = {}) {
@@ -39,6 +40,25 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     } catch {return null;}
   };
   const reply = (ack, value) => { if (typeof ack === 'function') ack(value); };
+  const diagnosticClients = new Set();
+  const diagnosticFor = peer => {
+    const entry = peer?.data?.weeDiagnostics;
+    if (!entry || performance.now() >= entry.until) {
+      if (peer) {diagnosticClients.delete(peer.id); delete peer.data.weeDiagnostics;}
+      return null;
+    }
+    return entry.value;
+  };
+  const recordRelay = (source, target, kind, id, receivedAt, outcome) => {
+    if (!diagnosticClients.size) return;
+    for (const peer of [source, target]) {
+      const diagnostic = diagnosticFor(peer);
+      if (!diagnostic) continue;
+      diagnostic.count(`${kind}.${outcome}`);
+      if (Number.isFinite(receivedAt)) diagnostic.observe(`${kind}.serverProcessingMs`, performance.now() - receivedAt);
+      if (outcome === 'relayed') {diagnostic.mark(id, 'serverReceived', receivedAt); diagnostic.mark(id, 'serverRelayed');}
+    }
+  };
   const broadcast = code => {
     const lobby = store.lobby(code);
     if (lobby) for (const socketId of io.sockets.adapter.rooms.get(code) ?? []) {
@@ -57,6 +77,22 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
   }
   io.on('connection', socket => {
     let swingWaiting = false;
+    let lastProbe = -Infinity;
+    socket.on(DIAGNOSTICS_PROBE, (payload, ack) => {
+      if (payload?.enabled === false) {
+        diagnosticClients.delete(socket.id); delete socket.data.weeDiagnostics;
+        return reply(ack, {ok: true});
+      }
+      if (payload?.enabled !== true || !store.sessionContext(socket.id)) return reply(ack, {ok: false, error: 'not-in-room'});
+      const now = performance.now();
+      if (now - lastProbe < 1000) return reply(ack, {ok: false, error: 'rate-limited'});
+      lastProbe = now;
+      if (!diagnosticFor(socket)) socket.data.weeDiagnostics = {value: createDiagnostics({enabled: true, scope: 'serverRelay'}), until: now + 10000};
+      socket.data.weeDiagnostics.until = now + 10000;
+      diagnosticClients.add(socket.id);
+      reply(ack, {ok: true, transport: socket.conn.transport.name, diagnostics: socket.data.weeDiagnostics.value.snapshot()});
+    });
+    socket.on('disconnect', () => diagnosticClients.delete(socket.id));
     persistence?.attach(socket, io, store);
     for (const [event, method] of [[EVENTS.HOST_CREATE, 'createRoom'], [EVENTS.PLAYER_JOIN, 'join'], [EVENTS.SESSION_RESUME, 'resume']]) {
       socket.on(event, (payload, ack) => {
@@ -89,15 +125,20 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     let lastInputNotice = 0;
     for (const [event, kind, outbound] of [[EVENTS.PLAYER_POSE, 'pose', EVENTS.GAME_POSE], [EVENTS.PLAYER_AIM, 'aim', EVENTS.GAME_AIM]]) {
       socket.on(event, payload => {
+        const receivedAt = diagnosticClients.size ? performance.now() : undefined;
         const result = store.continuousTarget(socket.id, payload, kind);
         if (!result.ok) {
+          recordRelay(socket, null, kind, null, receivedAt, result.error === 'rate-limited' ? 'rateLimited' : 'rejected');
           if (Date.now() - lastInputNotice > 1000 && result.error !== 'rate-limited') {
             lastInputNotice = Date.now(); socket.volatile.emit(EVENTS.INPUT_STATUS, {kind, error: result.error});
           }
           return;
         }
         const host = io.sockets.sockets.get(result.hostSocketId);
-        if (host?.connected && host.conn.transport.writable) host.volatile.emit(outbound, result.event);
+        if (host?.connected && host.conn.transport.writable) {
+          host.volatile.emit(outbound, result.event);
+          recordRelay(socket, host, kind, `p${result.event.player}.${kind}.${result.event.seq}`, receivedAt, 'relayed');
+        } else recordRelay(socket, host, kind, null, receivedAt, 'transportDropped');
       });
     }
     socket.on(EVENTS.PLAYER_ACTION_STATUS, (payload, ack) => reply(ack, store.actionStatus(socket.id, payload)));
@@ -262,15 +303,16 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       reply(ack, { ok: true });
     });
     socket.on(EVENTS.PLAYER_SWING, async (event, ack) => {
-      if (swingWaiting) return reply(ack, { ok: false, error: 'network-busy' });
+      const receivedAt = diagnosticClients.size ? performance.now() : undefined;
+      if (swingWaiting) {recordRelay(socket, null, 'swing', event?.id, receivedAt, 'rejected'); return reply(ack, { ok: false, error: 'network-busy' });}
       const result = store.swingTarget(socket.id, event);
-      if (!result.ok) return reply(ack, result);
+      if (!result.ok) {recordRelay(socket, null, 'swing', event?.id, receivedAt, 'rejected'); return reply(ack, result);}
       const host = io.sockets.sockets.get(result.hostSocketId);
       if (!host?.connected) return reply(ack, { ok: false, error: 'disconnected' });
       swingWaiting = true;
       const available = await waitForSwingTransport(() => host.conn.transport.writable, () => host.connected);
       swingWaiting = false;
-      if (available !== 'ready') return reply(ack, { ok: false, error: available });
+      if (available !== 'ready') {recordRelay(socket, host, 'swing', event?.id, receivedAt, 'transportDropped'); return reply(ack, { ok: false, error: available });}
       // Recheck both authenticated sockets and the match after waiting: resume
       // may replace a still-connected phone/TV; pause/replay also invalidates input.
       const current = store.swingTarget(socket.id, event);
@@ -279,6 +321,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
         return reply(ack, { ok: false, error: 'not-playing' });
       }
       // Once emitted there is no automatic retry or reconnect-buffered delivery.
+      recordRelay(socket, host, 'swing', result.event.id, receivedAt, 'relayed');
       host.volatile.timeout(1500).emit(EVENTS.GAME_SWING, result.event, (error, received) => {
         if (store.lobby(result.code)?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
         reply(ack, !error && received?.ok

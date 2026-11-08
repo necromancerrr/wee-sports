@@ -3,10 +3,16 @@ import {clamp, v3} from './physics.js';
 import {createTableTennisScene} from './scene.js';
 import {tableTennisAnnouncement, tableTennisResult} from './presentation.js';
 import {createSportsAudio} from '../audio/sportsAudio';
+import {browserDiagnostics} from '../../shared/diagnostics.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
-const embedded = window.parent !== window && new URLSearchParams(location.search).has('lobby');
+const params = new URLSearchParams(location.search);
+const embedded = window.parent !== window && params.has('lobby');
+const diagnosticsEnabled = params.get('diagnostics') === '1';
+document.body.classList.toggle('tt-diagnostics', diagnosticsEnabled);
+const diagnostics = browserDiagnostics('game.table-tennis');
+const pendingPoseRender = new Map(), activeStrokeTrace = new Map();
 const post = message => { if (embedded) window.parent.postMessage(message, location.origin); };
 let gameId = null, connected = !embedded, playing = !embedded, generation = null, hostEpoch = null, lastSeq = [-1, -1];
 let localPaused = false, lastCheckpoint = '', lastState = '';
@@ -30,7 +36,18 @@ function announce(event) {
   announcementUntil = performance.now() + (state.winner ? 7000 : event.type === 'serve' ? 1150 : 1600);
 }
 const game = new TableTennisGame({now: () => performance.now() / 1000, onEvent: event => {
+  if (diagnostics.enabled && event.type === 'stroke') {
+    const id = `p${event.player}.stroke.${event.id}`;
+    activeStrokeTrace.set(event.player, {id, gestureId: event.id});
+    diagnostics.mark(id, 'accepted'); diagnostics.count('stroke.accepted');
+  }
   if (event.type === 'hit') {
+    const trace = activeStrokeTrace.get(event.player);
+    if (trace && event.gestureId === trace.gestureId) {
+      diagnostics.mark(trace.id, 'contact');
+      diagnostics.measure(trace.id, 'accepted', 'contact', 'stroke.acceptedToContactMs');
+      activeStrokeTrace.delete(event.player);
+    }
     if (gameId) post({type: 'wee:game-hit', gameId, player: event.player});
     audioEvent('paddle-hit');
   }
@@ -72,6 +89,9 @@ function publish() {
 }
 
 function command(value) {
+  if (['new-match', 'practice-stop', 'practice-start', 'recenter'].includes(value.action)) {
+    pendingPoseRender.clear(); activeStrokeTrace.clear();
+  }
   if (value.action === 'new-match' || value.action === 'practice-stop') { announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startMatch({players: humanCount}); return true; }
   if (value.action === 'practice-start') { if (humanCount > 1) return false; announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startPractice(); return true; }
   if (value.action === 'feed') return game.mode === 'practice' ? game.feed() : game.serve();
@@ -87,6 +107,7 @@ window.addEventListener('message', event => {
     humanCount = data.players?.some(player => player.slot === 1) ? 2 : 1;
     opponentName = humanCount === 2 ? data.players.find(player => player.slot === 1)?.name || 'Player 2' : 'Bot';
     if (data.gameId !== gameId) {
+      pendingPoseRender.clear(); activeStrokeTrace.clear();
       gameId = data.gameId;
       announcedServe = -1; announcementUntil = 0;
       game.startMatch({players: humanCount});
@@ -94,6 +115,7 @@ window.addEventListener('message', event => {
       lastState = ''; lastCheckpoint = ''; lastSeq = [-1, -1];
     }
     if (generation !== data.generation || hostEpoch !== data.hostEpoch || data.paused || !data.connected) {
+      pendingPoseRender.clear(); activeStrokeTrace.clear();
       lastSeq = [-1, -1];
       for (const player of game.players) player.inputAt = -Infinity;
     }
@@ -111,7 +133,16 @@ window.addEventListener('message', event => {
     const player = input?.player;
     if (![1, 2].includes(player) || player > humanCount || input.gameId !== gameId || !Number.isInteger(input.seq) || input.seq <= lastSeq[player - 1] ||
       (generation != null && input.generation !== generation) || (hostEpoch != null && input.hostEpoch !== hostEpoch)) return;
-    if (game.setInput(input, {remote: true, player})) lastSeq[player - 1] = input.seq;
+    const id = `p${player}.pose.${input.seq}`;
+    diagnostics.mark(id, 'received');
+    if (game.setInput(input, {remote: true, player})) {
+      lastSeq[player - 1] = input.seq;
+      diagnostics.count('pose.accepted');
+      if (diagnostics.enabled) {
+        if (pendingPoseRender.has(player)) diagnostics.count('pose.coalescedBeforeRender');
+        pendingPoseRender.set(player, id);
+      }
+    } else diagnostics.count('pose.rejected');
   } else if (data?.type === 'wee:game-command' && !game.paused) {
     const value = data.command;
     if (value?.gameId !== gameId) return;
@@ -123,7 +154,7 @@ window.addEventListener('message', event => {
     const payload = data.payload || data.checkpoint?.payload;
     const ok = game.restore(payload);
     post({type: 'wee:restore-checkpoint-result', gameId, ok, ...(ok ? {} : {error: 'invalid-checkpoint'})});
-    if (ok) { lastState = ''; lastCheckpoint = ''; publish(); }
+    if (ok) { pendingPoseRender.clear(); activeStrokeTrace.clear(); lastState = ''; lastCheckpoint = ''; publish(); }
   } else if (data?.type === 'wee:checkpoint-request' && data.gameId === gameId) {
     lastCheckpoint = '';
     publish();
@@ -193,9 +224,18 @@ try {
 const setText = (id, text) => { if ($(id).textContent !== String(text)) $(id).textContent = text; };
 let previous = performance.now(), nextPublish = 0;
 function frame(now) {
+  if (!document.hidden) diagnostics.observe('frame.intervalMs', now - previous);
   game.update((now - previous) / 1000); previous = now;
   const state = game.snapshot();
   const result = tableTennisResult(state, playerName, opponentName);
+  const app = $('table-tennis-app');
+  app.dataset.mode = state.mode;
+  app.dataset.phase = state.phase;
+  app.dataset.stale = String(Boolean(state.stale));
+  app.dataset.challenge = state.practiceChallenge?.stage || '';
+  app.dataset.targetHits = String(state.practiceChallenge?.hits || 0);
+  $('tt-connection').hidden = diagnosticsEnabled || Boolean(result) || !(game.paused || state.stale);
+  $('tt-connection').textContent = game.paused ? 'Paused' : 'Controller paused';
   $('tt-result').hidden = !result;
   if (result) {setText('tt-winner', result.title); setText('tt-final-score', result.score); setText('tt-result-detail', result.detail);}
   const winnerName = state.winner === 1 ? playerName : opponentName;
@@ -218,7 +258,16 @@ function frame(now) {
   $('tt-you-side').classList.toggle('serving', !state.practice && state.server === 1);
   $('tt-bot-side').classList.toggle('serving', !state.practice && state.server === 2);
   $('tt-announcement').hidden = Boolean(state.winner) || game.paused || state.stale || now >= announcementUntil;
+  const renderStart = diagnostics.enabled ? performance.now() : 0;
   court?.render(now);
+  if (diagnostics.enabled && court) {
+    diagnostics.observe('frame.renderSubmissionMs', performance.now() - renderStart);
+    for (const id of pendingPoseRender.values()) {
+      diagnostics.mark(id, 'renderSubmission');
+      diagnostics.measure(id, 'received', 'renderSubmission', 'pose.receivedToRenderSubmissionMs');
+    }
+    pendingPoseRender.clear();
+  }
   if (now >= nextPublish) { publish(); nextPublish = now + 250; }
   requestAnimationFrame(frame);
 }

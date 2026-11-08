@@ -7,6 +7,7 @@ import { createInputId } from './network/inputId.js';
 import { shouldTogglePause } from './network/pauseShortcut.js';
 import { createSportsAudio } from './audio/sportsAudio';
 import { isGameCommand } from '../shared/protocol.js';
+import { browserDiagnostics } from '../shared/diagnostics.js';
 import '../client/src/styles/tokens.css';
 import './play.css';
 import './tennisHud.css';
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
     const container = document.querySelector('#scene-container');
     if (!container) throw new Error('Could not find scene-container element');
     const world = new World(container as HTMLElement);
+    const diagnostics = browserDiagnostics('game.tennis');
     const embedded = window.parent !== window;
     let lobbyPaused = embedded;
     let publishedCheckpoint = '';
@@ -84,7 +86,7 @@ async function main(): Promise<void> {
       <p>Best of 3 sets · first to 7 points, win by 2. Win 2 sets to win the match.</p>
       <button id="new-match" type="button">Start new match</button>
       <label>Assistance <select id="assist-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
-      <label>Bot challenge <select id="bot-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
+      <label>Opponent <select id="bot-level"><option value="standard">Challenge</option><option value="beginner">Rally</option></select></label>
       <label><input id="auto" type="checkbox" checked> Automatic movement</label>
       <label><input id="timing-assist" type="checkbox" checked> Timing assistance</label>
       <label id="split-label" hidden><input id="split-view" type="checkbox"> Show my view and the bot’s view</label>
@@ -199,12 +201,14 @@ async function main(): Promise<void> {
             indicator.setAttribute('aria-label', `${names[index]}: ${serving ? 'Serving' : 'Not serving'}`);
         }
         const coach = paused ? manuallyPaused ? 'Match paused · resume on your phone or TV' : 'Match paused · waiting for controllers'
-            : practice.active ? `Practice · return the feed · ${practice.returns}/${practice.attempts} returned · streak ${practice.streak}`
+            : practice.active ? practice.target ? `Aim for the ring · ${practice.targetHits} targets hit`
+                : `Return ${Math.max(0, 3 - (practice.cleanReturns ?? 0))} clean balls to unlock target practice`
             : score.matchWinner ? `${names[score.matchWinner === 'player1' ? 0 : 1]} wins${embedded ? ' · New match on your phone' : ''}`
             : result && performance.now() < resultUntil ? result
             : waiting ? `${serve.status === 'let' ? 'Let · replay serve · ' : serve.status === 'first-fault' ? 'Fault · second serve · ' : ''}${names[servingPlayer]}, ${ballData.serveDelayRemaining > 0 ? 'serve next' : 'serve when ready'} · ${serve.side === 'deuce' ? 'right' : 'left'} side`
             : 'Rally · watch the ball';
         if (el('coach').textContent !== coach) el('coach').textContent = coach;
+        el('coach').hidden = !practice.active;
         el('match-result').hidden = practice.active || !score.matchWinner;
         if (score.matchWinner) {
             const winner = score.matchWinner === 'player1' ? 0 : 1;
@@ -220,7 +224,7 @@ async function main(): Promise<void> {
         for (const id of ['new-match', 'practice-start', 'practice-stop']) (el(id) as HTMLButtonElement).disabled = paused;
         el('practice-start').hidden = practice.active;
         el('practice-stop').hidden = !practice.active;
-        el('practice-progress').textContent = practice.active ? `${practice.returns} / ${practice.attempts} returned · streak ${practice.streak} · best ${practice.bestStreak}` : '';
+        el('practice-progress').textContent = practice.active ? `${practice.cleanReturns ?? 0} clean returns · ${practice.targetHits ?? 0} targets hit · best streak ${practice.bestStreak}` : '';
         if (embedded && activeGameId && !paused) {
             const state = { type: 'wee:tennis-state', gameId: activeGameId,
                 phase: practice.active ? 'rally' : score.matchWinner ? 'complete' : waiting
@@ -240,12 +244,16 @@ async function main(): Promise<void> {
         publishCheckpoint();
     };
     world.onGameEvent = event => {
+        if (event.swingId && (event.kind === 'serve' || event.kind === 'hit')) diagnostics.mark(event.swingId, 'contact');
         playSound(event.kind);
         // Point/serve callbacks can run just before the ball finishes its state
         // transition. Publish the settled status without delaying a swing.
         queueMicrotask(updateScore);
     };
     world.onStrokeResult = result => {
+        diagnostics.count(`stroke.${result.result}`);
+        if (result.receivedToPreparationMs !== undefined) diagnostics.observe('receivedToPreparationMs', result.receivedToPreparationMs);
+        if (result.receivedToContactMs !== undefined) diagnostics.observe('receivedToContactMs', result.receivedToContactMs);
         if (embedded && activeGameId && !paused) window.parent.postMessage({
             ...result, type: 'wee:stroke-result', gameId: activeGameId,
         }, location.origin);
@@ -377,7 +385,12 @@ async function main(): Promise<void> {
     const scoreTimer = window.setInterval(updateScore, 250);
     const connection = connectSwings({ room, role: 'game',
         onStatus: text => { el('connection').textContent = text; },
-        onSwing: event => { if (!paused) world.swing(event); },
+        onSwing: event => {
+            if (!paused) {
+                if (event.id) diagnostics.mark(event.id, 'received');
+                world.swing(event);
+            }
+        },
     });
     window.addEventListener('pagehide', event => {
         if (embedded && activeGameId) playSound('stop');

@@ -9,6 +9,8 @@ import { createSwingStream } from '../../../src/controller/swingStream.js';
 import { createSimpleSwingStream } from '../../../src/controller/motionGestures.js';
 import { tennisPower } from '../../../src/controller/tennisPower.js';
 import { createStrokeIntentDetector } from '../../../src/tabletennis/strokeIntent.js';
+import {createTennisAim} from '../../../shared/tennisAim.js';
+import {nativeDiagnostics} from '../../../shared/diagnostics.js';
 
 /** Native collection only; units, calibration, filters and sport recognition are shared. */
 export class MotionController {
@@ -26,6 +28,7 @@ export class MotionController {
     this.sensitivity = sensitivity;
     this.strokeMode = strokeMode;
     this.now = now;
+    this.diagnostics = nativeDiagnostics('phone.native.motion');
     this.sequence = 0;
     this.attempt = 0;
     this.revision = 0;
@@ -34,6 +37,9 @@ export class MotionController {
     this.filter = createBowlingAimController();
     this.deviceClock = createNativeSensorClock();
     this.accelerometerClock = createNativeSensorClock();
+    this.gyroClock = createNativeSensorClock();
+    this.captureAgeMs = 0; this.maxCaptureAgeMs = 0; this.staleSamples = 0;
+    this.tennisAim = createTennisAim({sensitivity});
     this.paddle = createPaddleIntentController({ hand, sensitivity });
     this.automatic = createAutomaticMotionSetup();
     this.delivery = createBowlingDeliveryGate();
@@ -120,13 +126,23 @@ export class MotionController {
 
   sample(reading) {
     if (!this.active) return;
-    const time = this.now();
+    const received = this.now();
+    const time = this.gyroClock.read(reading.timestamp, received);
+    if (time === null) {this.diagnostics.count('sensor.duplicateOrOutOfOrder'); return;}
+    this.captureAgeMs = Math.max(0, received - time);
+    this.maxCaptureAgeMs = Math.max(this.maxCaptureAgeMs, this.captureAgeMs);
+    this.diagnostics.observe('sensor.captureAgeMs', this.captureAgeMs);
+    // A delayed native callback is not a new gesture. Keep only fresh capture
+    // intervals; a subsequent gap safely resets recognition before resuming.
+    if (this.captureAgeMs > 100) {this.staleSamples++; this.diagnostics.count('sensor.stale'); return;}
     const sample = normalizeNativeGyroscope(reading, {
       timeSeconds: time / 1000, sequence: this.sequence++,
       screenAngle: this.device?.orientation ?? 0, calibrationRevision: this.revision,
     });
     if (!sample) return;
     this.samples++;
+    this.diagnostics.count('sensor.accepted');
+    if (this.lastTime !== null) this.diagnostics.observe('sensor.intervalMs',time-this.lastTime);
     if (this.lastTime !== null) this.largestGap = Math.max(this.largestGap, time - this.lastTime);
     this.lastTime = time;
     const deviceFields = nativeDeviceMotionFields(this.device);
@@ -192,10 +208,13 @@ export class MotionController {
       if (active) this.session.latest('aim', {aim:this.delivery.lockedAim ?? this.aim,locked:this.delivery.lockedAim !== null});
       if (release) {this.session.bowlingReleasedTurn = turnKey; this.onRelease(release);}
     } else if (this.session.seat?.sport === 'tennis') {
+      this.tennisAim.push(corrected);
       this.swing.push(toLegacyMotionSample(corrected));
       for (const stroke of this.swing.analyze()) {
         if (stroke.label === 'Unknown' || !(stroke.complete || stroke.early || stroke.fast)) continue;
-        this.onSwing({type:'swing', label:stroke.label, hand:this.hand,
+        this.diagnostics.count('swing.recognized');
+        if (Number.isFinite(stroke.detectionDelayMs)) this.diagnostics.observe('swing.recognitionMs',stroke.detectionDelayMs);
+        this.onSwing({type:'swing', label:stroke.label, hand:this.hand, ...this.tennisAim.capture(),
           power:Math.min(1, tennisPower(stroke.peakRotation, null, stroke.label) * this.sensitivity)});
       }
     } else if (this.session.seat?.sport === 'table-tennis') {
@@ -211,6 +230,7 @@ export class MotionController {
     if (time - this.lastUi > 100) {
       this.lastUi = time;
       this.onStatus({ state: 'ready', aim: this.aim, delivery:this.delivery.phase,
+        captureAgeMs:this.captureAgeMs, maxCaptureAgeMs:this.maxCaptureAgeMs, staleSamples:this.staleSamples,
         achievedHz: this.samples / Math.max(.001, (time - this.started) / 1000), largestGapMs: this.largestGap });
     }
   }
@@ -221,9 +241,10 @@ export class MotionController {
     if (hand === this.hand && sensitivity === this.sensitivity && strokeMode === this.strokeMode) return;
     this.hand = hand; this.sensitivity = sensitivity; this.strokeMode = strokeMode;
     this.paddle = createPaddleIntentController({hand, sensitivity});
+    this.tennisAim = createTennisAim({sensitivity});
     this.resetInput();
   }
-  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.visualStroke.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); this.lastPose=null; this.idlePose={orientation:[0,0,0,1],reach:{x:0,y:0},calibrationRevision:0}; }
+  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.tennisAim.reset(); this.visualStroke.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); this.lastPose=null; this.idlePose={orientation:[0,0,0,1],reach:{x:0,y:0},calibrationRevision:0}; }
   allowNewDelivery() { this.delivery = createBowlingDeliveryGate(); }
   recenter() { this.resetInput(); this.automatic.reset(); }
   stop() {
@@ -238,6 +259,7 @@ export class MotionController {
     this.deviceReceived = null;
     this.deviceClock.reset();
     this.accelerometerClock.reset();
+    this.gyroClock.reset();
     this.rawAcceleration = null;
     this.accelerometerReceived = null;
     this.readyNotified = false;
@@ -246,6 +268,7 @@ export class MotionController {
     this.controlsQuietSince = null;
     this.automatic.reset();
     this.paddle.reset();
+    this.tennisAim.reset();
     this.visualStroke.reset();
     this.resetSwing();
   }

@@ -11,7 +11,12 @@ async function fixture() {
     io = { engine: { transport: { writable: true } } };
     sent = [];
     responses = new Map();
-    volatile = { emit: (event, payload) => this.sent.push({ event, payload, volatile: true }) };
+    volatile = { emit: (event, payload) => this.sent.push({ event, payload, volatile: true }),
+      timeout: () => ({emit:(event,payload,ack) => {
+        this.sent.push({event,payload,volatile:true});
+        const response=this.responses.get(event);
+        ack(response==='timeout' ? new Error('timeout') : null,response==='timeout' ? undefined : response || {ok:true});
+      }}) };
     timeout() { return { emit: (event, payload, ack) => { this.sent.push({ event, payload }); const response = this.responses.get(event); ack(response === 'timeout' ? new Error('timeout') : null, response === 'timeout' ? undefined : response || { ok: true }); } }; }
     connect() { this.connected = true; super.emit('connect'); }
     disconnect() { this.connected = false; super.emit('disconnect'); }
@@ -220,6 +225,54 @@ test('timed out deliberate action has one stable id and is never automatically r
   assert.equal(socket.sent[0].payload.gameId, 'game-a');
   assert.deepEqual(socket.sendBuffer, []);
   session.dispose();
+});
+
+test('native tennis sends one expiring swing with its captured placement and stable identity', async () => {
+  const {session,socket,EVENTS}=await fixture();
+  session.seat.sport='tennis';
+  const result=await session.action(EVENTS.PLAYER_SWING,{type:'swing',label:'Forehand',hand:'Right',power:.6,aim:-.4,depth:.25});
+  assert.equal(result.ok,true);assert.equal(socket.sent.length,1);assert.equal(socket.sent[0].volatile,true);
+  assert.deepEqual(socket.sent[0].payload,{type:'swing',label:'Forehand',hand:'Right',power:.6,aim:-.4,depth:.25,
+    generation:3,hostEpoch:2,id:result.id,gameId:'game-a'});
+  socket.responses.set(EVENTS.PLAYER_SWING,'timeout');
+  const unknown=await session.action(EVENTS.PLAYER_SWING,{type:'swing',label:'Backhand',hand:'Right'});
+  assert.equal(unknown.error,'outcome-unknown');assert.equal(socket.sent.length,2);
+  assert.equal(socket.sent[1].payload.id,unknown.id);assert.deepEqual(socket.sendBuffer,[]);
+  session.dispose();
+});
+
+test('native tennis tolerates brief handoff but drops old input through congestion', async () => {
+  const {session,socket,EVENTS}=await fixture();
+  session.seat.sport='tennis';
+  const swing={type:'swing',label:'Forehand',hand:'Right',power:.5};
+  socket.io.engine.transport.writable=false;
+  const brief=session.action(EVENTS.PLAYER_SWING,swing);
+  setTimeout(()=>{socket.io.engine.transport.writable=true;},8);
+  assert.equal((await brief).ok,true);assert.equal(socket.sent.length,1);
+  socket.io.engine.transport.writable=false;
+  const pending=session.action(EVENTS.PLAYER_SWING,swing);
+  assert.equal((await session.action(EVENTS.PLAYER_SWING,swing)).error,'network-busy');
+  assert.equal((await pending).error,'network-busy');
+  socket.io.engine.transport.writable=true;
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(socket.sent.length,1,'restoring transport never replays the expired stroke');
+  assert.deepEqual(socket.sendBuffer,[]);session.dispose();
+});
+
+test('a waiting native tennis stroke cannot cross Tools, pause, or replacement-game boundaries', async () => {
+  for (const boundary of ['tools','pause','game']) {
+    const {session,socket,EVENTS}=await fixture();
+    session.seat.sport='tennis';socket.io.engine.transport.writable=false;
+    const pending=session.action(EVENTS.PLAYER_SWING,{type:'swing',label:'Forehand',hand:'Right'});
+    if(boundary==='tools') {session.setControlsActive(false);session.setControlsActive(true);}
+    else if(boundary==='pause') {
+      socket.emit(EVENTS.LOBBY_UPDATE,{...session.seat,paused:true,inputGeneration:4});
+      socket.emit(EVENTS.LOBBY_UPDATE,{...session.seat,paused:false,inputGeneration:5});
+    } else socket.emit(EVENTS.LOBBY_UPDATE,{...session.seat,gameId:'game-b',inputGeneration:4});
+    socket.io.engine.transport.writable=true;
+    assert.equal((await pending).error,'not-playing');assert.equal(socket.sent.length,0);
+    session.dispose();
+  }
 });
 
 test('feedback is scoped to the live match/generation and deduplicated', async () => {

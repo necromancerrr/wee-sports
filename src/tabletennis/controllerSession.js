@@ -1,12 +1,28 @@
 import {createAutomaticMotionSetup, createPaddleIntentController} from '../../shared/motion.js';
+import {createDiagnostics} from '../../shared/diagnostics.js';
 
 // A 60 Hz target with room for sub-millisecond browser scheduling jitter.
 // Latest state is coalesced, never buffered for a later catch-up burst.
 const POSE_INTERVAL_SECONDS = .012;
 
+/** Touch input has no sensor callback. Keep its heartbeat and short pulse on a
+ * bounded timer so a busy TV/compositor cannot swallow it between display
+ * frames. Lifecycle and setup checks still belong to the session. */
+export function createTableTennisTouchPump(session, {now = () => performance.now() / 1000,
+  schedule = callback => setInterval(callback, 16), cancel = id => clearInterval(id)} = {}) {
+  let timer = null;
+  return {
+    start() {
+      if (timer !== null) return;
+      timer = schedule(() => { if (session.state.mode === 'touch') session.frame(now()); });
+    },
+    stop() { if (timer !== null) {cancel(timer); timer = null;} },
+  };
+}
+
 /** Owns freshness and acknowledged readiness; browser permission alone never
  * makes a motion controller playable. No DOM or sensor APIs live here. */
-export function createTableTennisControllerSession({send = () => {}, onChange = () => {}} = {}) {
+export function createTableTennisControllerSession({send = () => {}, onChange = () => {}, diagnostics = createDiagnostics(), player = 1} = {}) {
   const automatic = createAutomaticMotionSetup();
   let paddle = createPaddleIntentController();
   let playingHand = 'Right';
@@ -18,6 +34,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
   let sentSampleSequence = null;
   let gameId = null, generation = null, sequence = 0, lastSent = -Infinity, strokeUntil = 0, touchRevision = 1;
   let reach = {x: 0, y: 0};
+  let diagnosticSampleTime = null;
   const changed = () => onChange(api.state);
   const expected = () => mode === 'touch' ? 'buttons' : mode === 'motion' && motionReady ? 'motion' : null;
   function setup(value, force = false, reason) {
@@ -52,6 +69,11 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     },
     sample(sample) {
       if (mode !== 'motion' || suspended) return;
+      if (diagnostics.enabled && Number.isFinite(sample?.timeSeconds)) {
+        diagnostics.count('sensorSamples');
+        if (diagnosticSampleTime !== null) diagnostics.observe('sensorIntervalMs', (sample.timeSeconds - diagnosticSampleTime) * 1000);
+        diagnosticSampleTime = sample.timeSeconds;
+      }
       // A player can deliberately hold a target between points. Bias updates
       // change the calibration revision, so keep this frame fixed throughout
       // play; learn quiet bias in the lobby/countdown or while paused instead.
@@ -61,6 +83,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
         return;
       }
       corrected = value.sample;
+      if (latest && latest.sequence !== sentSampleSequence) diagnostics.count('posesCoalesced');
       latest = paddle.push(corrected);
       if (!motionReady) {motionReady = true; setup('motion'); changed();}
       // Send fresh input on receipt instead of first waiting for the display's
@@ -130,6 +153,8 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       neutralPose = false;
       if (mode === 'motion') sentSampleSequence = value.sequence;
       lastSent = now;
+      diagnostics.count('posesSent'); diagnostics.mark(`p${player}.pose.${event.seq}`, 'poseSend');
+      if (mode === 'motion') diagnostics.observe('sampleReceiptToSendMs', (now - value.sampleTime) * 1000);
       send({type: 'wee:player-pose', event});
       return event;
     },

@@ -15,6 +15,11 @@
 
 .tt-result[hidden]{display:none}
 
+/* Verification copy remains available with ?diagnostics=1, never over a rally. */
+body:not(.tt-diagnostics) .tt-debug,body:not(.tt-diagnostics) .tt-controls,body:not(.tt-diagnostics) #tt-announcement-detail {display:none!important;}
+.tt-connection {position:absolute;top:128px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:20px;background:#173739ed;color:#e2eff5;font-size:13px;pointer-events:none;}
+.tt-connection[hidden]{display:none;}
+
 /* Readable against the island's water and foliage, with small quiet backplates. */
 :root {background:#6c9fa7;}
 .tt-message strong,.tt-message span {justify-self:center;padding:4px 12px;border-radius:18px;background:#173739ed;}

@@ -117,8 +117,59 @@ test('native tennis recognizes the web forehand and backhand traces once in radi
       assert.equal(strokes[0].label,label);
       assert.equal(strokes[0].hand,'Right');
       assert.ok(strokes[0].power>=.2 && strokes[0].power<=1);
+      assert.equal(strokes[0].aim,0,'neutral aim is captured before the power stroke changes orientation');
+      assert.equal(Math.abs(strokes[0].depth),0);
     } finally {controller.stop();}
   }
+});
+
+test('native gyro capture timestamps reject delayed callback batches before they can make a swing', async () => {
+  const {MotionController}=await import('../src/motionCore.js');
+  let now=1000;const strokes=[];
+  const session={seat:{sport:'tennis'},inputSetup:'motion',playing:()=>true};
+  const controller=new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now,onSwing:stroke=>strokes.push(stroke)});
+  try {
+    await controller.calibrate();
+    // Capture clock uses phone uptime, independent of the JS clock origin.
+    for(let i=0;i<20;i++){now=1000+i*20;controller.sample({timestamp:100+i*.02,x:0,y:0,z:0});}
+    const accepted=controller.samples,previous=controller.lastTime;
+    now=2000;
+    for(let i=20;i<30;i++)controller.sample({timestamp:100+i*.02,x:3,y:6,z:0});
+    assert.equal(controller.staleSamples,10);
+    assert.equal(controller.samples,accepted);assert.equal(controller.lastTime,previous);
+    assert.ok(controller.maxCaptureAgeMs>=590);assert.deepEqual(strokes,[]);
+    for(let i=0;i<20;i++){now=2000+i*20;controller.sample({timestamp:101+i*.02,x:0,y:0,z:0});}
+    assert.equal(controller.samples,accepted+20);assert.equal(controller.captureAgeMs,0);
+    assert.deepEqual(strokes,[],'fresh quiet input after a delayed batch cannot finish a discarded swing');
+    const latest=controller.samples;
+    controller.sample({timestamp:101.38,x:3,y:6,z:0});
+    controller.sample({timestamp:101.2,x:3,y:6,z:0});
+    assert.equal(controller.samples,latest,'duplicate and out-of-order native frames are ignored');
+  }finally{controller.stop();}
+});
+
+test('native tennis preserves a deliberate held aim through the fast part of a recognized stroke', async () => {
+  const {MotionController}=await import('../src/motionCore.js');
+  const captures=[];
+  for(const hand of ['Right','Left']) {
+  let now=1000;const strokes=[];
+  const session={seat:{sport:'tennis'},inputSetup:'motion',playing:()=>true};
+  const controller=new MotionController({session,hand,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now,onSwing:stroke=>strokes.push(stroke)});
+  const push=(rate,count)=>{for(let i=0;i<count;i++){now+=20;controller.sample({...rate,timestamp:50+now/1000});}};
+  try {
+    await controller.calibrate();
+    push({x:0,y:0,z:0},20);push({x:-.2,y:.4,z:0},40);push({x:0,y:0,z:0},60);
+    const peak=hand==='Right' ? {x:170*Math.PI/180,y:310*Math.PI/180,z:0} : {x:400*Math.PI/180,y:-200*Math.PI/180,z:0};
+    push(peak,7);
+    push({x:peak.x*.35,y:peak.y*.35,z:0},3);push({x:0,y:0,z:0},30);
+    assert.equal(strokes.length,1);assert.equal(strokes[0].hand,hand);
+    assert.ok(['Forehand','Backhand'].includes(strokes[0].label));
+    assert.ok(strokes[0].aim>.3 && strokes[0].aim<.34);
+    assert.ok(strokes[0].depth>.14 && strokes[0].depth<.18);
+    captures.push({aim:strokes[0].aim,depth:strokes[0].depth});
+  }finally{controller.stop();}
+  }
+  assert.deepEqual(captures[0],captures[1],'handedness changes stroke labels, not the phone pointing direction');
 });
 
 test('native tennis discards a partial swing on interruption and suppresses paused movement', async () => {

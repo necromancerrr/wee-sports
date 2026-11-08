@@ -133,8 +133,8 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
               {tennis ? <>
                 <label>Playing assistance<select value={settings.assistance} onChange={event => configure('assistance', event.target.value)}>
                   <option value="standard">Standard</option><option value="beginner">Beginner · easier timing</option></select></label>
-                {!options.humanOpponent ? <label>Bot challenge<select value={settings.botDifficulty} onChange={event => configure('botDifficulty', event.target.value)}>
-                  <option value="standard">Standard</option><option value="beginner">Beginner</option></select></label> : null}
+                {!options.humanOpponent ? <label>Opponent<select value={settings.botDifficulty} onChange={event => configure('botDifficulty', event.target.value)}>
+                  <option value="standard">Challenge</option><option value="beginner">Rally</option></select></label> : null}
                 <label className="phone-options-check"><input type="checkbox" checked={settings.timingAssist} onChange={event => configure('timingAssist', event.target.checked)} /> Timing assistance</label>
                 <details className="phone-options-section"><summary>Movement</summary>
                   <label className="phone-options-check"><input type="checkbox" checked={settings.autoMove} onChange={event => configure('autoMove', event.target.checked)} /> Automatic movement</label>
@@ -149,6 +149,8 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
               </> : tableTennis ? <>
                 <label>Playing assistance<select value={settings.assistance} onChange={event => configure('assistance', event.target.value)}>
                   <option value="friendly">Friendly</option><option value="standard">Standard</option></select></label>
+                {!tableTennisDuel ? <label>Opponent<select value={settings.botStyle || 'rally'} onChange={event => configure('botStyle', event.target.value)}>
+                  <option value="rally">Rally</option><option value="challenge">Challenge</option></select></label> : null}
                 <label>Paddle sensitivity<input type="range" min="0.25" max="2" step="0.05" value={settings.sensitivity}
                   onChange={event => configure('sensitivity', Number(event.target.value))} /></label>
                 {tableTennisDuel ? <p>Two players · first to 12, win by 2. Watch your side of the TV and swing after the bounce.</p> : <>

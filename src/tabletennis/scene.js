@@ -3,6 +3,8 @@ import {TABLE, BALL} from './physics.js';
 import {paddlePresentation} from './paddlePresentation.js';
 import {createTableTennisViews} from './views.js';
 import {createIslandCourt} from './islandCourt.js';
+import {createFrameQuality} from '../rendering/frameQuality.ts';
+import {browserDiagnostics} from '../../shared/diagnostics.js';
 
 /** Lightweight court presentation. The live contact face follows the simulation;
  * only disabled windup/recovery poses receive a decorative follow-through. */
@@ -11,11 +13,14 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   scene.background = new THREE.Color('#6c9fa7');
   scene.fog = new THREE.Fog('#6c9fa7', 12, 32);
   const views = createTableTennisViews(), camera = views.cameras[0];
+  const frameQuality = createFrameQuality({maxPixelRatio: Math.min(devicePixelRatio || 1, 1.75)});
+  const diagnostics = browserDiagnostics('render.table-tennis');
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: false, powerPreference: 'high-performance'});
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+  renderer.setPixelRatio(frameQuality.settings.pixelRatio);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
+  renderer.info.autoReset = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = .82;
@@ -70,8 +75,25 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     const ring = new THREE.Mesh(new THREE.RingGeometry(.085, .092, 40), new THREE.MeshBasicMaterial({color, transparent: true, opacity: .65, depthWrite: false, side: THREE.DoubleSide}));
     ring.rotation.x = -Math.PI / 2; aim.add(ring);
     const dot = new THREE.Mesh(new THREE.CircleGeometry(.012, 12), ring.material);
-    dot.rotation.x = -Math.PI / 2; aim.add(dot); scene.add(aim);
+    dot.rotation.x = -Math.PI / 2; aim.add(dot);
+    const fill = new THREE.Mesh(new THREE.CircleGeometry(.081, 32), new THREE.MeshBasicMaterial({color, transparent:true, opacity:.18, depthWrite:false, side:THREE.DoubleSide}));
+    fill.rotation.x = -Math.PI / 2; aim.add(fill);
+    const corners = new THREE.BufferGeometry();
+    corners.setAttribute('position', new THREE.Float32BufferAttribute([-.13,0,0,-.105,0,0,.105,0,0,.13,0,0,0,0,-.13,0,0,-.105,0,0,.105,0,0,.13],3));
+    const lock = new THREE.LineSegments(corners, new THREE.LineBasicMaterial({color, transparent:true, opacity:.85, depthWrite:false}));
+    aim.add(lock); aim.userData = {fill,lock}; scene.add(aim);
     return aim;
+  });
+  // The optional practice challenge is a world-space target and three pips.
+  // It teaches through placement and progress without text over the rally.
+  const practiceTarget = new THREE.Group();
+  const practiceRing = new THREE.Mesh(new THREE.RingGeometry(.205,.22,48), new THREE.MeshBasicMaterial({color:'#ffe5a0',transparent:true,opacity:.85,depthWrite:false,side:THREE.DoubleSide}));
+  practiceRing.rotation.x = -Math.PI/2; practiceTarget.add(practiceRing);
+  const practiceCenter = new THREE.Mesh(new THREE.CircleGeometry(.05,20), practiceRing.material);
+  practiceCenter.rotation.x = -Math.PI/2; practiceTarget.add(practiceCenter); scene.add(practiceTarget);
+  const practicePips = [0,1,2].map(index => {
+    const pip = new THREE.Mesh(new THREE.CircleGeometry(.027,16),new THREE.MeshBasicMaterial({color:'#ffe5a0',transparent:true,opacity:.22,depthWrite:false,side:THREE.DoubleSide}));
+    pip.rotation.x = -Math.PI/2; pip.position.set((index-1)*.09,TABLE.height+.007,-TABLE.length/2+.07); scene.add(pip); return pip;
   });
   const contact = new THREE.Mesh(new THREE.RingGeometry(.038, .045, 24), new THREE.MeshBasicMaterial({color: '#fff8d6', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide}));
   scene.add(contact);
@@ -97,8 +119,11 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   renderer.domElement.addEventListener('pointermove', onMove);
   renderer.domElement.addEventListener('pointerdown', onAction);
   const normal = new THREE.Vector3(), lookAt = new THREE.Vector3(), screen = new THREE.Vector3();
-  let contactId = null, contactAt = -Infinity;
+  let contactId = null, contactAt = -Infinity, renderedFrames = 0, previousFrame = null;
   function render(now) {
+    const workAt = performance.now();
+    if (!document.hidden && previousFrame !== null && now > previousFrame && now - previousFrame <= 1000) diagnostics.observe('frameGapMs',now-previousFrame);
+    previousFrame = document.hidden ? null : now;
     island.update(now, motionPreference?.matches);
     if (split !== (game.mode === 'versus')) {split = game.mode === 'versus'; resize();}
     const p = game.physics.ball.position;
@@ -108,9 +133,24 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     ballShadow.visible = ball.visible && Math.abs(p.x) < TABLE.width / 2 && Math.abs(p.z) < TABLE.length / 2;
     ballShadow.scale.setScalar(1 + Math.max(0, p.y - TABLE.height) * .6);
     aims.forEach((aim, index) => {
-      const target = index === 0 ? game.aimTarget : game.mode === 'versus' ? game.players[1].aimTarget : null;
+      const controller = game.players[index];
+      const target = index === 0 || game.mode === 'versus' ? controller.pendingStroke?.intent?.target || controller.aimTarget : null;
       aim.visible = Boolean(target) && game.settings.assistance === 'friendly' && !game.paused;
-      if (aim.visible) aim.position.set(target.x, TABLE.height + .006, target.z);
+      if (aim.visible) {
+        aim.position.set(target.x, TABLE.height + .006, target.z);
+        const locked = Boolean(controller.pendingStroke || ['queued','forward'].includes(controller.stroke.phase));
+        aim.userData.fill.visible = locked; aim.userData.lock.visible = locked;
+      }
+    });
+    const challenge = game.practiceChallenge;
+    practiceTarget.visible = game.mode === 'practice' && Boolean(challenge?.target) && !game.paused;
+    if (practiceTarget.visible) {
+      practiceTarget.position.set(challenge.target.x,TABLE.height+.008,challenge.target.z);
+      practiceTarget.scale.setScalar((challenge.radius || .22)/.22);
+    }
+    practicePips.forEach((pip,index) => {
+      pip.visible = game.mode === 'practice' && Boolean(challenge) && !game.paused;
+      pip.material.opacity = challenge?.returns > index ? .9 : .22;
     });
     game.physics.paddles.forEach((paddle, index) => {
       const presentation = paddles[index];
@@ -118,12 +158,15 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
       display.position.set(paddle.position.x, paddle.position.y, paddle.position.z);
       normal.set(paddle.normal.x, paddle.normal.y, paddle.normal.z).normalize();
       display.lookAt(lookAt.copy(display.position).add(normal));
-      const stroke = game.players[index].stroke;
+      const controller = game.players[index];
+      const pending = controller.pendingStroke;
+      const stroke = pending && !paddle.enabled && controller.stroke.phase !== 'forward'
+        ? {...controller.stroke,...pending.intent,phase:'queued',gestureId:pending.id} : controller.stroke;
       if (presentation.phase !== stroke.phase || presentation.gestureId !== stroke.gestureId) {
-        presentation.phase = stroke.phase; presentation.phaseAt = game.time; presentation.gestureId = stroke.gestureId;
+        presentation.phase = stroke.phase; presentation.phaseAt = now; presentation.gestureId = stroke.gestureId;
       }
-      const pose = paddlePresentation({...stroke, player: index + 1, elapsed: game.time - presentation.phaseAt,
-        enabled: paddle.enabled, reducedMotion: motionPreference?.matches});
+      const pose = paddlePresentation({...stroke, player: index + 1, elapsed: (now - presentation.phaseAt) / 1000,
+        enabled: paddle.enabled, reducedMotion: game.paused || motionPreference?.matches});
       body.position.set(pose.x, pose.y, pose.z);
       body.rotation.set(pose.pitch, pose.yaw, pose.roll);
       // During the contact window this transform is exactly the collider,
@@ -149,8 +192,9 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     }
     const age = (now - contactAt) / 1000;
     contact.visible = age < .18;
-    if (contact.visible) { contact.scale.setScalar(1 + age * 3); contact.material.opacity = (1 - age / .18) * .7; }
-    renderer.shadowMap.needsUpdate = true;
+    if (contact.visible) { contact.scale.setScalar(motionPreference?.matches ? 1 : 1 + age * 3); contact.material.opacity = (1 - age / .18) * .7; }
+    renderer.info.reset();
+    renderer.shadowMap.needsUpdate = renderedFrames++ % frameQuality.settings.shadowEvery === 0;
     renderer.setScissorTest(split);
     for (const view of viewports) {
       renderer.setViewport(view.x, view.y, view.width, view.height);
@@ -159,8 +203,23 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
       renderer.render(scene, view.camera);
     }
     renderer.setScissorTest(false);
+    const workMs = performance.now()-workAt, previousLevel = frameQuality.settings.level;
+    if (!document.hidden) diagnostics.observe('renderSubmissionMs',workMs);
+    const quality = frameQuality.sample(now, workMs, !document.hidden);
+    if (quality) diagnostics.count(quality.level > previousLevel ? 'qualityReduced' : 'qualityRecovered');
+    if (quality && renderer.getPixelRatio() !== quality.pixelRatio) renderer.setPixelRatio(quality.pixelRatio);
+    if (quality && renderer.shadowMap.enabled !== quality.shadows) {
+      renderer.shadowMap.enabled = quality.shadows;
+      renderer.shadowMap.needsUpdate = quality.shadows;
+      // Refresh Three's cached shader variants too, so disabled shadows do
+      // not stay frozen on screen or keep costing fragment shader work.
+      scene.traverse(object => {
+        if (object.material) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
+      });
+    }
   }
-  return {render, dispose() {
+  return {render, diagnostics: () => ({...frameQuality.diagnostics(),views:split ? 2 : 1,
+    drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles}), dispose() {
     observer.disconnect(); renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerdown', onAction);
     const geometries = new Set(), usedMaterials = new Set();
