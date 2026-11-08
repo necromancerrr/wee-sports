@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import {TABLE, BALL} from './physics.js';
+import {paddlePresentation} from './paddlePresentation.js';
 
-/** Lightweight court presentation. Every ball and paddle transform comes from
- * the simulation; the scene never smooths or predicts a contact separately. */
+/** Lightweight court presentation. The live contact face follows the simulation;
+ * only disabled windup/recovery poses receive a decorative follow-through. */
 export function createTableTennisScene(container, game, {onMove, onAction, labels = []} = {}) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#dce5e1');
-  scene.fog = new THREE.Fog('#dce5e1', 8, 20);
+  scene.background = new THREE.Color('#283b49');
+  scene.fog = new THREE.Fog('#283b49', 8, 20);
   const camera = new THREE.PerspectiveCamera(42, 1, .05, 35);
   camera.position.set(0, 3.25, 5.3);
   camera.lookAt(0, .72, -.10);
@@ -16,10 +17,10 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = .88;
   container.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight('#ffffff', '#708e83', 2.2));
-  const light = new THREE.DirectionalLight('#fff1cf', 2.8);
+  scene.add(new THREE.HemisphereLight('#d6e7f6', '#172531', 1.25));
+  const light = new THREE.DirectionalLight('#e5eff8', 2);
   light.position.set(-3, 7, 4); light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);
   Object.assign(light.shadow.camera, {left: -4, right: 4, top: 4, bottom: -4, near: .5, far: 16});
@@ -41,29 +42,29 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     const item = mesh(new THREE.SphereGeometry(radius, 16, 12), color, parent);
     item.position.set(...position); return item;
   }
-  box([24, .08, 24], [0, -.055, 0], '#c8d6cf');
-  box([4.6, .012, 6], [0, -.005, 0], '#95b4a4');
-  for (const x of [-2.25, 2.25]) box([.025, .014, 5.85], [x, .004, 0], '#dfe6d2');
-  for (const z of [-2.93, 2.93]) box([4.5, .014, .025], [0, .004, z], '#dfe6d2');
+  box([24, .08, 24], [0, -.055, 0], '#304350');
+  box([4.6, .012, 6], [0, -.005, 0], '#3d5966');
+  for (const x of [-2.25, 2.25]) box([.025, .014, 5.85], [x, .004, 0], '#6b8999');
+  for (const z of [-2.93, 2.93]) box([4.5, .014, .025], [0, .004, z], '#6b8999');
   // Quiet surroundings keep the moving ball, paddles and court readable.
   // No garden props or background geometry compete with the rally.
-  box([TABLE.width + .025, .10, TABLE.length + .025], [0, TABLE.height - .075, 0], '#efe2be');
-  box([TABLE.width, .055, TABLE.length], [0, TABLE.height - .0275, 0], '#276d75');
-  for (const x of [-.55, .55]) for (const z of [-1, 1]) box([.075, .65, .075], [x, .33, z], '#284b50');
-  for (const x of [-.55, .55]) box([.055, .055, 2.1], [x, .22, 0], '#284b50');
-  for (const x of [-TABLE.width / 2 + .012, TABLE.width / 2 - .012]) box([.018, .002, TABLE.length], [x, TABLE.height + .001, 0], '#fff9e7');
-  for (const z of [-TABLE.length / 2 + .012, TABLE.length / 2 - .012]) box([TABLE.width, .002, .018], [0, TABLE.height + .001, z], '#fff9e7');
-  box([.008, .002, TABLE.length], [0, TABLE.height + .001, 0], '#d2e4dc');
+  box([TABLE.width + .025, .10, TABLE.length + .025], [0, TABLE.height - .075, 0], '#5c7786');
+  box([TABLE.width, .055, TABLE.length], [0, TABLE.height - .0275, 0], '#246b83');
+  for (const x of [-.55, .55]) for (const z of [-1, 1]) box([.075, .65, .075], [x, .33, z], '#1d3441');
+  for (const x of [-.55, .55]) box([.055, .055, 2.1], [x, .22, 0], '#1d3441');
+  for (const x of [-TABLE.width / 2 + .012, TABLE.width / 2 - .012]) box([.018, .002, TABLE.length], [x, TABLE.height + .001, 0], '#dcebf1');
+  for (const z of [-TABLE.length / 2 + .012, TABLE.length / 2 - .012]) box([TABLE.width, .002, .018], [0, TABLE.height + .001, z], '#dcebf1');
+  box([.008, .002, TABLE.length], [0, TABLE.height + .001, 0], '#a5c5d3');
   // One line-segment mesh for the whole net keeps draw calls bounded.
   const netPoints = [];
   for (let y = TABLE.height; y <= TABLE.height + TABLE.netHeight; y += .019) netPoints.push(-.84, y, 0, .84, y, 0);
   for (let x = -.84; x <= .84; x += .04) netPoints.push(x, TABLE.height, 0, x, TABLE.height + TABLE.netHeight, 0);
   const netGeometry = new THREE.BufferGeometry();
   netGeometry.setAttribute('position', new THREE.Float32BufferAttribute(netPoints, 3));
-  scene.add(new THREE.LineSegments(netGeometry, new THREE.LineBasicMaterial({color: '#edf0df', transparent: true, opacity: .64})));
-  box([1.68, .014, .014], [0, TABLE.height + TABLE.netHeight, 0], '#fff9df');
-  for (const x of [-.84, .84]) box([.025, .2, .025], [x, TABLE.height + .07, 0], '#203c42');
-  const ball = sphere(BALL.radius, [0, 1, 0], '#fff8e4');
+  scene.add(new THREE.LineSegments(netGeometry, new THREE.LineBasicMaterial({color: '#c4dce7', transparent: true, opacity: .55})));
+  box([1.68, .014, .014], [0, TABLE.height + TABLE.netHeight, 0], '#dcebf1');
+  for (const x of [-.84, .84]) box([.025, .2, .025], [x, TABLE.height + .07, 0], '#152b3a');
+  const ball = sphere(BALL.radius, [0, 1, 0], '#fffaf1');
   const halo = new THREE.Mesh(new THREE.SphereGeometry(.032, 12, 8), new THREE.MeshBasicMaterial({color: '#fffbe8', transparent: true, opacity: .23, depthWrite: false}));
   scene.add(halo);
   const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(.035, 20), new THREE.MeshBasicMaterial({color: '#122f36', transparent: true, opacity: .25, depthWrite: false}));
@@ -79,12 +80,16 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   const contact = new THREE.Mesh(new THREE.RingGeometry(.038, .045, 24), new THREE.MeshBasicMaterial({color: '#fff8d6', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide}));
   scene.add(contact);
   const paddles = [0, 1].map(index => {
-    const group = new THREE.Group();
-    const face = mesh(new THREE.CylinderGeometry(.095, .095, .012, 32), index === 0 ? '#dce988' : '#e9997e', group);
+    const group = new THREE.Group(), body = new THREE.Group();
+    group.add(body);
+    const color = index === 0 ? '#dce988' : '#e9997e';
+    const face = mesh(new THREE.CylinderGeometry(.095, .095, .018, 32), color, body);
+    face.material = [material('#bc9870'), material(color), material(color)];
     face.rotation.x = Math.PI / 2; face.scale.z = .12 / .095;
-    const handle = box([.034, .115, .018], [0, -.14, 0], '#d2a672', group);
-    scene.add(group); return {group, face, handle};
+    const handle = box([.034, .115, .018], [0, -.14, 0], '#b48a60', body);
+    scene.add(group); return {group, body, face, handle, phase: null, phaseAt: 0, gestureId: null};
   });
+  const motionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   let width = 1, height = 1;
   function resize() {
     width = Math.max(1, container.clientWidth); height = Math.max(1, container.clientHeight);
@@ -110,12 +115,21 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
       if (aim.visible) aim.position.set(target.x, TABLE.height + .006, target.z);
     });
     game.physics.paddles.forEach((paddle, index) => {
-      const {group: display, face, handle} = paddles[index];
+      const presentation = paddles[index];
+      const {group: display, body, face, handle} = presentation;
       display.position.set(paddle.position.x, paddle.position.y, paddle.position.z);
       normal.set(paddle.normal.x, paddle.normal.y, paddle.normal.z).normalize();
       display.lookAt(lookAt.copy(display.position).add(normal));
-      // The paddle is the player's visible controller. Its face always matches
-      // the simulation's contact ellipse, including assistance settings.
+      const stroke = game.players[index].stroke;
+      if (presentation.phase !== stroke.phase || presentation.gestureId !== stroke.gestureId) {
+        presentation.phase = stroke.phase; presentation.phaseAt = game.time; presentation.gestureId = stroke.gestureId;
+      }
+      const pose = paddlePresentation({...stroke, player: index + 1, elapsed: game.time - presentation.phaseAt,
+        enabled: paddle.enabled, reducedMotion: motionPreference?.matches});
+      body.position.set(pose.x, pose.y, pose.z);
+      body.rotation.set(pose.pitch, pose.yaw, pose.roll);
+      // During the contact window this transform is exactly the collider,
+      // including the larger Friendly face. Windup never creates a hidden hit.
       face.scale.set(paddle.radiusX / .095, 1, paddle.radiusY / .095);
       handle.position.y = -paddle.radiusY - .055;
       display.visible = true;

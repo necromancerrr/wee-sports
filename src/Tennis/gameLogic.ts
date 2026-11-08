@@ -75,7 +75,7 @@ interface StrokeTrace {
 }
 
 export interface TennisGameEvent {
-    kind: 'hit' | 'bounce' | 'point' | 'game' | 'set' | 'match' | 'serve' | 'fault' | 'let';
+    kind: 'hit' | 'bounce' | 'point' | 'set' | 'match' | 'serve' | 'fault' | 'let';
     player: 1 | 2;
     reason?: string;
     swingId?: string;
@@ -128,6 +128,15 @@ export class GameLogic {
 
     public autoPositionEnabled = true;
     public botEnabled = true;
+
+    private announcePoint(result: PointResult): void {
+        // Give every set result a readable pause before either player serves again.
+        if (result.kind === 'set') {
+            const data = this.ball.userData as BallUserData;
+            data.serveDelayRemaining = Math.max(data.serveDelayRemaining, 3.2);
+        }
+        this.onGameEvent(result);
+    }
 
     public getScore(): Score {
         return this.scoreSystem.getScore();
@@ -494,10 +503,10 @@ export class GameLogic {
             // Listeners see the completed score and the already-reset ball,
             // so phone state cannot briefly report a rally after a point.
             for (const result of results) {
-                const announcement = result.kind === 'match' ? 'Game, set and match'
+                const announcement = result.kind === 'match' ? 'Set and match'
                     : result.kind[0].toUpperCase() + result.kind.slice(1);
                 this.feedback(`${announcement} · Player ${result.player}${result.reason ? ` · ${pointReasonLabel(result.reason)}` : ''}`);
-                this.onGameEvent(result);
+                this.announcePoint(result);
             }
             return;
         }
@@ -531,7 +540,7 @@ export class GameLogic {
                     this.setServerPosition();
                     for (const result of points) {
                         this.feedback(`Double fault · point to Player ${result.player}`);
-                        this.onGameEvent(result);
+                        this.announcePoint(result);
                     }
                     return;
                 }
@@ -841,7 +850,7 @@ export class GameLogic {
             this.clearPendingInputs();
             this.setServerPosition();
             this.feedback('Serve returned before its bounce · point to the server');
-            if (result) this.onGameEvent(result);
+            if (result) this.announcePoint(result);
             return;
         }
         const serving = data.waitingForRacketHit || data.isWaitingForServe;

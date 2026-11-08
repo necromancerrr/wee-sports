@@ -61,7 +61,8 @@ test('input, aiming and gesture peaks from one player cannot overwrite the other
     game.setInput(pose(4, .8), {player: 2});
     game.setInput(pose(0, -.7), {player: 1}); game.update(.01);
   }
-  expect(game.players[1].stroke.intent.target.x).toBeCloseTo(.44);
+  expect(game.players[1].stroke.intent.target.x).toBeCloseTo(.536);
+  expect(game.players[1].stroke.kind).toBe('backhand');
   expect(game.players[1].stroke.intent.target.z).toBe(.9);
   expect(game.input.reach.x).toBe(-.7);
   expect(game.playerStroke.phase).toBe('ready');

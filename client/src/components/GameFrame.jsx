@@ -18,7 +18,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
   const checkpointQueue = useRef(Promise.resolve());
   const recovering = useRef(!controller);
   const recoveryRequest = useRef(null);
-  const [saveStatus, setSaveStatus] = useState('');
+  const [saveIssue, setSaveIssue] = useState('');
   const [profilePreferences, setProfilePreferences] = useState(null);
   const stateKey = `${gameId}:${matchRound}`;
   if (checkpointKey.current !== stateKey) {checkpointKey.current = stateKey; checkpointRevision.current = 0;}
@@ -54,6 +54,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
   // A sport change is a bridge message, not a controller navigation: keep the
   // phone’s sensor permission and verified setup alive for the next game.
   const src = `/${controller ? sport === 'table-tennis' ? 'table-tennis-controller' : 'controller' : sport === 'table-tennis' ? 'table-tennis' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}`;
+  useEffect(() => {setSaveIssue('');}, [stateKey, src, attempt]);
   useEffect(() => {setupLifecycle.current++; setupRelay.current.reset();}, [connection, src, attempt, sport]);
   function publishState() {
     const post = message => frame.current?.contentWindow?.postMessage(message, window.location.origin);
@@ -94,14 +95,14 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           recoveryRequest.current = control;
           const recovery = await request(EVENTS.HOST_RECOVERY, {gameId, hostEpoch});
           if (currentControl.current !== control) return;
-          if (!recovery.ok) {setSaveStatus('Could not load saved progress. Reload the TV to retry.'); return;}
+          if (!recovery.ok) {setSaveIssue('Could not load saved progress. Reload the TV to retry.'); return;}
           if (recovery.ok && recovery.checkpoint) {
             checkpointRevision.current = recovery.checkpoint.revision;
-            setSaveStatus('Restoring the last settled roll or point…');
+            setSaveIssue('');
             post({type:'wee:restore-checkpoint',gameId,payload:recovery.checkpoint.payload});
           } else {
             recovering.current = false; publishState();
-            setSaveStatus('Progress will save after a settled roll or point.');
+            setSaveIssue('');
             post({type:'wee:checkpoint-request',gameId});
           }
     };
@@ -119,7 +120,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           // its restored boundary even before the player takes another turn.
           post({type:'wee:checkpoint-request',gameId});
         }
-        setSaveStatus(data.ok ? 'Restored the last settled roll or point.' : 'Could not restore this checkpoint. Return to the lobby to start again.');
+        setSaveIssue(data.ok ? '' : 'Could not restore this checkpoint. Return to the lobby to start again.');
       } else if (!controller && data?.type === 'wee:game-checkpoint' && data.gameId === gameId &&
           ['bowling', 'table-tennis'].includes(sport) && !recovering.current) {
         const key = checkpointKey.current;
@@ -129,10 +130,10 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           let result = await request(EVENTS.HOST_CHECKPOINT, {...data, generation, hostEpoch, expectedRevision:checkpointRevision.current});
           if (key !== checkpointKey.current || control !== currentControl.current) return;
           if (result.error === 'revision-conflict') {
-            setSaveStatus('Progress changed in another TV session. Reload to recover the saved game.'); return;
+            setSaveIssue('Progress changed in another TV session. Reload to recover the saved game.'); return;
           }
           if (result.ok) checkpointRevision.current = result.revision;
-          setSaveStatus(result.ok && result.saved ? 'Progress saved.' : 'Progress is not saved to disk. Keep the TV open.');
+          setSaveIssue(result.ok && result.saved ? '' : 'Progress is not saved to disk. Keep the TV open.');
         });
       } else if (controller && data?.type === 'wee:player-game-command' && isGameCommand(data.command, sport)) {
         const result = !ready.current || !playing || paused || data.command.gameId !== gameId ? {ok:false,error:'not-playing'}
@@ -190,7 +191,9 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       } else if (!controller && sport === 'tennis' && data?.type === 'wee:tennis-state' &&
           data.gameId === gameId && isTennisState(data)) {
         await request(EVENTS.HOST_GAME_STATE, { gameId, phase: data.phase, server: data.server, winner: data.winner,
-          practice: data.practice, serveAttempt: data.serveAttempt });
+          practice: data.practice, serveAttempt: data.serveAttempt,
+          ...(data.score === undefined ? {} : {score: [...data.score], sets: [...data.sets],
+            completedSets: data.completedSets.map(set => ({player1: set.player1, player2: set.player2})), targetPoints: 7, setsToWin: 2}) });
       } else if (!controller && data?.type === 'wee:game-audio' && ready.current && playing &&
           !paused && connection === 'online' && data.gameId === gameId && data.sport === sport &&
           isGameSoundEvent(sport, data.event)) {
@@ -212,6 +215,16 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         if (lifecycle === setupLifecycle.current) post({ type: 'wee:setup-ack', requestId: data.requestId, result });
       } else if (controller && data?.type === 'wee:controller-mode' && ['motion', 'touch'].includes(data.mode)) {
         onControllerMode?.(data.mode);
+      } else if (controller && data?.type === 'wee:controller-focus' &&
+          Number.isFinite(data.offset) && data.offset >= 0 && data.offset <= 2200) {
+        const currentFrame = frame.current;
+        const lifecycle = setupLifecycle.current;
+        // ResizeObserver posts the new iframe height after the control changes.
+        // Wait for that layout before positioning its action in the phone view.
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+          if (frame.current !== currentFrame || setupLifecycle.current !== lifecycle) return;
+          window.scrollTo({top: window.scrollY + currentFrame.getBoundingClientRect().top + data.offset - 16, behavior: 'instant'});
+        }));
       } else if (controller && data?.type === 'wee:controller-height' && Number.isFinite(data.height)) {
         setHeight(Math.max(400, Math.min(2200, data.height)));
       }
@@ -286,7 +299,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
     <div className={`game-frame ${controller ? 'game-frame--phone' : ''}`}>
       {loading ? <p role="status">{failed ? 'Taking too long to load.' : `Loading ${controller ? 'controller' : sport}…`}
         {failed ? <button type="button" className="btn btn--ghost" onClick={() => setAttempt(value => value + 1)}>Retry loading</button> : null}</p> : null}
-      {!controller && saveStatus ? <p className="game-save-status" role="status">{saveStatus}</p> : null}
+      {!controller && saveIssue ? <p className="game-save-issue" role="alert">{saveIssue}</p> : null}
       <iframe key={attempt} ref={frame} src={src} title={`${sport === 'bowling' ? 'Bowling' : sport === 'table-tennis' ? 'Table Tennis' : 'Tennis'} ${controller ? 'phone controller' : 'game'}`}
         style={controller ? { height } : undefined}
         allow={controller ? 'accelerometer; gyroscope; screen-wake-lock' : undefined} onLoad={publishState} />

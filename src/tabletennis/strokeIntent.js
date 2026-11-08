@@ -2,6 +2,28 @@ const finiteVector = value => value && ['x', 'y', 'z'].every(axis => Number.isFi
 const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
 const aimOf = input => ({x: clamp(input.reach?.x || 0, -1, 1), y: clamp(input.reach?.y || 0, -1, 1)});
 
+/** Screen-relative angular motion describes wrist rotation, not tracked arm
+ * position. Lateral yaw (or roll for a flat grip) gives a repeatable arcade
+ * forehand/backhand. A predominantly forward pitch remains a straight drive.
+ * Hand preference changes the gesture label, never the sensor coordinate frame.
+ */
+export function classifyStroke(input) {
+  const hand = input.hand === 'Left' ? 'Left' : 'Right';
+  const rate = input.angularVelocity || {x: 0, y: 0, z: 0};
+  const yaw = Math.abs(rate.y), roll = Math.abs(rate.z);
+  // Opposing axes in a diagonal wrist movement do not give a dependable side.
+  // Treat the ambiguous band as a drive, rather than flipping the target when
+  // tiny sensor noise changes which component happens to be largest.
+  if (rate.y * rate.z < 0 && Math.min(yaw, roll) > Math.max(yaw, roll) * .65) {
+    return {kind: 'drive', direction: 0, hand};
+  }
+  const axis = yaw >= roll ? 'y' : 'z';
+  const lateral = rate[axis];
+  if (Math.abs(lateral) < Math.max(.65, Math.abs(rate.x) * .65)) return {kind: 'drive', direction: 0, hand};
+  const forehand = lateral * (hand === 'Left' ? -1 : 1) < 0;
+  return {kind: forehand ? 'forehand' : 'backhand', direction: forehand ? -1 : 1, hand};
+}
+
 /** A phone supplies a short rotational gesture, not tracked hand position.
  * Use all three axes so portrait, landscape and screen-up grips can swing.
  * Movement plus a peak rejects tiny spikes; a new acceleration or quiet rest
@@ -61,7 +83,8 @@ export function createStrokeIntentDetector() {
       // as well as a peak so single-sample noise and slow aiming stay quiet.
       if (candidate.peak < 1.1 || candidate.travel < .06) return null;
       current = {id: ++identity, strength: Math.min(candidate.peak, 30),
-        aim: {...candidate.aim}, spin: {...input.angularVelocity}, startedAt: candidate.startedAt};
+        aim: {...candidate.aim}, spin: {...input.angularVelocity}, startedAt: candidate.startedAt,
+        ...classifyStroke(input)};
       candidate = null; armed = false; valley = null;
       return copy(current);
     },

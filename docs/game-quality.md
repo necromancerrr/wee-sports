@@ -36,7 +36,9 @@ context now survives sport changes.
 
 ## Rules and other sports
 
-Tennis is best of three sets. New table-tennis games finish at 12 with a
+Tennis is best of three sets, each first to seven points, winning by two;
+there are no games within sets. Each set gets an announcement and a short
+break before the next serve. New table-tennis games finish at 12 with a
 two-point lead; service alternates after every point from 11–11. Existing
 11-point saves retain their original finish line. See [match rules](match-rules.md).
 

@@ -361,3 +361,42 @@ test('document background flushes a pending setup revocation while reload cancel
   expect(h.request).not.toHaveBeenCalled();
   expect(f.contentWindow.postMessage).not.toHaveBeenCalled();
 });
+
+
+test('the tennis bridge keeps seven-point set scores and rejects inconsistent or partial result bundles', async () => {
+  const frame = mount({sport: 'tennis'});
+  const data = {type: 'wee:tennis-state', gameId: 'match-a', phase: 'serve', server: 1, winner: null,
+    practice: false, serveAttempt: 1, score: [6, 6], sets: [1, 0], completedSets: [{player1: 7, player2: 2}], targetPoints: 7, setsToWin: 2};
+  await frame.receive({...data, score: [8, 6]});
+  await frame.receive({...data, targetPoints: undefined});
+  expect(h.request).not.toHaveBeenCalled();
+  await frame.receive({...data, arbitrary: 'discard'});
+  expect(h.request).toHaveBeenCalledExactlyOnceWith(EVENTS.HOST_GAME_STATE, {
+    gameId: 'match-a', phase: 'serve', server: 1, winner: null, practice: false, serveAttempt: 1,
+    score: [6, 6], sets: [1, 0], completedSets: [{player1: 7, player2: 2}], targetPoints: 7, setsToWin: 2,
+  });
+});
+
+
+test('only the current phone frame can bring its controls into view after layout', async () => {
+  window.requestAnimationFrame = callback => setTimeout(callback, 0);
+  window.scrollY = 1000;
+  window.scrollTo = vi.fn();
+  const f = mount({controller: true});
+  h.refs[0].current.getBoundingClientRect = () => ({top: -600});
+  const focus = {type: 'wee:controller-focus', offset: 200};
+  await f.receive(focus, {source: {}});
+  await f.receive(focus, {origin: 'https://wrong.test'});
+  await f.receive({...focus, offset: -1});
+  await f.receive({...focus, offset: 9999});
+  await vi.advanceTimersByTimeAsync(5);
+  expect(window.scrollTo).not.toHaveBeenCalled();
+  await f.receive(focus);
+  await vi.advanceTimersByTimeAsync(5);
+  expect(window.scrollTo).toHaveBeenCalledExactlyOnceWith({top: 584, behavior: 'instant'});
+  window.scrollTo.mockClear();
+  await f.receive(focus);
+  f.rerender({sport: 'table-tennis'});
+  await vi.advanceTimersByTimeAsync(5);
+  expect(window.scrollTo).not.toHaveBeenCalled();
+});

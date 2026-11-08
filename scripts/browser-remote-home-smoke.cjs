@@ -124,7 +124,7 @@ function installCamera({matrix}) {
     await page.getByRole('button', {name: 'Switch to light mode'}).click();
     pass('Profile returns to the phone hub and appearance persists');
 
-    await page.getByText('Enter a code instead', {exact: true}).click();
+    await page.locator('.remote-manual > summary').click();
     await page.getByLabel('Lobby code', {exact: true}).fill(code.toLowerCase());
     await page.getByRole('button', {name: 'Join', exact: true}).click();
     await page.waitForURL(`**/join?code=${code}`);
@@ -156,10 +156,11 @@ function installCamera({matrix}) {
     await page.evaluate(() => {__camera.mode = 'denied';});
     await scan.click();
     await page.getByRole('status').filter({hasText: 'Camera access is off.'}).waitFor();
-    await page.getByLabel('Lobby code', {exact: true}).waitFor();
-    assert.equal(await page.getByRole('dialog').isVisible(), false);
+    await page.getByRole('dialog').getByLabel('Lobby code', {exact: true}).waitFor();
+    assert.equal(await page.getByRole('dialog').isVisible(), true);
     await stopped(page);
-    pass('Denied camera permission opens the manual code fallback');
+    await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
+    pass('Denied camera permission keeps a manual code fallback in the scanner without navigation');
 
     await page.evaluate(() => {__camera.mode = 'invalid';});
     await scan.click();
@@ -182,6 +183,55 @@ function installCamera({matrix}) {
     assert.ok(await page.evaluate(() => __camera.detected > 0));
     assert.equal(await page.evaluate(() => __camera.sensors), 0);
     pass('An actual QR image decodes through jsQR after native detection fails, opens the real room and releases the camera');
+
+    await page.evaluate(() => {__camera.mode = 'blank';});
+    await page.getByRole('button', {name: 'Scan TV code', exact: true}).click();
+    await page.getByRole('status').filter({hasText: 'Point at the QR code on your TV.'}).waitFor();
+    await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
+    await stopped(page);
+    assert.equal(new URL(page.url()).searchParams.get('code'), code);
+    await page.getByRole('button', {name: 'Play', exact: true}).click();
+    await page.locator('.you').waitFor();
+    const more = page.locator('.phone-session__options');
+    if (!await more.evaluate(node => node.open)) await more.locator('summary').click();
+    const another = page.getByRole('button', {name: 'Scan another TV', exact: true});
+    await another.click();
+    await page.getByRole('status').filter({hasText: 'Point at the QR code on your TV.'}).waitFor();
+    await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
+    await stopped(page);
+    assert.equal(await host.locator('ul[aria-label="Joined players"] .ready-card').count(), 1);
+    await page.evaluate(() => {__camera.mode = 'qr';});
+    await another.click();
+    await page.getByRole('dialog').waitFor({state: 'hidden'});
+    await stopped(page);
+    assert.equal(await host.locator('ul[aria-label="Joined players"] .ready-card').count(), 1);
+    pass('Join-screen scanning is discoverable; canceling and scanning the current TV preserve the connected seat');
+
+    const nextHost = await browser.newPage({viewport: {width: 960, height: 640}});
+    await nextHost.goto(base + '/home');
+    await nextHost.getByRole('button', {name: 'Play: Bowling', exact: true}).click();
+    const nextCode = await nextHost.getByTestId('lobby-code').innerText();
+    await page.evaluate(() => {__camera.mode = 'denied';});
+    await another.click();
+    const scanner = page.getByRole('dialog');
+    await scanner.getByLabel('Lobby code', {exact: true}).fill(nextCode);
+    await scanner.getByRole('button', {name: 'Use code', exact: true}).click();
+    await scanner.getByRole('button', {name: 'Leave and join', exact: true}).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('code'), code);
+    assert.equal(await host.locator('ul[aria-label="Joined players"] .ready-card').count(), 1);
+    await scanner.getByRole('button', {name: 'Keep playing', exact: true}).click();
+    assert.equal(await page.locator('.you').count(), 1);
+    await another.click();
+    await scanner.getByLabel('Lobby code', {exact: true}).fill(nextCode);
+    await scanner.getByRole('button', {name: 'Use code', exact: true}).click();
+    await scanner.getByRole('button', {name: 'Leave and join', exact: true}).click();
+    await page.waitForURL(`**/join?code=${nextCode}`);
+    await page.getByRole('button', {name: 'Play', exact: true}).waitFor();
+    await host.locator('ul[aria-label="Joined players"]').waitFor({state: 'hidden'});
+    await stopped(page);
+    await nextHost.getByRole('button', {name: 'Close lobby', exact: true}).click();
+    await nextHost.close();
+    pass('Another room requires explicit Leave and join; cancellation keeps the current seat and acceptance releases it');
 
     // A read-only profile fixture exposes the saved-game controls without
     // fabricating a scored match in this camera/routing test.

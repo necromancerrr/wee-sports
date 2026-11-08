@@ -22,13 +22,8 @@
 .remote-footer { width: 100%; max-width: 420px; margin: auto auto 0; padding-top: 24px; }
 .remote-footer a { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 14px 18px; border: 1px solid var(--border); border-radius: 18px; color: var(--text); background: var(--surface); text-decoration: none; font-weight: 750; }
 .remote-footer p { font-size: .8em; text-align: center; color: var(--text-muted); margin-top: 14px; }
-.remote-scanner { width: min(440px, calc(100vw - 24px)); max-height: calc(100svh - 24px); padding: 18px; border: 1px solid var(--border); border-radius: 24px; color: var(--text); background: var(--surface); font: inherit; }
-.remote-scanner::backdrop { background: #071a26b3; }
-.remote-scanner header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-.remote-scanner h2 { font-size: 1.25em; }
-.remote-scanner button { min-height: 44px; border: 1px solid var(--border-strong); padding: 8px 14px; border-radius: 14px; background: var(--surface); color: var(--text); cursor: pointer; }
-.remote-viewfinder { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 16px; background: #14232b; }
-.remote-viewfinder video { width: 100%; height: 100%; object-fit: cover; }
-.remote-viewfinder span { position: absolute; inset: 16%; border: 2px solid #ffffffb3; border-radius: 16px; pointer-events: none; }
-.remote-scanner > p { font-size: .9em; color: var(--text-muted); margin-top: 16px; }
 @media (max-height: 560px) and (orientation: landscape) { .remote-controller-mark { display: none; } .remote-home { gap: 14px; } }
+
+.remote-sports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0; margin: 22px 0 0; list-style: none; }
+.remote-sports li { display: grid; justify-items: center; gap: 6px; font-size: .75rem; color: var(--text-muted); font-weight: 750; }
+.remote-sports svg { width: 38px; height: 38px; color: var(--accent-ink); }

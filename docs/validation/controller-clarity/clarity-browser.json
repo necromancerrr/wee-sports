@@ -1,0 +1,16 @@
+{
+  "recordedAt": "2026-11-08T04:17:48.920Z",
+  "base": "http://127.0.0.1:5210",
+  "checks": [
+    "Bowling: responsive decorated lobby, discoverable scanner, visible working TV menu and large phone return actions",
+    "Table Tennis: responsive decorated lobby, discoverable scanner, visible working TV menu and large phone return actions",
+    "Tennis: responsive decorated lobby, discoverable scanner, visible working TV menu and large phone return actions",
+    "No uncaught browser errors"
+  ],
+  "errors": [],
+  "limitations": [
+    "Touch-mode browser contexts, not physical phones.",
+    "Only the host QR origin response is mocked for screenshots; room transport and gameplay use the real local server.",
+    "Set scoring and announcements are covered separately by game tests."
+  ]
+}

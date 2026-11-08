@@ -5,6 +5,7 @@ import { errorText } from '../lib/errors.js';
 import { createInputId } from '../../../src/network/inputId.js';
 import { sportName } from '../lib/sports.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
+import {SelectedSportIcon} from './SelectedSportIcon.jsx';
 import {SportSwitcher} from './SportSwitcher.jsx';
 
 /** Shared match changes belong to the first joined phone; appearance remains local to each phone. */
@@ -103,8 +104,9 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
     <dialog ref={dialog} className={`phone-game-options${resultMode ? ' phone-game-options--result' : ''}`} data-sport={lobby.sport} aria-labelledby="phone-game-options-title"
       onClick={event => { if (event.target === event.currentTarget) dialog.current?.close(); }}>
       <div className="phone-game-options__content">
-        <header><div><p className="eyebrow">{sportName(lobby.sport)} · {lobby.code}</p><h2 id="phone-game-options-title">{resultMode ? 'Match complete' : 'Game options'}</h2></div>
+        <header><SelectedSportIcon sport={lobby.sport} className="phone-options-sport-icon" /><div><p className="eyebrow">{sportName(lobby.sport)} · {lobby.code}</p><h2 id="phone-game-options-title">{resultMode ? 'Match complete' : 'Game options'}</h2></div>
           <button className="phone-options-close" type="button" aria-label={resultMode ? 'Close result' : 'Close game options'} onClick={() => dialog.current?.close()}>×</button></header>
+        {!resultMode ? <button type="button" className="btn btn--primary phone-options-done" onClick={() => dialog.current?.close()}>{playing ? 'Back to play' : 'Back to lobby'}</button> : null}
         {resultMode ? <div className="phone-match-result">
           <div className="phone-match-result__medal" aria-hidden="true"><svg viewBox="0 0 48 48" width="52" height="52" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 7h18v12a9 9 0 0 1-18 0V7ZM15 10H8v5a8 8 0 0 0 8 8M33 10h7v5a8 8 0 0 1-8 8M24 28v10M16 41h16M19 38h10" /></svg></div>
           <h3>{resultTitle}</h3>
@@ -163,7 +165,7 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
                   {options.practice?.active ? 'Start a new ten-frame game' : 'Practice rolls (resets score)'}</button> : null}
               </>}
               <details className="phone-options-section"><summary>{tennis || tableTennis ? 'New match' : 'New bowling game'}</summary>
-                {tennis ? <p>Best of 3 sets. First to win 2 sets wins the match.</p> : tableTennis ? <p>First to 12 points. Win by 2.</p> : null}
+                {tennis ? <p>Best of 3 sets. First to 7 points, win by 2. Win 2 sets to win the match.</p> : tableTennis ? <p>First to 12 points. Win by 2.</p> : null}
                 <p className="stub__muted">This resets the current score for everyone.</p>
                 {confirmRestart ? <div className="phone-options-confirm"><button type="button" className="btn btn--primary" onClick={() => command('new-match', tennis ? { format: 'full' } : {})}>Reset score and start</button>
                   <button type="button" className="btn btn--ghost" onClick={() => setConfirmRestart(false)}>Cancel</button></div>
@@ -172,7 +174,6 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
             </fieldset>
           </>}
         <p className="phone-options-message" role="status">{busy ? 'Updating the game…' : statusMessage}</p>
-        <button type="button" className="btn btn--primary phone-options-done" onClick={() => dialog.current?.close()}>{playing ? 'Back to play' : 'Back to lobby'}</button>
         </>}
         {completed && isLeader ? <SportSwitcher lobby={lobby} role="player" disabled={disabled || busy} /> : null}
         {resultMode && lobby.manuallyPaused && isLeader ? <button type="button" className="btn btn--secondary"

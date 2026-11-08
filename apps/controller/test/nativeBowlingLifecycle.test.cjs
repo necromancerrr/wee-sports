@@ -141,3 +141,24 @@ test('temporary inactive permission overlays do not expire an otherwise live mot
     assert.equal(f.socket.sent.filter(item=>item.event==='player:roll').length,0);
   } finally {f.stop();}
 });
+
+test('browsing native Tools cannot bowl, and closing Tools does not replay movement',async()=>{
+  const f=await fixture();
+  try {
+    f.flow.update(f.session.seat,'online');await tick();
+    for(let i=0;i<15;i++)f.sample();await tick();f.start();
+    for(let i=0;i<40;i++)f.sample();
+    f.session.setControlsActive(false);const before=f.socket.sent.length;
+    for(let i=0;i<20;i++)f.sample({gyro:{x:240*Math.PI/180,y:0,z:0}});
+    for(let i=0;i<20;i++)f.sample();
+    assert.equal(f.socket.sent.length,before,'Tools keep the room connected without sending aim or roll gestures');
+    assert.equal(f.session.inputSetup,'motion');assert.equal(f.socket.connected,true);
+    f.session.setControlsActive(true);
+    for(let i=0;i<20;i++)f.sample({gyro:{x:240*Math.PI/180,y:0,z:0}});
+    assert.equal(f.socket.sent.filter(item=>item.event==='player:roll').length,0);
+    for(let i=0;i<40;i++)f.sample();
+    for(let i=0;i<20;i++)f.sample({gyro:{x:240*Math.PI/180,y:0,z:0}});
+    for(let i=0;i<30;i++)f.sample();await tick();
+    assert.equal(f.socket.sent.filter(item=>item.event==='player:roll').length,1);
+  }finally{f.stop();}
+});

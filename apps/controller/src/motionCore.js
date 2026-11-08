@@ -154,6 +154,28 @@ export class MotionController {
       return;
     }
     this.wasPlaying = true;
+    if (this.session.controlsActive===false || seat.gameState?.phase==='complete') {
+      this.controlsQuietSince=null;
+      if (!this.controlsSuspended) {
+        const pose=this.lastPose;
+        this.resetInput();
+        this.idlePose=pose || {orientation:[0,0,0,1],reach:{x:0,y:0},calibrationRevision:0};
+        this.controlsSuspended=true;
+      }
+      if(seat.sport==='table-tennis' && seat.gameState?.phase!=='complete') {
+        this.session.latest('pose',{...this.idlePose,angularVelocity:{x:0,y:0,z:0}});
+      }
+      return;
+    }
+    if(this.controlsSuspended) {
+      const rate=Math.hypot(corrected.angularVelocity.x,corrected.angularVelocity.y,corrected.angularVelocity.z);
+      this.controlsQuietSince=rate<=.55 ? this.controlsQuietSince ?? time : null;
+      if(this.controlsQuietSince===null || time-this.controlsQuietSince<120) {
+        if(seat.sport==='table-tennis') this.session.latest('pose',{...this.idlePose,angularVelocity:{x:0,y:0,z:0}});
+        return;
+      }
+      this.resetInput();this.controlsSuspended=false;this.controlsQuietSince=null;
+    }
     if (this.session.seat?.sport === 'bowling') {
       const legacy = toLegacyMotionSample(corrected);
       const turnKey = this.session.bowlingTurnKey;
@@ -178,6 +200,7 @@ export class MotionController {
       const intent = this.paddle.push(corrected);
       if (intent) {
         const { orientation, angularVelocity, reach, calibrationRevision } = intent;
+        this.lastPose={orientation,reach,calibrationRevision};
         this.session.latest('pose', { orientation, angularVelocity, reach, calibrationRevision });
       }
     }
@@ -196,7 +219,7 @@ export class MotionController {
     this.paddle = createPaddleIntentController({hand, sensitivity});
     this.resetInput();
   }
-  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); }
+  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); this.lastPose=null; this.idlePose={orientation:[0,0,0,1],reach:{x:0,y:0},calibrationRevision:0}; }
   allowNewDelivery() { this.delivery = createBowlingDeliveryGate(); }
   recenter() { this.resetInput(); this.automatic.reset(); }
   stop() {
@@ -215,6 +238,8 @@ export class MotionController {
     this.accelerometerReceived = null;
     this.readyNotified = false;
     this.wasPlaying = false;
+    this.controlsSuspended = false;
+    this.controlsQuietSince = null;
     this.automatic.reset();
     this.paddle.reset();
     this.resetSwing();

@@ -80,11 +80,23 @@ test('pose validation rejects invalid input before it can poison the latest acce
     {orientation: [0, 0, 0, 2]}, {angularVelocity: {x: Infinity, y: 0, z: 0}},
     {angularVelocity: {x: 0, y: 101, z: 0}}, {reach: {x: 2, y: 0}},
     {calibrationRevision: -1}, {seq: -1}, {seq: 1.5}, {hostEpoch: 0},
+    {hand: 'Both'}, {hand: 1},
   ];
   for (const corruption of corruptions) {
     assert.equal(f.store.continuousTarget('p1', {...f.pose(999), ...corruption}, 'pose').error, 'bad-input');
   }
   assert.equal(f.store.continuousTarget('p1', f.pose(1), 'pose').ok, true);
+});
+
+test('pose routing preserves a validated hand preference and keeps legacy poses compatible', () => {
+  const f = fixture();
+  const left = f.store.continuousTarget('p1', {...f.pose(1), hand: 'Left'}, 'pose');
+  assert.equal(left.ok, true);
+  assert.equal(left.event.hand, 'Left');
+  f.advance();
+  const legacy = f.store.continuousTarget('p1', f.pose(2), 'pose');
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.event.hand, undefined);
 });
 
 test('continuous streams keep the latest sequence, discard burst samples and never replay a backlog', () => {

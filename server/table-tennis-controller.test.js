@@ -151,3 +151,28 @@ test.each(['touch', 'motion'])('returning to the lobby clears the completed %s m
   const pose = mode === 'motion' ? f.session.sample(sample(.22, 11, {x: 12, y: 0, z: 0})) : f.session.frame(.22);
   expect(pose.angularVelocity).toEqual({x: 0, y: 0, z: 0});
 });
+
+test('the selected hand stays attached to touch and motion poses across mode changes', () => {
+  const f = create();
+  f.session.configure({hand: 'Left'});
+  f.session.select('touch'); f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'game', generation: 1});
+  expect(f.session.frame(.02).hand).toBe('Left');
+  f.session.select('motion'); f.warm(.04, 1); f.acknowledge();
+  expect(f.session.sample(sample(.26, 12)).hand).toBe('Left');
+  f.session.select('touch'); f.acknowledge();
+  expect(f.session.frame(.28).hand).toBe('Left');
+});
+
+
+test('a profile arriving after motion intent updates hand without revoking ready controls', () => {
+  const f = create();
+  f.session.select('motion'); f.warm(); f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'game', generation: 1});
+  const requests = f.messages.filter(message => message.type === 'wee:controller-setup').length;
+  f.session.configure({hand: 'Left', sensitivity: 2});
+  const pose = f.session.sample(sample(.22, 11));
+  expect(pose.hand).toBe('Left');
+  expect(f.session.state.setup).toBe('motion');
+  expect(f.messages.filter(message => message.type === 'wee:controller-setup')).toHaveLength(requests);
+});

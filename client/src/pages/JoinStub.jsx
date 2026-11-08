@@ -1,3 +1,5 @@
+import {RoomScanner} from '../components/RoomScanner.jsx';
+import {SelectedSportIcon} from '../components/SelectedSportIcon.jsx';
 import {GuestResultClaim} from '../components/GuestResultClaim.jsx';
 import {createControllerCapabilities} from '../../../shared/controllerCapabilities.js';
 import {SportSwitcher} from '../components/SportSwitcher.jsx';
@@ -128,6 +130,7 @@ export default function JoinStub() {
         <GuestResultClaim lobby={lobby} />
         <PhoneSoundToggle lobby={lobby} disabled={reconnecting} />
         <a className="btn btn--ghost" href="/profile">Profile & history</a>
+        <RoomScanner label="Scan another TV" activeRoom={seat} onLeave={leaveSession} disabled={reconnecting} />
         <h2>In this lobby</h2>
         <ul className="seats" aria-live="polite">
           {players.map((player) => (
@@ -164,7 +167,7 @@ export default function JoinStub() {
             P{seat.slot + 1}
           </span>
           <div className="phone-session__name">
-            <h1>{sportName(seat.sport)}</h1>
+            <h1><SelectedSportIcon sport={seat.sport} />{sportName(seat.sport)}</h1>
             <p className="stub__muted">
               {seat.name} · {reconnecting ? 'Reconnecting' : 'Connected'}
             </p>
@@ -219,6 +222,7 @@ export default function JoinStub() {
         </p>
       ) : null}
 
+      <RoomScanner />
       <form onSubmit={join} noValidate>
         {!isRoomCode(normalizeCode(params.get('code'))) ? <div className="field">
           <label htmlFor="join-code">Lobby code</label>

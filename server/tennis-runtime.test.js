@@ -16,8 +16,8 @@ vi.mock('../src/Tennis/World', () => ({ World: class {
     this.configure = vi.fn(settings => Object.assign(this.settings, settings));
     this.startPractice = vi.fn(); this.stopPractice = vi.fn();
     this.ball = { userData: { isWaitingForServe: true } };
-    this.score = { player1: 0, player2: 0, roundsPlayer1: 0, roundsPlayer2: 0,
-      setsPlayer1: 0, setsPlayer2: 0, server: 'player1', tieBreak: false,
+    this.score = { player1: 0, player2: 0, targetPoints: 7, setsToWin: 2,
+      setsPlayer1: 0, setsPlayer2: 0, server: 'player1',
       completedSets: [], lastPoint: null, matchWinner: null, format: 'full' };
     runtime.world = this;
   }
@@ -76,7 +76,7 @@ test('serving indicators switch filled and outlined states with accessible label
   vi.advanceTimersByTime(250);
   expect(first.dataset.serving).toBe('false');
   expect(second.dataset.serving).toBe('true');
-  runtime.world.score.matchWinner = 'player2';
+  runtime.world.score = {...runtime.world.score, player2: 7, setsPlayer2: 2, matchWinner: 'player2', completedSets: [{player1: 0, player2: 7}, {player1: 0, player2: 7}]};
   vi.advanceTimersByTime(250);
   expect(first.dataset.serving).toBe('false');
   expect(second.dataset.serving).toBe('false');
@@ -175,7 +175,7 @@ test('serve status reaches the phone only on a state change and is refreshed aft
   await import('../src/main.ts');
   state({});
   const published = () => parent.postMessage.mock.calls.filter(([message]) => message.type === 'wee:tennis-state');
-  expect(published().at(-1)[0]).toEqual({ type: 'wee:tennis-state', gameId: 'solo-match', phase: 'serve', server: 1, winner: null, practice: false, serveAttempt: 1 });
+  expect(published().at(-1)[0]).toEqual({ type: 'wee:tennis-state', gameId: 'solo-match', phase: 'serve', server: 1, winner: null, practice: false, serveAttempt: 1, score: [0, 0], sets: [0, 0], completedSets: [], targetPoints: 7, setsToWin: 2 });
   state({}); vi.advanceTimersByTime(1000);
   expect(published()).toHaveLength(1);
   runtime.world.ball.userData.isWaitingForServe = false;
@@ -187,7 +187,7 @@ test('serve status reaches the phone only on a state change and is refreshed aft
   runtime.world.ball.userData.serveDelayRemaining = 0;
   vi.advanceTimersByTime(250);
   expect(published().at(-1)[0].phase).toBe('serve');
-  runtime.world.score = { ...runtime.world.score, matchWinner: 'player2', setsPlayer2: 2 };
+  runtime.world.score = {...runtime.world.score, player2: 7, matchWinner: 'player2', setsPlayer2: 2, completedSets: [{player1: 0, player2: 7}, {player1: 0, player2: 7}]};
   vi.advanceTimersByTime(250);
   expect(published().at(-1)[0]).toMatchObject({ phase: 'complete', winner: 2 });
   const count = published().length;
@@ -291,13 +291,13 @@ test('solo practice controls work while human-opponent commands cannot enable pr
 test('a completed set announces its winner once, then continues the match until two sets are won', async () => {
   await import('../src/main.ts'); state({});
   const scoring = new ScoreSystem();
-  for (let point = 0; point < 24; point++) scoring.awardPoint('player2', 'player1');
+  for (let point = 0; point < 7; point++) scoring.awardPoint('player2', 'player1');
   runtime.world.score = scoring.getScore();
   vi.advanceTimersByTime(250);
   expect(document.getElementById('set-result').hidden).toBe(false);
   expect(document.getElementById('set-result-label').textContent).toBe('Set 1 complete');
   expect(document.getElementById('set-winner').textContent).toBe('Bot wins the set');
-  expect(document.getElementById('set-result-score').textContent).toBe('6–0');
+  expect(document.getElementById('set-result-score').textContent).toBe('7–0');
   expect(document.getElementById('set-next').textContent).toContain('Set 2');
   expect(document.getElementById('match-result').hidden).toBe(true);
   expect(runtime.world.startRound).not.toHaveBeenCalled();
@@ -312,14 +312,15 @@ test('a completed set announces its winner once, then continues the match until 
   vi.advanceTimersByTime(1000);
   expect(document.getElementById('set-result').hidden).toBe(true);
 
-  for (let point = 0; point < 24; point++) scoring.awardPoint('player2', 'player1');
+  for (let point = 0; point < 7; point++) scoring.awardPoint('player2', 'player1');
   runtime.world.score = scoring.getScore();
   vi.advanceTimersByTime(250);
   expect(document.getElementById('set-result').hidden).toBe(true);
   expect(document.getElementById('match-result').hidden).toBe(false);
-  expect(document.getElementById('match-winner').textContent).toBe('Bot wins!');
+  expect(document.getElementById('match-winner').textContent).toBe('Bot wins the match!');
   expect(document.getElementById('match-result-score').textContent).toBe('2–0 in sets');
-  expect(document.getElementById('match-result-detail').textContent).toBe('6–0 · 6–0');
+  expect(document.getElementById('final-set-result').textContent).toBe('Set 2 complete · Bot wins the set 7–0');
+  expect(document.getElementById('match-result-detail').textContent).toBe('7–0 · 7–0');
   expect(document.getElementById('match-replay-prompt').textContent).toBe('Play again? Choose on your phone.');
   expect(document.getElementById('play-again').hidden).toBe(true);
   vi.advanceTimersByTime(8000);
@@ -331,18 +332,14 @@ test('a completed set announces its winner once, then continues the match until 
   expect(document.getElementById('set-result').hidden).toBe(true);
 });
 
-test('a deciding third-set tie-break waits for two points and offers standalone replay', async () => {
+test('a deciding third set waits for a two-point lead and offers standalone replay', async () => {
   window.parent = window;
   await import('../src/main.ts');
   const scoring = new ScoreSystem('quick');
-  for (let point = 0; point < 24; point++) scoring.awardPoint('player1', 'player2');
-  for (let point = 0; point < 24; point++) scoring.awardPoint('player2', 'player1');
+  for (let point = 0; point < 7; point++) scoring.awardPoint('player1', 'player2');
+  for (let point = 0; point < 7; point++) scoring.awardPoint('player2', 'player1');
   runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
   expect(document.getElementById('score-format').textContent).toBe('Set 3 of 3');
-  for (let game = 0; game < 6; game++) {
-    for (let point = 0; point < 4; point++) scoring.awardPoint('player1', 'player2');
-    for (let point = 0; point < 4; point++) scoring.awardPoint('player2', 'player1');
-  }
   for (let point = 0; point < 6; point++) {
     scoring.awardPoint('player1', 'player2'); scoring.awardPoint('player2', 'player1');
   }
@@ -352,9 +349,9 @@ test('a deciding third-set tie-break waits for two points and offers standalone 
   scoring.awardPoint('player1', 'player2');
   runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
   expect(document.getElementById('match-result').hidden).toBe(false);
-  expect(document.getElementById('match-result-label').textContent).toBe('Game, set & match');
+  expect(document.getElementById('match-result-label').textContent).toBe('Match complete');
   expect(document.getElementById('match-result-score').textContent).toBe('2–1 in sets');
-  expect(document.getElementById('match-result-detail').textContent).toBe('6–0 · 0–6 · 7–6');
+  expect(document.getElementById('match-result-detail').textContent).toBe('7–0 · 0–7 · 8–6');
   expect(document.getElementById('play-again').hidden).toBe(false);
   runtime.world.startRound.mockImplementation(() => { scoring.reset(); runtime.world.score = scoring.getScore(); });
   document.getElementById('play-again').onclick();
@@ -362,25 +359,41 @@ test('a deciding third-set tie-break waits for two points and offers standalone 
   expect(runtime.world.startRound).toHaveBeenCalledOnce();
 });
 
-test('deuce and advantage stay in the score strip without announcing a set or match winner', async () => {
+test('live points remain numeric at 6–6 and 7–6 without announcing a set early', async () => {
   await import('../src/main.ts'); state({});
   const scoring = new ScoreSystem();
-  for (let point = 0; point < 3; point++) {
+  for (let point = 0; point < 6; point++) {
     scoring.awardPoint('player1', 'player2'); scoring.awardPoint('player2', 'player1');
   }
   runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
-  expect(document.getElementById('score-format').textContent).toBe('Deuce');
-  expect(document.getElementById('points-1').textContent).toBe('40');
-  expect(document.getElementById('points-2').textContent).toBe('40');
+  expect(document.getElementById('score-format').textContent).toBe('Set 1 of 3');
+  expect(document.getElementById('points-target').textContent).toBe('First to 7 · win by 2');
+  expect(document.getElementById('points-1').textContent).toBe('6');
+  expect(document.getElementById('points-2').textContent).toBe('6');
   expect(document.getElementById('match-result').hidden).toBe(true);
   expect(document.getElementById('set-result').hidden).toBe(true);
   scoring.awardPoint('player1', 'player2');
   runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
-  expect(document.getElementById('score-format').textContent).toBe('Advantage');
-  expect(document.getElementById('points-1').textContent).toBe('Adv');
+  expect(document.getElementById('points-1').textContent).toBe('7');
+  expect(document.getElementById('set-result').hidden).toBe(true);
   scoring.awardPoint('player1', 'player2');
   runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
-  expect(document.getElementById('games-progress').textContent).toBe('Games 1–0');
-  expect(document.getElementById('match-result').hidden).toBe(true);
+  expect(document.getElementById('sets-progress').textContent).toBe('Sets 1–0');
+  expect(document.getElementById('set-result').hidden).toBe(false);
+  expect(document.getElementById('set-result-score').textContent).toBe('8–6');
+});
+
+test('a set announcement remains available after a paused interval and publishes scores for phone controls', async () => {
+  await import('../src/main.ts'); state({});
+  const scoring = new ScoreSystem();
+  for (let point = 0; point < 7; point++) scoring.awardPoint('player1', 'player2');
+  runtime.world.score = scoring.getScore(); vi.advanceTimersByTime(250);
+  const status = () => parent.postMessage.mock.calls.filter(([data]) => data.type === 'wee:tennis-state').at(-1)[0];
+  expect(status()).toMatchObject({score: [0, 0], sets: [1, 0], completedSets: [{player1: 7, player2: 0}], targetPoints: 7, setsToWin: 2});
+  state({paused: true}); vi.advanceTimersByTime(10000);
+  expect(document.getElementById('set-result').hidden).toBe(true);
+  state({paused: false}); vi.advanceTimersByTime(250);
+  expect(document.getElementById('set-result').hidden).toBe(false);
+  vi.advanceTimersByTime(3500);
   expect(document.getElementById('set-result').hidden).toBe(true);
 });

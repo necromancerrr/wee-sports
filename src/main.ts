@@ -36,6 +36,7 @@ async function main(): Promise<void> {
     let resultUntil = 0;
     let announcedSets = 0;
     let setResultUntil = 0;
+    let scoreUpdatedAt = performance.now();
     const deliveredCommands = new Map<string, {ok: boolean; error?: string}>();
     let names = ['Player 1', 'Bot'];
     let humanOpponent = false;
@@ -56,7 +57,7 @@ async function main(): Promise<void> {
     panel.setAttribute('data-embedded', String(embedded));
     panel.innerHTML = `<div class="tennis-scorestrip"><span class="visually-hidden" id="match-mode">Tennis · solo</span>
         <div class="tennis-seat" id="seat-1" data-player="1"><span class="tennis-player-name" id="name-1"></span><strong id="points-1" aria-label="Player 1 points">0</strong><span class="tennis-serving" id="server-1" role="img" aria-label="Serving"></span></div>
-        <div class="tennis-score-context"><strong id="score-format">Set 1</strong><span id="games-progress">Games 0–0</span><span id="sets-progress">Sets 0–0</span></div>
+        <div class="tennis-score-context"><strong id="score-format">Set 1</strong><span id="points-target">First to 7 · win by 2</span><span id="sets-progress">Sets 0–0</span></div>
         <div class="tennis-seat" id="seat-2" data-player="2"><span class="tennis-serving" id="server-2" role="img" aria-label="Not serving" data-serving="false"></span><strong id="points-2" aria-label="Player 2 points">0</strong><span class="tennis-player-name" id="name-2"></span></div>
       </div>
       <p id="completed-sets" class="visually-hidden"></p>
@@ -64,13 +65,13 @@ async function main(): Promise<void> {
       <section id="set-result" class="tennis-set-result" role="status" aria-live="polite" hidden><span class="result-eyebrow" id="set-result-label"></span><strong id="set-winner"></strong><span id="set-result-score"></span><p id="set-next"></p></section>
       <section id="match-result" class="game-result-card" role="status" aria-live="polite" hidden>
         <div class="game-result-emblem" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5h12v7c0 5-2.5 8-6 8s-6-3-6-8V5Zm0 2H5v4c0 4 3 6 6 6m11-10h5v4c0 4-3 6-6 6M16 20v6m-5 2h10"/></svg></div>
-        <p class="result-eyebrow" id="match-result-label">Game, set & match</p><h2 id="match-winner"></h2>
+        <p class="result-eyebrow" id="match-result-label">Match complete</p><p id="final-set-result"></p><h2 id="match-winner"></h2>
         <p class="game-result-score" id="match-result-score"></p><p class="game-result-detail" id="match-result-detail"></p>
         <p class="game-result-replay" id="match-replay-prompt"></p><button id="play-again" class="primary">Play again</button>
       </section>
       <details id="court-options" class="tennis-local-options"><summary>Play options & practice</summary><p id="connection"></p>
       <div class="tennis-options">
-      <p>Best of 3 sets · first to win 2 sets.</p>
+      <p>Best of 3 sets · first to 7 points, win by 2. Win 2 sets to win the match.</p>
       <button id="new-match" type="button">Start new match</button>
       <label>Assistance <select id="assist-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
       <label>Bot challenge <select id="bot-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
@@ -146,6 +147,8 @@ async function main(): Promise<void> {
         const practice = world.getPracticeState();
         const serve = world.getServeState();
         const now = performance.now();
+        if (paused && setResultUntil > 0) setResultUntil += Math.max(0, now - scoreUpdatedAt);
+        scoreUpdatedAt = now;
         if (score.completedSets.length < announcedSets) { announcedSets = score.completedSets.length; setResultUntil = 0; }
         if (score.completedSets.length > announcedSets) {
             announcedSets = score.completedSets.length;
@@ -163,21 +166,14 @@ async function main(): Promise<void> {
         el('points-2').textContent = String(score.player2);
         const setNumber = Math.min(3, score.completedSets.length + (score.matchWinner ? 0 : 1));
         el('score-format').textContent = practice.active ? 'Practice'
-            : score.matchWinner ? 'Final score'
-            : score.tieBreak ? 'Tie-break'
-            : score.player1 === 40 && score.player2 === 40 ? 'Deuce'
-            : score.player1 === 'Adv' || score.player2 === 'Adv'
-                ? 'Advantage' : `Set ${setNumber} of 3`;
-        el('games-progress').textContent = score.matchWinner ? `Sets ${score.setsPlayer1}–${score.setsPlayer2}`
-                : `Games ${score.roundsPlayer1}–${score.roundsPlayer2}`;
+            : score.matchWinner ? 'Final score' : `Set ${setNumber} of 3`;
+        el('points-target').textContent = 'First to 7 · win by 2';
         el('sets-progress').textContent = score.matchWinner ? score.completedSets.map(set => `${set.player1}–${set.player2}`).join(' · ')
                 : `Sets ${score.setsPlayer1}–${score.setsPlayer2}`;
         el('completed-sets').textContent = score.completedSets.map((set, index) => `Set ${index + 1}: ${set.player1}–${set.player2}`).join(' · ');
         const point = score.lastPoint;
-        const pointScore = !score.tieBreak && score.player1 === 40 && score.player2 === 40 ? 'Deuce'
-            : score.player1 === 'Adv' || score.player2 === 'Adv'
-                ? `Advantage ${names[score.player1 === 'Adv' ? 0 : 1]}` : `${score.player1}–${score.player2}`;
-        const result = practice.active ? '' : point ? `${point.kind === 'match' ? 'Game, set and match' : point.kind[0].toUpperCase() + point.kind.slice(1)} · ${names[point.player - 1]}${point.kind === 'point' ? ` · ${pointScore}` : ''}${point.reason ? ` · ${pointReasonLabel(point.reason)}` : ''}` : '';
+        const pointScore = `${score.player1}–${score.player2}`;
+        const result = practice.active ? '' : point ? `${point.kind === 'match' ? 'Set and match' : point.kind[0].toUpperCase() + point.kind.slice(1)} · ${names[point.player - 1]}${point.kind === 'point' ? ` · ${pointScore}` : ''}${point.reason ? ` · ${pointReasonLabel(point.reason)}` : ''}` : '';
         if (result !== lastResult) { lastResult = result; resultUntil = performance.now() + 1800; }
         const ballData = world.ball.userData as BallUserData;
         const servingPlayer = score.server === 'player1' ? 0 : 1;
@@ -201,8 +197,10 @@ async function main(): Promise<void> {
         el('match-result').hidden = practice.active || !score.matchWinner;
         if (score.matchWinner) {
             const winner = score.matchWinner === 'player1' ? 0 : 1;
-            setText('match-result-label', 'Game, set & match');
-            setText('match-winner', `${names[winner]} wins!`);
+            setText('match-result-label', 'Match complete');
+            const finalSet = score.completedSets[score.completedSets.length - 1];
+            setText('final-set-result', `Set ${score.completedSets.length} complete · ${names[winner]} wins the set ${winner === 0 ? finalSet.player1 : finalSet.player2}–${winner === 0 ? finalSet.player2 : finalSet.player1}`);
+            setText('match-winner', `${names[winner]} wins the match!`);
             setText('match-result-score', `${winner === 0 ? score.setsPlayer1 : score.setsPlayer2}–${winner === 0 ? score.setsPlayer2 : score.setsPlayer1} in sets`);
             setText('match-result-detail', score.completedSets.map(set => winner === 0 ? `${set.player1}–${set.player2}` : `${set.player2}–${set.player1}`).join(' · '));
             setText('match-replay-prompt', embedded ? 'Play again? Choose on your phone.' : 'Ready for another match?');
@@ -218,7 +216,9 @@ async function main(): Promise<void> {
                     ? ballData.serveDelayRemaining > 0 ? 'prepare' : 'serve' : 'rally',
                 server: servingPlayer + 1,
                 winner: !practice.active && score.matchWinner ? score.matchWinner === 'player1' ? 1 : 2 : null,
-                practice: practice.active, serveAttempt: serve.attempt };
+                practice: practice.active, serveAttempt: serve.attempt,
+                score: [score.player1, score.player2], sets: [score.setsPlayer1, score.setsPlayer2],
+                completedSets: score.completedSets, targetPoints: 7, setsToWin: 2 };
             const key = JSON.stringify(state);
             if (key !== publishedState) {
                 publishedState = key;

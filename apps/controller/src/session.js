@@ -38,7 +38,9 @@ export class ControllerSession {
     this.token = null;
     this.active = true;
     this.inputActive = true;
+    this.controlsActive = true;
     this.sequence = 0;
+    this.hand = 'Right';
     this.connectionAttempt = 0;
     this.bowlingTurn = 0;
     this.bowlingTurnKey = null;
@@ -161,8 +163,12 @@ export class ControllerSession {
     return this.active && this.inputActive && !this.resuming && this.socket.connected && this.seat?.phase === 'game' && !this.seat.paused && this.seat.gameId;
   }
 
+  configure({hand} = {}) {if (['Left','Right'].includes(hand)) this.hand = hand;}
+  setControlsActive(active) {this.controlsActive=Boolean(active);this.clearTransient({clearFeedback:false});}
+  controlsPlaying() {return this.playing() && this.controlsActive && Boolean(this.inputSetup) && this.seat.gameState?.phase!=='complete';}
+
   latest(kind, value) {
-    if (!this.playing()) return false;
+    if (!this.playing() || this.seat.gameState?.phase==='complete') return false;
     const now = this.now();
     // The gyro provides about 60 samples/second. A little scheduling headroom
     // keeps alternate 16 ms callbacks from being dropped by a 16.67 ms gate.
@@ -173,13 +179,14 @@ export class ControllerSession {
     this.lastSent[kind] = now;
     const { gameId, inputGeneration, hostEpoch } = this.seat;
     this.socket.volatile.emit(kind === 'pose' ? EVENTS.PLAYER_POSE : EVENTS.PLAYER_AIM, {
-      ...value, gameId, generation: inputGeneration, hostEpoch, seq: this.sequence++,
+      ...value, ...(kind === 'pose' ? {hand:this.hand} : {}), gameId, generation: inputGeneration, hostEpoch, seq: this.sequence++,
     });
     return true;
   }
 
   async action(event, payload) {
     if (!this.playing()) return { ok: false, error: 'not-playing' };
+    if ([EVENTS.PLAYER_ROLL,EVENTS.PLAYER_SWING].includes(event) && !this.controlsPlaying()) return {ok:false,error:'not-playing'};
     const id = actionId();
     const generation = [EVENTS.PLAYER_ROLL, EVENTS.PLAYER_SWING].includes(event)
       ? { generation: this.seat.inputGeneration, hostEpoch: this.seat.hostEpoch } : {};
@@ -219,6 +226,11 @@ export class ControllerSession {
     if (this.active && this.token) { this.socket.disconnect(); this.socket.connect(); }
   }
   ended(message) { this.token = null; this.seat = null; this.clearTransient(); this.socket.disconnect(); this.save(null); this.changed(null, message); }
-  async leave() { await this.request(EVENTS.PLAYER_LEAVE, {}); this.ended('Left room'); }
+  async leave() {
+    const result=await this.request(EVENTS.PLAYER_LEAVE, {});
+    if(!result?.ok) throw new Error('Could not leave the room yet. Reconnect and try again.');
+    this.ended('Left room');
+    return result;
+  }
   dispose() { this.active = false; this.clearTransient(); this.socket.removeAllListeners(); this.socket.disconnect(); }
 }

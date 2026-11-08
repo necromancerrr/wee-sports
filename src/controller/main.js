@@ -1,3 +1,4 @@
+import {focusControllerSection} from './focusSection.js';
 import { createSwingStream } from './swingStream.js';
 import { createSimpleSwingStream, createBowlingDeliveryGate } from './motionGestures.js';
 import { createAutomaticMotionSetup, toLegacyMotionSample } from '../../shared/motion.js';
@@ -181,7 +182,8 @@ function renderPlayState() {
   element('skip-strength').textContent = rehearsal ? 'Cancel rehearsal' : 'Use default power';
   element('strength-progress').hidden = !rehearsal;
   element('controller-header').hidden = embedded && !settingsOpen;
-  element('toggle-settings').hidden = false;
+  element('toggle-settings').hidden = settingsOpen;
+  element('back-to-play').hidden = !settingsOpen;
   element('toggle-settings').disabled = Boolean(calibration) || Boolean(rehearsal) || permissionPending;
   element('toggle-settings').textContent = settingsOpen ? 'Back to play' : 'Settings';
   element('toggle-settings').ariaExpanded = String(settingsOpen);
@@ -742,6 +744,13 @@ element('toggle-settings').onclick = () => {
   if (settingsOpen) stop('Motion pauses while controller settings are open.');
   else startMotion();
   controls();
+  focusControllerSection(element(settingsOpen ? 'back-to-play' : 'play-panel'));
+};
+element('back-to-play').onclick = () => {
+  if (rehearsal) finishRehearsal('Your controller is ready.');
+  settingsOpen = false;
+  startMotion(); controls();
+  focusControllerSection(element('play-panel'));
 };
 element('use-buttons').onclick = () => {
   controllerIntentMode = 'touch';

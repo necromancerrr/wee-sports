@@ -75,7 +75,7 @@ test('browser motion reaches a real legal contact for both stroke directions on 
     expect(result.hits[0].assisted).toBe(true);
     expect(result.hits[0].phase).toBe('forward');
     expect(result.landing?.side).toBe(2);
-    expect(Math.abs(result.landing.position.x)).toBeLessThan(.03);
+    expect(Math.abs(result.landing.position.x - (axis === 'x' ? 0 : sign * .2))).toBeLessThan(.03);
   }
 });
 
@@ -85,7 +85,8 @@ test('gyro-only native data and rotated screens preserve the same stroke meaning
     expect(result.hits).toHaveLength(1);
     expect(result.hits[0].assisted).toBe(true);
     expect(result.landing?.side).toBe(2);
-    expect(Math.abs(result.landing.position.x)).toBeLessThan(.03);
+    const target = screenAngle === 0 ? .2 : screenAngle === 180 ? -.2 : 0;
+    expect(Math.abs(result.landing.position.x - target)).toBeLessThan(.03);
   }
 });
 
@@ -145,7 +146,8 @@ test('a complete swing between display frames retains its peak power and capture
   const {game} = pendingSwing();
   expect(game.strokeDetector.active).toBeNull();
   expect(game.pendingStroke.strength).toBe(7);
-  expect(game.pendingStroke.intent.target.x).toBeCloseTo(.22);
+  expect(game.pendingStroke.intent.target.x).toBeCloseTo(.368);
+  expect(game.pendingStroke.intent.kind).toBe('backhand');
   game.update(1 / 60);
   expect(game.playerStroke.power).toBe(7);
   expect(game.pendingStroke).toBeNull();
@@ -178,7 +180,7 @@ test('gentle strokes survive realistic one-way input delay without moving their 
     const result = receive({axis, hz: 60, fps: 30, peak: 1.2, threshold: .5, jitter: true, networkDelay});
     expect(result.hits, `${axis}, ${networkDelay * 1000}ms delay`).toHaveLength(1);
     expect(result.landing?.side).toBe(2);
-    expect(Math.abs(result.landing.position.x)).toBeLessThan(.03);
+    expect(Math.abs(result.landing.position.x - (axis === 'x' ? 0 : .2))).toBeLessThan(.03);
   }
 });
 

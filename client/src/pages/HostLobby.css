@@ -1,4 +1,13 @@
-.stub.host-lobby { max-width: 72rem; padding-top: clamp(1.25rem, 4vh, 3rem); }
+.stub.host-lobby { position: relative; isolation: isolate; max-width: 72rem; padding-top: clamp(1.25rem, 4vh, 3rem); }
+.host-lobby__backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; color: var(--text-muted); }
+.host-lobby__mark { position: absolute; width: clamp(5rem, 11vw, 11rem); opacity: .085; transform: rotate(var(--mark-angle)); }
+.host-lobby__mark svg { display: block; width: 100%; height: auto; }
+.host-lobby__mark:nth-child(1) { top: 16%; left: 3%; --mark-angle: -18deg; }
+.host-lobby__mark:nth-child(2) { top: 12%; right: 4%; --mark-angle: 16deg; }
+.host-lobby__mark:nth-child(3) { bottom: 12%; left: 8%; --mark-angle: 12deg; }
+.host-lobby__mark:nth-child(4) { bottom: 8%; right: 6%; --mark-angle: -15deg; width: clamp(4rem, 8vw, 8rem); }
+.host-lobby__mark:nth-child(5) { top: 48%; right: 1%; --mark-angle: -26deg; width: clamp(4rem, 7vw, 7rem); }
+.host-lobby__mark:nth-child(6) { top: 46%; left: 1%; --mark-angle: 23deg; width: clamp(4rem, 7vw, 7rem); }
 .host-lobby__heading,
 .host-lobby__utilities { display: flex; align-items: center; gap: .75rem; }
 .host-lobby__heading { justify-content: space-between; margin-bottom: clamp(1.5rem, 4vh, 3rem); }
@@ -27,10 +36,22 @@
 .host-lobby > .stub__actions { margin-top: 2rem; }
 
 @media (max-width: 700px) {
+  .host-lobby__mark { opacity: .065; }
+  .host-lobby__mark:nth-child(n+5) { display: none; }
   .host-lobby__content { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
   .host-lobby__invite { width: min(100%, 26rem); justify-self: center; }
   .host-lobby__room-code .stub__code { font-size: clamp(2rem, 8vw, 3.5rem); }
   .host-lobby__start-cue { text-align: center; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .host-lobby__mark { animation: lobby-mark-drift 16s ease-in-out infinite alternate; }
+  .host-lobby__mark:nth-child(even) { animation-delay: -8s; animation-duration: 19s; }
+}
+
+@keyframes lobby-mark-drift {
+  from { transform: translateY(-5px) rotate(var(--mark-angle)); }
+  to { transform: translateY(5px) rotate(calc(var(--mark-angle) + 5deg)); }
 }
 
 @media (max-width: 440px) {

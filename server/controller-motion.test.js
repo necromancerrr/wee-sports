@@ -969,3 +969,17 @@ test('returning a pending bowling roll to the lobby clears waiting and settings 
   expect(elements.get('roll').disabled).toBe(false);
   expect(elements.get('play-title').textContent).toBe('Choose your line');
 });
+
+test('the prominent Back to play control leaves settings and restores the live controller', async () => {
+  await import('../src/controller/main.js');
+  elements.get('use-buttons').onclick();
+  state({playing: true, paused: false, sport: 'tennis', gameId: 'game'});
+  elements.get('toggle-settings').onclick();
+  expect(elements.get('back-to-play').hidden).toBe(false);
+  expect(elements.get('toggle-settings').hidden).toBe(true);
+  expect(elements.get('play-panel').hidden).toBe(true);
+  elements.get('back-to-play').onclick();
+  expect(elements.get('back-to-play').hidden).toBe(true);
+  expect(elements.get('controller-options').hidden).toBe(true);
+  expect(elements.get('manual-controls').hidden).toBe(false);
+});

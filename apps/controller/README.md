@@ -32,7 +32,7 @@ npm run expo
 ```
 
 1. Scan the **terminal's Expo QR** with Expo Go to open Wee Sports Controller.
-2. Inside the controller, tap **Scan to play** and scan the **TV's room QR**.
+2. Inside the controller, tap **Scan TV code** and scan the **TV's room QR**.
 3. Allow camera/motion if asked. The first phone taps **Start game** when the
    group is ready. Keep both terminals running.
 
@@ -76,9 +76,12 @@ build, upload or signing was performed in this workspace.
 
 After installation, return to the repository root. Keep `npm run dev` running
 for the TV, and run `npm run expo:dev` in a second terminal. Open the installed
-controller and connect to that Metro QR/link. Then tap **Scan to play** inside
+controller and connect to that Metro QR/link. Then tap **Scan TV code** inside
 the controller and scan the TV's room QR. Later JavaScript changes need only
 Metro; rebuild after native dependency or native configuration changes.
+The current Tools, icons and scoring update adds no native dependencies. Your
+existing matching iPhone development client can reload it from Metro. If it
+still shows an older screen, run `npm run expo:dev -- --clear` and reload.
 
 On a Mac with Xcode and a connected iPhone, you can build locally instead:
 
@@ -150,15 +153,17 @@ documentation on 7 November 2026.
    Keep the screen facing up to aim. Bowling waits for a quiet start, locks aim at forward onset, and releases
    at most once until the TV reports the next delivery. No Arm button is needed.
    Table-tennis serves are automatic. Tennis uses the browser's fast forehand /
-   backhand recognizer and strength mapping. Options also offers simple
+   backhand recognizer and strength mapping. Tools also offers simple
    forehand/backhand motion and touch buttons.
-4. **Options** contains touch/motion choice, centering, profile preferences,
-   playing hand, sensitivity, solo practice mode and the leader's pause control. Switching sports checks
-   fresh samples automatically, without another QR or setup confirmation.
-   **Back to lobby**, sport selection and **Start game** are on the phone's main
-   screen. Returning readies the controllers again, but the next match waits for
-   the leader's **Start game**. **Back to lobby** also cancels a countdown or
-   tutorial without introducing a separate readiness button.
+4. **Tools** opens a separate screen for touch/motion choice, centering, playing
+   hand, sensitivity, haptics, TV sound and optional profile/history. Guest
+   preferences stay on this phone. The leader's **Game options** add assistance,
+   solo practice, pause, restart and **Return to lobby**. The large fixed **Back
+   to play** button returns directly to the controller. Sport selection and
+   **Start game** stay in the lobby; returning readies everyone again but waits
+   for the leader's next Start. **Back to lobby** also cancels a countdown or
+   tutorial. **Leave & scan another TV** confirms departure with the server
+   before opening the scanner; a failed departure keeps the current seat.
 5. Background the app and reopen it. Motion stops immediately, the seat
    reconnects with its private token, and fresh samples restore play automatically.
    Buffered motion is discarded. An unresolved roll is queried by its original
@@ -172,7 +177,18 @@ During a table-tennis match, touch mode keeps sending a fresh, still paddle
 before the first drag and after lifting your finger. The paddle holds its last
 position, movement expires, and pause/background/disconnection suppress input.
 The main screen clearly says whether motion or touch is active. Guest players
-can change hand and sensitivity in Options without registering a profile.
+can change hand, sensitivity and haptics in Tools without registering a profile.
+Tools and profiles suppress swings and rolls without disconnecting or changing
+the group's pause/readiness. Table tennis keeps a fresh neutral paddle while
+Tools is open. Returning discards partial gestures and waits for a brief quiet
+moment before recognizing new movement. Completed matches stop gameplay input
+while **Play again** remains available.
+
+The controller uses the same racket, paddle, bowling and golf outline artwork
+as the web controller. Golf is labelled **Coming soon** and cannot be selected.
+Live tennis scores show best of three sets, each first to seven points, win by
+two; table tennis shows first to twelve, win by two. Results name the actual
+players, including shared bowling winners.
 
 DeviceMotion's own Motion & Fitness permission is requested independently of
 Gyroscope. The startup timeout begins after permission resolves, so reading the
@@ -196,6 +212,9 @@ authentication handshake. Preferences and history are available without making
 accounts a prerequisite for play. Signing in claims saved guest results only on
 their original server. Raw sensor recordings and device calibration
 are not uploaded to profiles.
+Scan the QR from the same running TV/server you use in the browser to reach
+the same rooms and profile data. Expo's Metro QR only loads the app; it does
+not choose a separate game server or create a separate profile service.
 
 ## Measurement and remaining device checks
 
@@ -204,13 +223,13 @@ records achieved sampling frequency and largest observed gap. These numbers
 are callback cadence, **not** end-to-end latency. Table-tennis gyro poses go
 directly to the socket on each fresh sample, with a 12 ms minimum spacing to
 admit normal 60 Hz scheduling jitter. Congested/disconnected samples are dropped
-instead of queued; bowling aim has a 16 ms minimum and streams only on the current
+instead of queued; bowling aim also has a 12 ms minimum and streams only on the current
 player's ready turn. Pure math, adaptive aim filtering, calibration and tennis /
 bowling recognition are shared with web. Native Gyroscope
 measurements are already radians/second; DeviceMotion rotation-rate fields are
 deliberately unused because their native iOS and Android implementations name
-the axes differently. Expo's gravity-down vector is explicitly converted to a
-support/up vector for bowling tilt aim; canonical native gravity remains down.
+the axes differently. Bowling aim accepts the native gravity direction and
+maps capture timestamps onto the local clock, rejecting duplicate sensor frames.
 Real-device grip/axis validation remains necessary, especially for the
 legacy bowling recognizer. Gyro-relative paddle orientation can drift; use
 recenter and do not treat it as tracked hand position.
@@ -222,7 +241,7 @@ cannot replay old poses or feedback.
 
 Verified in this cloud workspace:
 
-- 54 native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture, touch-paddle and guest-claim tests, including cancellation
+- 62 native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture, touch-paddle and guest-claim tests, including cancellation
   while either sensor permission request is unresolved, native tennis forehand /
   backhand traces and transient inactivity without sequence replay or reconnect.
 - An iPhone source-based fixture with a 12-second permission prompt and delayed
@@ -231,6 +250,9 @@ Verified in this cloud workspace:
   upright-to-screen-up play, and 30 Hz gravity with 60 Hz gyro during fast aiming.
 - Delayed roll acknowledgements and outcome checks cannot revive an abandoned
   match or unlock a newer delivery; pause generations preserve unresolved rolls.
+- Tools suppress actual bowling/swing input while deliberate game commands and
+  neutral TT freshness keep working. Tests cover quiet return, completed-input
+  suppression, left-handed poses, failed-leave identity retention and live scores.
 - The 60 Hz pose and bowling-aim streams, burst bounds and congestion drops
   through the real native session class.
 - Metro/Hermes export for Android and iOS, using the pinned SDK dependencies.

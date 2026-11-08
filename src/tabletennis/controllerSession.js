@@ -9,6 +9,7 @@ const POSE_INTERVAL_SECONDS = .016;
 export function createTableTennisControllerSession({send = () => {}, onChange = () => {}} = {}) {
   const automatic = createAutomaticMotionSetup();
   let paddle = createPaddleIntentController();
+  let playingHand = 'Right';
   let mode = null, connected = false, playing = false, paused = true, suspended = false;
   let phase = 'ready', accepted = null, requested, pending = null, setupId = 0;
   let clock = 0, setupSentAt = 0, retryAfter = Infinity;
@@ -36,8 +37,11 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     get state() {return {mode, connected, playing, paused, suspended, setup: accepted, pending: pending !== null,
       setupError, motionReady, phase, gameId, reach: {...reach}};},
     configure({hand, sensitivity} = {}) {
+      // Profile reads can finish after the parent starts motion. Handedness
+      // describes the next stroke without changing the current paddle setup.
+      if (hand === 'Left' || hand === 'Right') playingHand = hand;
       if (mode) return;
-      paddle = createPaddleIntentController({hand, sensitivity});
+      paddle = createPaddleIntentController({hand: playingHand, sensitivity});
     },
     select(next, {announce = true} = {}) {
       if (!['motion', 'touch'].includes(next)) return;
@@ -117,7 +121,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       }
       if (!value || mode === 'motion' && (now < value.sampleTime || now - value.sampleTime > .12)) return null;
       if (mode === 'motion' && value.sequence === sentSampleSequence) return null;
-      const event = {seq: sequence++, orientation: value.orientation,
+      const event = {seq: sequence++, hand: playingHand, orientation: value.orientation,
         angularVelocity: mode === 'motion' && neutralPose ? {x: 0, y: 0, z: 0} : value.angularVelocity,
         reach: {...value.reach}, calibrationRevision: value.calibrationRevision};
       neutralPose = false;

@@ -1,0 +1,37 @@
+{
+  "recordedAt": "2026-11-08T04:07:27.901Z",
+  "base": "http://127.0.0.1:5210",
+  "runtime": "v24.22.1",
+  "browser": "156.0.8078.79",
+  "rendering": "headless Chromium software WebGL; 960x640 functional viewport",
+  "sensorSource": "Generated DeviceMotion and matching DeviceOrientation at 16 ms; continuous 3 rad/s sine gestures with a 700 ms period and no rest interval",
+  "checks": [
+    "Play joins and the leader starts a scored table-tennis motion game without a calibration checklist",
+    "An idle motion controller produces no automatic player hit or credited return",
+    "Y sideways continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+    "Z screen-up continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+    "Hidden controller stops pose delivery and foreground resumes only with fresh input",
+    "Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt",
+    "The same controller can enter the twelve-point bot game",
+    "No uncaught browser errors"
+  ],
+  "axisResults": [
+    {
+      "axis": "Y sideways",
+      "hostHits": 3,
+      "legalReturns": 3,
+      "elapsedMs": 6380
+    },
+    {
+      "axis": "Z screen-up",
+      "hostHits": 3,
+      "legalReturns": 3,
+      "elapsedMs": 5868
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.",
+    "No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established."
+  ]
+}

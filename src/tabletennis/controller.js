@@ -1,3 +1,6 @@
+import '../theme.js';
+import '../../client/src/styles/tokens.css';
+import {focusControllerSection} from '../controller/focusSection.js';
 import {createWebMotionAdapter} from '../controller/webMotionAdapter.js';
 import {createScreenAwake} from '../controller/phoneExperience.js';
 import {createTableTennisControllerSession} from './controllerSession.js';
@@ -88,6 +91,13 @@ function command(action) {
   post({type: 'wee:player-game-command', command: {id, gameId: state.gameId, action}});
   return id;
 }
+$('tt-options').addEventListener('toggle', () => {
+  if ($('tt-options').open) focusControllerSection($('tt-back-to-play'));
+});
+$('tt-back-to-play').onclick = () => {
+  $('tt-options').open = false;
+  focusControllerSection(document.querySelector('.tt-play'));
+};
 $('tt-practice-phone').onclick = () => command('practice-start');
 $('tt-match-phone').onclick = () => command('practice-stop');
 $('tt-recenter-phone').onclick = () => {
@@ -147,7 +157,7 @@ window.addEventListener('message', event => {
   } else if (data?.type === 'wee:profile-preferences') {
     const preferences = data.preferences;
     if (!preferences || typeof preferences !== 'object') return;
-    if (!session.state.mode) session.configure({hand: preferences.hand === 'Left' ? 'Left' : 'Right', sensitivity: preferences.sensitivity});
+    session.configure({hand: preferences.hand === 'Left' ? 'Left' : 'Right', sensitivity: preferences.sensitivity});
     if (typeof preferences.haptics === 'boolean') haptics = preferences.haptics;
   } else if (data?.type === 'wee:game-hit' && data.kind === 'table-tennis') {
     showNotice('Nice contact!', 700);

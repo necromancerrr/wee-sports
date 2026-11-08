@@ -29,10 +29,13 @@ export function startRoomCamera(video, {onCode, onError, onReady}) {
   const fail = error => {
     if (cancelled) return;
     stop();
-    onError(error.name === 'NotAllowedError' ? 'Camera access is off. Enter the TV code below, or allow the camera and try again.'
-      : 'The camera couldn’t start. Enter the TV code below.');
+    onError(error.name === 'NotAllowedError' ? 'Camera access is off. Enter the TV code here, or allow the camera in your browser and try again.'
+      : 'The camera couldn’t start. Enter the TV code here.');
   };
   (async () => {
+    if (globalThis.isSecureContext === false) {
+      stop(); onError('Scanning needs a secure connection. Use your phone’s Camera app to scan the TV, or enter its code here.'); return;
+    }
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('camera-unavailable');
     stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}}, audio: false});
     if (cancelled) {stream.getTracks().forEach(track => track.stop()); return;}

@@ -406,6 +406,7 @@ export class RoomStore {
     const clean = {gameId: room.gameId, generation: room.inputGeneration, hostEpoch: room.hostEpoch, seq: event.seq, player: player.slot + 1};
     if (kind === 'aim') Object.assign(clean, {aim: event.aim, locked: event.locked});
     else Object.assign(clean, {orientation: [...event.orientation], angularVelocity: {x: event.angularVelocity.x, y: event.angularVelocity.y, z: event.angularVelocity.z}, calibrationRevision: event.calibrationRevision,
+      ...(event.hand ? {hand: event.hand} : {}),
       ...(event.reach ? {reach: {x: event.reach.x, y: event.reach.y}} : {})});
     return {ok: true, code: room.code, hostSocketId: this.#members.get(room.hostId)?.socketId, event: clean};
   }
@@ -658,7 +659,9 @@ export class RoomStore {
       if (!isTennisState(payload)) return { ok: false, error: 'bad-game-state' };
       room.gameState = { phase: payload.phase, server: payload.server, winner: payload.winner,
         ...(payload.practice === undefined ? {} : { practice: payload.practice }),
-        ...(payload.serveAttempt === undefined ? {} : { serveAttempt: payload.serveAttempt }) };
+        ...(payload.serveAttempt === undefined ? {} : { serveAttempt: payload.serveAttempt }),
+        ...(payload.score === undefined ? {} : {score: [...payload.score], sets: [...payload.sets],
+          completedSets: payload.completedSets.map(set => ({player1: set.player1, player2: set.player2})), targetPoints: 7, setsToWin: 2}) };
       return { ok: true, code: room.code };
     }
     if (room.sport !== 'bowling') return { ok: false, error: 'not-playing' };

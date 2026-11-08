@@ -161,3 +161,27 @@ test('only the current native bowler streams aim, with fresh gravity samples', a
     assert.ok(Math.abs(aims[0].value.aim)>0, 'tilt reaches the TV instead of staying centered');
   } finally {controller.stop();}
 });
+
+test('Tools hold a fresh neutral table-tennis paddle and require quiet before gameplay resumes',async()=>{
+  const {MotionController}=await import('../src/motionCore.js');
+  let now=1000;const poses=[];
+  const session={seat:{sport:'table-tennis',gameState:{phase:'rally'}},inputSetup:'motion',controlsActive:true,playing:()=>true,
+    latest:(kind,pose)=>poses.push({time:now,...pose})};
+  const controller=new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now});
+  const sample=rate=>{now+=17;controller.sample({x:0,y:rate,z:0});};
+  try {
+    await controller.calibrate();for(let i=0;i<20;i++)sample(0);
+    session.controlsActive=false;const first=poses.length;
+    for(let i=0;i<40;i++)sample(3);
+    assert.equal(poses.length-first,40,'a peer does not freeze while Tools is open');
+    assert.ok(poses.slice(first).every(pose=>Object.values(pose.angularVelocity).every(value=>value===0)));
+    session.controlsActive=true;
+    for(let i=0;i<20;i++)sample(3);
+    assert.ok(poses.slice(first).every(pose=>Object.values(pose.angularVelocity).every(value=>value===0)),'finishing a movement from Tools cannot hit');
+    for(let i=0;i<12;i++)sample(0);
+    for(let i=0;i<10;i++)sample(3);
+    assert.ok(poses.at(-1).angularVelocity.y>0,'fresh deliberate movement works after quiet');
+    const before=poses.length;session.seat.gameState.phase='complete';for(let i=0;i<20;i++)sample(3);
+    assert.equal(poses.length,before,'results do not stream more gameplay');
+  }finally{controller.stop();}
+});

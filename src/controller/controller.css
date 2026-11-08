@@ -57,3 +57,5 @@
 .controller-page .motion-readout { background: var(--surface); border: 1px solid var(--border); }
 .controller-page #bowling-buttons { margin-top: 12px; }
 html:has(.controller-page), body:has(.controller-page) { overscroll-behavior-y: none; }
+
+.controller-page .controller-back { width: 100%; min-height: 58px; margin: 0 0 18px; padding: 16px 20px; font-size: 1.15rem; font-weight: 850; border-radius: 16px; }

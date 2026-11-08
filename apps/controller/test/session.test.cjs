@@ -21,6 +21,7 @@ async function fixture() {
   let now = 1000;
   const session = new ControllerSession('https://game.example', { makeSocket: () => socket, now: () => now, feedback: event => feedback.push(event) });
   session.seat = { code: 'K7PM', slot: 0, phase: 'game', gameId: 'game-a', inputGeneration: 3, hostEpoch: 2, sport: 'table-tennis', paused: false };
+  session.inputSetup='motion';
   return { session, socket, feedback, EVENTS, advance: ms => { now += ms; } };
 }
 
@@ -53,6 +54,49 @@ test('latest pose is bounded and stamped from the active session, never client i
   assert.equal(socket.sent[1].payload.seq, 1);
   advance(34); socket.io.engine.transport.writable = false;
   assert.equal(session.latest('pose', {}), false);
+  session.dispose();
+});
+
+test('native motion and touch pose packets carry the selected playing hand', async () => {
+  const {session,socket,advance}=await fixture();
+  session.latest('pose',{orientation:[0,0,0,1]});
+  assert.equal(socket.sent.at(-1).payload.hand,'Right');
+  session.configure({hand:'Left'});advance(17);
+  session.latest('pose',{hand:'Right',reach:{x:.2,y:0}});
+  assert.equal(socket.sent.at(-1).payload.hand,'Left');
+  session.inputSetup='buttons';session.configure({hand:'invalid'});advance(17);
+  session.latest('pose',{reach:{x:0,y:0},angularVelocity:{x:0,y:0,z:0}});
+  assert.equal(socket.sent.at(-1).payload.hand,'Left');
+  session.dispose();
+});
+
+test('Tools suspend gameplay while preserving neutral poses, setup, connection and deliberate game commands', async () => {
+  const {session,socket,EVENTS,advance}=await fixture();
+  session.setControlsActive(false);
+  assert.equal(socket.connected,true);assert.equal(session.inputSetup,'motion');
+  assert.equal((await session.action(EVENTS.PLAYER_SWING,{type:'swing'})).ok,false);
+  assert.equal((await session.action(EVENTS.PLAYER_ROLL,{type:'roll'})).ok,false);
+  assert.equal((await session.action(EVENTS.PLAYER_GAME_COMMAND,{action:'configure',settings:{assistance:'friendly'}})).ok,true);
+  assert.equal(session.latest('pose',{reach:{x:0,y:0},angularVelocity:{x:0,y:0,z:0}}),true);
+  session.inactive();session.foreground();
+  assert.equal(session.controlsPlaying(),false,'an OS foreground callback cannot reopen controls behind Tools');
+  session.setControlsActive(true);
+  assert.equal(session.controlsPlaying(),true);
+  session.seat.gameState={phase:'complete'};advance(17);
+  assert.equal(session.controlsPlaying(),false);assert.equal(session.latest('pose',{}),false);
+  assert.equal((await session.action(EVENTS.PLAYER_GAME_COMMAND,{action:'new-match'})).ok,true);
+  session.dispose();
+});
+
+test('a failed leave keeps the seat and reconnect token until the server confirms departure', async () => {
+  const {session,socket,EVENTS}=await fixture();
+  session.token='private-seat';
+  socket.responses.set(EVENTS.PLAYER_LEAVE,'timeout');
+  await assert.rejects(session.leave(),/Could not leave/);
+  assert.equal(session.token,'private-seat');assert.equal(session.seat.code,'K7PM');assert.equal(socket.connected,true);
+  socket.responses.set(EVENTS.PLAYER_LEAVE,{ok:true});
+  await session.leave();
+  assert.equal(session.token,null);assert.equal(session.seat,null);assert.equal(socket.connected,false);
   session.dispose();
 });
 

@@ -34,7 +34,11 @@ reference artwork, responsive behavior and validation evidence.
   to stroke, and P to pause. In Friendly mode, aim selects a landing area and
   power changes pace. Direction locks at stroke onset; the ball follows its
   physical flight after contact. Standard mode uses unassisted contact physics.
-- **Tennis:** best of three sets, against a bot or a second phone controller.
+  A still phone holds a steady ready paddle. In Friendly mode, a forehand tends
+  left and a backhand right; deliberate aim can override that tendency.
+- **Tennis:** best of three sets, each first to **7 points, win by 2**, against a
+  bot or a second phone controller. There are no games within sets. Each set
+  gets an announcement and a short break before the next serve.
   Forehand/backhand motion and button controls remain available.
 
 Tennis keyboard controls:
@@ -56,11 +60,15 @@ Tennis keyboard controls:
   table-tennis pose and bowling aim are distinct from deliberate actions.
 - Optional [Expo controller](apps/controller/README.md) with scanner, native
   sensors and haptics. Hardware acceptance is separate from browser delivery.
+- Camera scanning on the browser controller home, join screen and controller
+  options, with manual entry if camera access is unavailable. Switching TVs asks
+  before releasing the current seat. Camera access needs the HTTPS phone link.
 - Optional profiles, preferences and casual match history backed by local
   SQLite. Bowling and Table Tennis save settled roll/point boundaries; they
   never promise exact mid-flight recovery.
 
 See [consistent shots and TV feedback](docs/game-quality.md),
+[controller clarity and short matches](docs/controller-playability-review.md),
 [phone-led lobbies and continuous-motion repair](docs/phone-led-lobby-repair.md),
 [the party and controller repair](docs/party-controller-repair.md),
 [the table-tennis motion and physics repair](docs/table-tennis-research.md),
@@ -79,8 +87,11 @@ npm run expo:install
 npm run expo
 ```
 
-Scan the terminal's Expo QR to open the controller, then tap **Scan to play**
+Scan the terminal's Expo QR to open the controller, then tap **Scan TV code**
 and scan the TV's room QR. The phone and PC should share Wi-Fi.
+
+Web and Expo connect to the same game server. Expo's development server loads
+the native app; it does not create a separate lobby or game.
 
 For iPhone, SDK 58 needs a development build; the App Store Expo Go is
 incompatible. The [controller guide](apps/controller/README.md#using-an-iphone-from-windows-linux-or-mac)

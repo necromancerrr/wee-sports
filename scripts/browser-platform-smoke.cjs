@@ -29,6 +29,38 @@ async function returnToLobby(host) {
     await host.getByRole('button', { name: 'End match and return', exact: true }).click();
 }
 
+// Read the server's acknowledged persistence state, independent of TV copy.
+// Guest sessions have the same durable checkpoint status as profile sessions.
+function observeHostProgress(page) {
+    let latest = null;
+    const receive = payload => {
+        for (const packet of String(payload).split('\x1e')) {
+            if (!packet.startsWith('42[')) continue;
+            try {
+                const [event, state] = JSON.parse(packet.slice(2));
+                if (event === 'lobby:update' && state?.code) latest = state;
+            } catch { /* Ignore unrelated transport frames. */ }
+        }
+    };
+    page.on('websocket', connection => connection.on('framereceived', ({payload}) => receive(payload)));
+    page.on('response', response => {
+        if (response.url().includes('/socket.io/') && response.url().includes('transport=polling')) {
+            response.text().then(receive).catch(() => {});
+        }
+    });
+    return {
+        reset() { latest = null; },
+        async saved(code, afterRevision = 0) {
+            const deadline = Date.now() + 10000;
+            while (Date.now() < deadline) {
+                if (latest?.code === code && latest.recovery?.saved && latest.recovery.revision > afterRevision) return latest;
+                await page.waitForTimeout(50);
+            }
+            assert.fail(`No persisted checkpoint for room ${code} after revision ${afterRevision}: ${JSON.stringify(latest?.recovery)}`);
+        },
+    };
+}
+
 async function waitForRoll(controller, host) {
     const frame = host.frames().find(frame => frame.url().includes('/bowling.html'));
     await frame.evaluate(() => {
@@ -58,6 +90,7 @@ async function waitForRoll(controller, host) {
     try {
         const hc = await browser.newContext({ viewport: { width: 1280, height: 900 } }), pc = await touchContext(browser);
         const host = await hc.newPage(), phone = await pc.newPage();
+        const progress = observeHostProgress(host);
         for (const [name, page] of [['host', host], ['phone', phone]])
             page.on('pageerror', e => failures.push(name + ': ' + e.message));
         await host.goto(base + '/home');
@@ -67,6 +100,13 @@ async function waitForRoll(controller, host) {
         const bc = phone.frameLocator('iframe[title="Bowling phone controller"]');
         assert.equal(await phone.getByRole('button', { name: 'Ready', exact: true }).count(), 0);
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
+        const display = host.getByLabel('TV display controls');
+        await display.waitFor({state: 'visible', timeout: 15000});
+        const displayBox = await display.boundingBox();
+        assert.ok(displayBox.width >= 44 && displayBox.height >= 44, 'TV display control has a full-size target');
+        assert.equal(await display.evaluate(element => getComputedStyle(element).opacity), '1', 'TV display control is visible before hover');
+        assert.equal(await display.innerText(), 'Display');
+        pass('TV display controls stay visible with a readable label and at least 44px target');
         const bg = host.frameLocator('iframe[title="Bowling game"]');
         await bc.getByRole('button', { name: 'Roll', exact: true }).waitFor({ timeout: 10000 });
         const bf = host.frames().find(f => f.url().includes('/bowling.html'));
@@ -76,10 +116,12 @@ async function waitForRoll(controller, host) {
         await bc.locator('#aim').dispatchEvent('input');
         await bf.waitForFunction(() => window.__aims.some(e => e.aim === .5), null, { timeout: 8000 });
         pass('Bowling one-tap guest Play without a name, automatic touch readiness and authenticated live aim');
+        const initialSave = await progress.saved(code);
         await bc.getByRole('button', { name: 'Roll', exact: true }).click();
         await bc.getByText('Watch the lane', { exact: true }).waitFor({ timeout: 5000 });
         await waitForRoll(bc, host);
-        await host.getByText('Progress saved.', { exact: true }).waitFor({ timeout: 5000 });
+        await progress.saved(code, initialSave.recovery.revision);
+        assert.equal(await host.getByText('Progress saved.', { exact: true }).count(), 0);
         const before = await bg.locator('body').innerText();
         assert.match(before, /Ball 2|Frame 2/);
         pass('Bowling deliberate touch release settles once and saves a boundary');
@@ -88,9 +130,10 @@ async function waitForRoll(controller, host) {
         await host.getByRole('button', { name: 'Resume game · P', exact: true }).waitFor();
         await host.getByRole('button', { name: 'Resume game · P', exact: true }).click();
         pass('Shared pause and resume');
+        progress.reset();
         await host.reload();
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 10000 });
-        await host.getByText(/Progress saved\.|Restored the last settled roll or point\./).waitFor({ timeout: 10000 }).catch(async (e) => { console.log('RELOAD_BODY', await host.locator('body').innerText()); console.log('RELOAD_GAME', await bg.locator('body').innerText()); throw e; });
+        await progress.saved(code);
         await bg.locator('body').getByText(/Frame 1 \/ 10 · Ball 2|Frame 2 \/ 10/).waitFor({ timeout: 15000 });
         pass('TV reload restores the same settled bowling boundary');
         await host.getByLabel('TV display controls').click();
@@ -174,10 +217,11 @@ async function waitForRoll(controller, host) {
         const recoveryController = resumePhone.frameLocator('iframe[title="Bowling phone controller"]');
         assert.equal(await resumePhone.getByRole('button', { name: 'Ready', exact: true }).count(), 0);
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
+        const initialProfileSave = await progress.saved(savedCode);
         await recoveryController.getByRole('button', { name: 'Roll', exact: true }).click();
         await recoveryController.getByText('Watch the lane', { exact: true }).waitFor();
         await waitForRoll(recoveryController, host);
-        await host.getByText('Progress saved.', { exact: true }).waitFor();
+        await progress.saved(savedCode, initialProfileSave.recovery.revision);
         const saved = await host.evaluate(async () => {
             const { history } = await (await fetch('/api/profile/history')).json();
             const source = history[0];
@@ -198,10 +242,9 @@ async function waitForRoll(controller, host) {
         await joinPhone(resumePhone, restoredCode, 'Changed Name');
         await host.getByText('Saved Solo', { exact: true }).waitFor();
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
-        await host.getByText(/Restored the last settled roll or point\.|Progress saved\./).waitFor({ timeout: 10000 });
         const restoredGame = host.frameLocator('iframe[title="Bowling game"]');
         await restoredGame.locator('body').getByText(/Frame 1 \/ 10 · Ball 2|Frame 2 \/ 10/).waitFor({ timeout: 10000 });
-        await host.getByText('Progress saved.', { exact: true }).waitFor({ timeout: 10000 });
+        await progress.saved(restoredCode);
         const afterRestore = await host.evaluate(async () => {
             const { history } = await (await fetch('/api/profile/history')).json();
             return { history, checkpoints: await Promise.all(history.map(async (item) => [item.matchId, await (await fetch('/api/profile/matches/' + item.matchId + '/checkpoint')).json()])) };

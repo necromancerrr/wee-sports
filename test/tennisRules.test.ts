@@ -130,11 +130,11 @@ test('identical intent is repeatable while early and late intent produce control
     }
 });
 
-test('legacy quick requests normalize to best-of-three without changing tennis point values', () => {
+test('legacy quick requests normalize to best-of-three seven-point sets', () => {
     const score = new ScoreSystem('quick');
-    expect(score.getScore()).toMatchObject({format: 'full', tieBreak: false, player1: 0, player2: 0});
+    expect(score.getScore()).toMatchObject({format: 'full', targetPoints: 7, setsToWin: 2, player1: 0, player2: 0});
     score.awardPoint('player1', 'player2');
-    expect(score.getScore()).toMatchObject({player1: 15, player2: 0, matchWinner: null});
+    expect(score.getScore()).toMatchObject({player1: 1, player2: 0, matchWinner: null});
     score.reset('quick');
-    expect(score.getScore()).toMatchObject({format: 'full', tieBreak: false, player1: 0, player2: 0, server: 'player1'});
+    expect(score.getScore()).toMatchObject({format: 'full', targetPoints: 7, setsToWin: 2, player1: 0, player2: 0, server: 'player1'});
 });

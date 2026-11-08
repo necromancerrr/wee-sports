@@ -1,9 +1,12 @@
 # Match scoring
 
-Tennis is best of three sets: win two sets to win the match. Sets use ordinary
-tennis games (0, 15, 30, 40, advantage); six games with a two-game lead wins the
-set. At 6–6, a tie-break goes to seven points with a two-point lead. A match can
-end 2–0, or a 1–1 tie leads to the deciding third set. Phone and TV no longer
+Tennis is best of three sets: win two sets to win the match. Each set is
+**first to seven points, winning by two**, with no games inside the set.
+At 6–6, play continues until someone leads by two. A match can end 2–0,
+or a 1–1 tie leads to the deciding third set. Service starts with one point,
+then alternates every two points; the starting server changes each set.
+Each completed set is announced, with a 3.2-second break before the next serve.
+The final result names both the last set and the match winner. Phone and TV
 offer a separate Quick format. Older `quick` commands are normalized to the
 same best-of-three match. Configuration does not clear scores; New match does.
 
@@ -23,4 +26,5 @@ per-game target is part of the saved rules rather than an implicit global defaul
 
 Automated checks cover both players, both first servers, repeated deuce,
 one-point completion, duplicate scoring rejection, lets, legacy and current
-checkpoint validation, a deciding third tennis set, and rematch normalization.
+table-tennis checkpoint validation, a deciding third tennis set, set breaks,
+direct seven-point set scoring and rematch normalization.

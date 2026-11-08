@@ -29,7 +29,8 @@ export function TvGame({ lobby, paused, onClose, error, immersive = true, fullsc
           <span className="game-session__room" aria-label={`Room ${lobby.code}`}>{lobby.code}</span>
           <details className="game-session__menu game-session__display" onToggle={event => { if (!event.currentTarget.open) setConfirmReturn(false); }}>
             <summary aria-label="TV display controls" title="TV display controls">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 9V4h5m6 0h5v5M4 15v5h5m6 0h5v-5" /></svg>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M9 21h6m-3-4v4" /></svg>
+              <span>Display</span>
             </summary>
             <div className="game-session__menu-panel">
               <p>Sound and match settings are on your phone.</p>

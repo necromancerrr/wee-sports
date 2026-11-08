@@ -2,10 +2,16 @@ import {TABLE, BALL, FIXED_STEP, MATERIAL, v3, add, sub, scale, length, clamp} f
 
 /** The target is table-relative, independent of the paddle's assisted reach.
  * Capture this at the start of the stroke so the swing itself cannot re-aim it. */
-export function shotIntent(input, player = 1) {
+export function shotIntent(input, player = 1, stroke = null) {
   const sign = player === 1 ? -1 : 1;
+  const aim = clamp(input.reach?.x || 0, -1, 1);
+  const direction = stroke?.direction || 0;
+  // A comfortable un-aimed forehand goes left and a backhand right on the TV.
+  // Deliberate pointing remains stronger than this gentle stroke tendency.
+  const placement = clamp(aim * .55 + direction * .20 * (1 - Math.abs(aim) * .65), -.58, .58);
   return {
-    target: v3(clamp(input.reach?.x || 0, -1, 1) * .55, TABLE.height + BALL.radius, sign * .9),
+    target: v3(placement, TABLE.height + BALL.radius, sign * .9),
+    kind: stroke?.kind || 'drive', hand: stroke?.hand || (input.hand === 'Left' ? 'Left' : 'Right'), direction,
     // Deliberate wrist rotation shapes the flight slightly. Swing pitch is
     // power, not an accidental source of alternating top/backspin.
     spin: v3(sign * 12, clamp((input.angularVelocity?.z || 0) * 3, -18, 18), 0),

@@ -232,13 +232,38 @@ export function isGameOptions(snapshot, sport) {
     validPractice(snapshot.practice) && typeof snapshot.humanOpponent === 'boolean';
 }
 
+/** A new TV sends points and completed sets together; older status-only TVs remain valid. */
+function isTennisScore(state) {
+  const fields = ['score', 'sets', 'completedSets', 'targetPoints', 'setsToWin'];
+  if (fields.every(field => state[field] === undefined)) return true;
+  const pair = (value, max) => Array.isArray(value) && value.length === 2 && value.every(n => Number.isSafeInteger(n) && n >= 0 && n <= max);
+  if (state.targetPoints !== 7 || state.setsToWin !== 2 || !pair(state.score, 10000) || !pair(state.sets, 2) ||
+      !Array.isArray(state.completedSets) || state.completedSets.length > 3) return false;
+  const totals = [0, 0];
+  for (const set of state.completedSets) {
+    if (!isRecord(set) || !pair([set.player1, set.player2], 10000) || totals.includes(2)) return false;
+    const high = Math.max(set.player1, set.player2), low = Math.min(set.player1, set.player2);
+    if (!(high === 7 && low <= 5 || high > 7 && high - low === 2)) return false;
+    totals[set.player1 > set.player2 ? 0 : 1]++;
+  }
+  if (totals.some((total, index) => total !== state.sets[index])) return false;
+  const winner = totals.indexOf(2) + 1;
+  if (winner) {
+    const final = state.completedSets.at(-1);
+    if (state.score[0] !== final.player1 || state.score[1] !== final.player2) return false;
+    return state.practice === true ? state.phase !== 'complete' && state.winner === null
+      : state.phase === 'complete' && state.winner === winner;
+  }
+  return state.phase !== 'complete' && (Math.max(...state.score) < 7 || Math.abs(state.score[0] - state.score[1]) < 2);
+}
+
 /** TV-published tennis status; scoring/physics remain on the TV. */
 export function isTennisState(state) {
   return ['prepare', 'serve', 'rally', 'complete'].includes(state?.phase) &&
     (state.practice === undefined || typeof state.practice === 'boolean') &&
     (state.serveAttempt === undefined || [1, 2].includes(state.serveAttempt)) &&
     [1, 2].includes(state.server) && (state.phase === 'complete'
-      ? [1, 2].includes(state.winner) : state.winner === null);
+      ? [1, 2].includes(state.winner) : state.winner === null) && isTennisScore(state);
 }
 
 /** Optional final results keep older bowling TVs compatible; names stay in the lobby roster. */
@@ -371,6 +396,7 @@ export function isPose(event) {
   return norm >= .9 && norm <= 1.1 && isRecord(event.angularVelocity) &&
     ['x', 'y', 'z'].every(axis => Number.isFinite(event.angularVelocity[axis]) && Math.abs(event.angularVelocity[axis]) <= 100) &&
     Number.isSafeInteger(event.calibrationRevision) && event.calibrationRevision >= 0 &&
+    (event.hand === undefined || ['Left', 'Right'].includes(event.hand)) &&
     (event.reach === undefined || isRecord(event.reach) && ['x', 'y'].every(axis => Number.isFinite(event.reach[axis]) && Math.abs(event.reach[axis]) <= 1));
 }
 export function isTableTennisState(state) {

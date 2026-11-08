@@ -43,10 +43,6 @@
 .game-session__identity h1 { margin: 0; font-size: 1rem; font-weight: 800; }
 .game-session__room { font-size: 0.7rem; letter-spacing: 0.16em; color: #e4f2df; text-shadow: 0 1px 4px #132c27; }
 .game-session__display { pointer-events: auto; }
-.game-session__display > summary { width: 34px; min-height: 34px; padding: 0; opacity: 0; transition: opacity 150ms; }
-.game-session__bar:hover .game-session__display > summary,
-.game-session__display:focus-within > summary,
-.game-session__display[open] > summary { opacity: 1; }
 .game-session__menu-panel button + button { margin-top: 8px; }
 .game-session__menu-panel button { width: 100%; }
 .game-session__return { margin: 8px 0; }
@@ -76,6 +72,9 @@
 .game-countdown__view:focus-visible { outline: 3px solid #d5f487; outline-offset: 3px; }
 .game-session summary { list-style: none; }
 .game-session summary::-webkit-details-marker { display: none; }
+.game-session .game-session__display > summary { min-width: 44px; min-height: 44px; gap: 8px; padding: 8px 12px; background: #102c34; color: #f3f7ef; border-color: #8fb8b0; box-shadow: 0 2px 8px #0003; }
+.game-session .game-session__display > summary:hover,
+.game-session .game-session__display[open] > summary { background: #20434b; border-color: #d5f487; }
 .game-session__menu-panel {
   position: absolute;
   top: calc(100% + 8px);
@@ -100,10 +99,9 @@
   .game-session__bar { gap: 6px; padding-inline: 12px; }
   .game-session__identity, .game-session__actions { gap: 8px; }
 }
-@media (hover: none) { .game-session__display > summary { opacity: 1; } }
 @media (max-height: 450px) {
   .game-session__bar { min-height: 44px; padding-block: 2px; }
   .game-session button, .game-session summary { min-height: 36px; padding-block: 6px; }
 }
 
-.game-session .game-frame > .game-save-status { top: auto; bottom: 12px; left: auto; right: 12px; max-width: min(360px, calc(100% - 24px)); padding: 5px 10px; font-size: .75rem; color: #e9f4ec; }
+.game-session .game-frame > .game-save-issue { top: auto; bottom: 12px; left: auto; right: 12px; max-width: min(360px, calc(100% - 24px)); padding: 10px 14px; font-size: .875rem; color: #fff1e9; background: #542820; }

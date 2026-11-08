@@ -1,0 +1,25 @@
+{
+  "recordedAt": "2026-11-08T04:06:33.784Z",
+  "base": "http://127.0.0.1:5210",
+  "browser": "156.0.8078.79",
+  "checks": [
+    "iPhone, Android and iPad open the controller hub at / and /home, including landscape, without island downloads or permissions",
+    "Profile returns to the phone hub and appearance persists",
+    "Manual entry and direct QR links reach the real controller Play screen and refresh without another entry screen",
+    "Escape closes the scanner, stops camera tracks and restores focus",
+    "Closing while camera permission is pending also stops a stream granted afterwards",
+    "Denied camera permission keeps a manual code fallback in the scanner without navigation",
+    "Unrelated QR codes do not navigate; hiding the page shuts down scanning",
+    "An actual QR image decodes through jsQR after native detection fails, opens the real room and releases the camera",
+    "Join-screen scanning is discoverable; canceling and scanning the current TV preserve the connected seat",
+    "Another room requires explicit Leave and join; cancellation keeps the current seat and acceptance releases it",
+    "Phone profiles keep preferences and saved-game information without offering a TV-host action",
+    "No uncaught browser errors"
+  ],
+  "errors": [],
+  "limitations": [
+    "Device user agents and camera frames are simulated in Chromium; physical Safari/Android camera permissions and focus require device testing.",
+    "Room creation, join routing, portable QR decoding and camera-track cleanup execute the production app.",
+    "The phone saved-game profile is a read-only API fixture; separate platform tests cover real profile persistence and TV recovery."
+  ]
+}

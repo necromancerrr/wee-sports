@@ -10,6 +10,7 @@ import { TvReady } from '../components/TvReady.jsx';
 import { TvTutorial } from '../components/TvTutorial.jsx';
 import { TvVote } from '../components/TvVote.jsx';
 import { ThemeToggle } from '../components/ThemeToggle.jsx';
+import { LobbyBackdrop } from '../components/LobbyBackdrop.jsx';
 import { errorText } from '../lib/errors.js';
 import { usePhoneLink } from '../lib/usePhoneLink.js';
 import { request } from '../lib/socket.js';
@@ -171,6 +172,7 @@ export default function HostStub() {
 
   return (
     <main className="stub host-lobby" data-party={lobby.players.length > 4} data-empty={!lobby.players.length}>
+      <LobbyBackdrop />
       <header className="host-lobby__heading">
         <h1>{sportName(lobby.sport)}</h1>
         <div className="host-lobby__utilities">{audio.controls}<ThemeToggle /></div>
