@@ -184,6 +184,11 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
         if (result.ok && result.changed) broadcast(result.code);
       });
     }
+    socket.on(EVENTS.HOST_RESOLVE_MATCH, (payload, ack) => {
+      const result = store.resolveMatch(socket.id, payload);
+      reply(ack, result);
+      if (result.ok) broadcast(result.code);
+    });
     socket.on(EVENTS.SOUND_SET, (payload, ack) => {
       const result = store.setSound(socket.id, payload);
       reply(ack, result);
@@ -281,14 +286,12 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
           : { ok: false, error: 'game-loading' });
       });
     });
-    const leave = (_payload, ack) => {
-      const result = store.remove(socket.id);
-      socket.leave(result?.code ?? '');
-      reply(ack, { ok: true });
-      publish(result);
-    };
-    socket.on(EVENTS.PLAYER_LEAVE, leave);
-    socket.on(EVENTS.HOST_CLOSE, leave);
+    for (const [event, role] of [[EVENTS.PLAYER_LEAVE, 'player'], [EVENTS.HOST_CLOSE, 'host']]) socket.on(event, (payload, ack) => {
+      const result = store.leaveSession(socket.id, payload, role);
+      if (result.ok) socket.leave(result.code ?? '');
+      reply(ack, {ok:result.ok, ...(result.error ? {error:result.error} : {})});
+      if (result.ok && result.code) publish(result);
+    });
     socket.on(EVENTS.SESSION_AWAY, payload => {
       const result = store.disconnect(socket.id, payload?.code);
       if (result) socket.leave(result.code);

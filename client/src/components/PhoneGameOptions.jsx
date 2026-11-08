@@ -180,9 +180,9 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
         {isLeader && active ? <section className="phone-options-section phone-options-return" aria-label="Return to lobby">
           <button type="button" className="btn btn--secondary" disabled={returnLocked}
             aria-describedby={confirmReturn ? 'phone-return-explanation' : undefined} onClick={returnToLobby}>
-            {confirmReturn ? busy ? 'Returning…' : 'End match and return' : 'Return to lobby'}
+            {confirmReturn ? busy ? 'Returning…' : 'Save and return' : 'Return to lobby'}
           </button>
-          {confirmReturn ? <><p id="phone-return-explanation">This ends the current match and clears its score for everyone. Your players and controller setup stay in the lobby.</p>
+          {confirmReturn ? <><p id="phone-return-explanation">Everyone returns together. Continue the unfinished match from the TV, or choose a new game.</p>
             <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setConfirmReturn(false)}>Keep playing</button></> : null}
         </section> : null}
       </div>

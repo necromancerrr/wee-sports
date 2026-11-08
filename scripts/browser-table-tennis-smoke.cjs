@@ -75,7 +75,7 @@ async function visibility(frame, hidden) {
     phone.on('pageerror', error => errors.push('phone: ' + error.message));
     await host.goto(base + '/home'); await host.getByRole('button', {name: 'Play: Table Tennis', exact: true}).click();
     const code = await host.getByTestId('lobby-code').innerText();
-    await phone.goto(`${base}/join?code=${code}`); await phone.getByRole('button', {name: 'Play', exact: true}).click();
+    await phone.goto(`${base}/join?code=${code}`); await phone.getByLabel('Your playing name').fill('Alex'); await phone.getByRole('button', {name: 'Play', exact: true}).click();
     await phone.getByRole('button', {name: 'Start game', exact: true}).click();
     await phone.getByRole('button', {name:'Start now', exact:true}).click();
     await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout: 20000});

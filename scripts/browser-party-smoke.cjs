@@ -68,7 +68,7 @@ async function client() {
   for(let i=0;i<2;i++) {
    const context=await browser.newContext({viewport:{width:390,height:844}});
    await context.addInitScript(()=>{Object.defineProperty(window,'DeviceMotionEvent',{value:undefined,configurable:true});Object.defineProperty(window,'DeviceOrientationEvent',{value:undefined,configurable:true});});
-   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/join?code='+code);await page.getByRole('button',{name:'Play',exact:true}).click();phones.push(page);
+   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/join?code='+code);await page.getByLabel('Your playing name').fill('Player '+(phones.length+1));await page.getByRole('button',{name:'Play',exact:true}).click();phones.push(page);
   }
   await phones[0].getByRole('button',{name:'Start game',exact:true}).click();
   await phones[0].getByRole('button',{name:'Start now',exact:true}).click();

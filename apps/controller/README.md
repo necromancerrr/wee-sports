@@ -33,7 +33,7 @@ npm run expo
 
 1. Scan the **terminal's Expo QR** with Expo Go to open Wee Sports Controller.
 2. Inside the controller, tap **Scan TV code** and scan the **TV's room QR**.
-3. Allow camera/motion if asked. The first phone taps **Start game** when the
+3. Enter your playing name, tap **Play**, and allow motion if asked. The first phone taps **Start game** when the
    group is ready. Keep both terminals running.
 
 The first QR opens the app; the second joins your game. The TV QR still opens
@@ -165,12 +165,16 @@ documentation on 7 November 2026.
    preferences stay on this phone. The leader's **Game options** add assistance,
    solo practice, pause, restart and **Return to lobby**. The large fixed **Back
    to play** button returns directly to the controller. **Change sport** is inside
-   Tools; **Start game** stays in the lobby. Returning readies everyone again but
-   waits for the leader’s next confirmation. **Back to lobby** also cancels a countdown or
+   Tools; **Start game** stays in the lobby. Returning readies everyone again. If
+   a match is unfinished, choose **Continue game / New game** on the TV. A fresh
+   game waits for the leader’s next confirmation. Tutorials skip automatically
+   on both controllers. **Back to lobby** also cancels a countdown or
    tutorial. **Leave & scan another TV** confirms departure with the server
    before opening the scanner; a failed departure keeps the current seat.
 5. Background the app and reopen it. Motion stops immediately, the seat
    reconnects with its private token, and fresh samples restore play automatically.
+   A temporary resume timeout retries without dropping the saved seat. Closing
+   the room or leaving cancels pending reconnect responses.
    Buffered motion is discarded. An unresolved roll is queried by its original
    action ID; the app never generates a replacement roll automatically.
 

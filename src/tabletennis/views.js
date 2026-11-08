@@ -5,6 +5,8 @@ export function createTableTennisViews() {
   const cameras = [1, -1].map(sign => {
     const camera = new THREE.PerspectiveCamera(42, 1, .05, 35);
     camera.userData.player = sign === 1 ? 1 : 2;
+    // Shared court on layer 0; each pavilion end has its own camera cutaway.
+    camera.layers.enable(camera.userData.player);
     return camera;
   });
   return {

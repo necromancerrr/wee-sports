@@ -14,16 +14,25 @@ tap. The island fills wider displays with extra ocean, without cropping the
 resort. `/home` follows the same device roles; QR join links still go straight
 to the controller. Resizing a computer window does not turn it into a phone.
 
-Each person scans and taps **Play** to join. The first phone gets **Start game**
+Each person scans, enters their playing name, and taps **Play** to join. The first phone gets **Start game**
 and confirms **Start now**; the TV shows the code and people who have joined.
 Start solo or with friends. Even full rooms wait for confirmation: up to eight
 for Bowling, two for Tennis or Table Tennis. Change sports in **Tools → Change
-sport**. Returning from a match waits for a new confirmation.
+sport**. Tutorials skip automatically on web and Expo.
 
-Choosing a sport on the TV requests browser fullscreen before pairing. The
-confirmed countdown fills the TV with 5–1, then the game fills the same view.
+The lobby stays windowed. Fullscreen is requested when the confirmed countdown
+starts, with a large 5–1 over faint sport icons, then the game fills the same view.
 If the browser blocks fullscreen, play still fills its window and the TV offers
 a **Full screen** button. A phone cannot grant the TV's browser permission.
+
+Leaving the TV page or choosing **Return to lobby** keeps an unfinished game's
+last completed point or roll while the room is running. Open **Return to room**
+on the homepage: the TV offers **Continue game** or **New game** with the same
+players. Phones return to the lobby together. **Close lobby** ends the room;
+changing the roster starts a new match.
+
+Table tennis plays in an open-air pavilion inspired by its spot on the homepage
+island, with water and greenery around the court in solo and split-screen play.
 
 See the [island implementation and checks](docs/island/README.md) for the
 reference artwork, responsive behavior and validation evidence.
@@ -57,7 +66,7 @@ Tennis keyboard controls:
 ## Features
 
 - Browser guest pairing, readiness, shared pause and private reconnect tokens.
-- Scan, tap Play to join, and allow motion if asked. Setup and readiness are automatic;
+- Scan, enter a name, tap Play to join, and allow motion if asked. Setup and readiness are automatic;
   no grip checklist or per-roll Arm button. Touch controls remain one tap away.
 - Same-room sport switching preserves player identities and the selected control
   mode; fresh sensor samples establish the next sport’s neutral position.
@@ -212,15 +221,16 @@ container filesystem is not durable storage. No external identity provider or
 hosting service is provisioned by this repository. Use HTTPS for account access
 outside local development.
 
-The TV reports whether the latest stable boundary was saved. Reloading a live
-Bowling or Table Tennis host restores its available settled boundary. After a
+Reloading a live TV offers **Continue game / New game** for Bowling, Table Tennis
+and Tennis when the same players remain. Continue restores the last completed
+roll or point. Bowling and Table Tennis also save these boundaries to SQLite. After a
 server restart, in-memory room codes expire; a signed-in solo participant can
 use **Continue a solo game** in Profile & history on a new TV to open an owned
 saved boundary, then join from a phone signed into the same profile. Interrupted
 rolls or points restart from the last saved state. The original boundary remains
 read-only and allows one continuation under a new game identity. Party-room archive recovery,
 exact mid-flight continuation and ranked result integrity are not supported.
-Existing Tennis does not yet have durable score recovery.
+Tennis recovery is stored in the running room; it does not survive a server restart.
 
 ## Play with built assets
 

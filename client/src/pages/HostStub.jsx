@@ -34,6 +34,8 @@ export default function HostStub() {
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
   const [startError, setStartError] = useState(null);
   const [returning, setReturning] = useState(false);
+  const [resolvingMatch, setResolvingMatch] = useState(false);
+  const matchChoicePending = useRef(false);
   const returnPending = useRef(false);
   const [pausing, setPausing] = useState(false);
   const pausePending = useRef(false);
@@ -44,6 +46,7 @@ export default function HostStub() {
   const [fullscreen, setFullscreen] = useState(Boolean(fullscreenElement(document)));
   const requestedFullscreen = useRef(Boolean(fullscreenElement(document)));
   const displayCleanup = useRef(null);
+  const countdownDisplay = useRef(null);
 
   function leaveGameView() {
     setImmersive(false);
@@ -90,6 +93,15 @@ export default function HostStub() {
   // A failed request is old news once the phase moves.
   const phase = lobby?.phase;
   useEffect(() => setStartError(null), [phase]);
+  useEffect(() => {
+    if (phase === PHASES.COUNTDOWN && countdownDisplay.current !== lobby.gameId) {
+      countdownDisplay.current = lobby.gameId;
+      enterGameView();
+    } else if ([PHASES.LOBBY, PHASES.READY].includes(phase)) {
+      countdownDisplay.current = null;
+      leaveGameView();
+    }
+  }, [phase, lobby?.gameId]);
 
   // Nobody presses Play on the TV any more: the phones start the countdown.
   // Browsers only start sound after the page has been interacted with, so
@@ -117,6 +129,16 @@ export default function HostStub() {
     if (currentGame.current !== gameId) return;
     if (result?.ok) setImmersive(true);
     else setStartError(result?.error ?? 'disconnected');
+  }
+
+  async function resolveMatch(choice) {
+    if (reconnecting || !lobby?.resumeGame || matchChoicePending.current) return;
+    matchChoicePending.current = true; setResolvingMatch(true); setStartError(null);
+    // A TV tap is a valid fullscreen gesture; remote starts are attempted at countdown.
+    if (choice === 'continue') enterGameView();
+    const result = await request(EVENTS.HOST_RESOLVE_MATCH, {gameId:lobby.resumeGame.gameId, choice});
+    matchChoicePending.current = false; setResolvingMatch(false);
+    if (!result?.ok) {leaveGameView(); setStartError(result?.error ?? 'disconnected');}
   }
 
   const togglePause = useCallback(async () => {
@@ -157,7 +179,7 @@ export default function HostStub() {
       else setStartError('disconnected');
     }} />;
 
-  if (reconnecting || lobby?.paused) return <ReconnectNotice lobby={lobby} reconnecting={reconnecting} code={code} />;
+  if (reconnecting || (lobby?.paused && ![PHASES.LOBBY, PHASES.READY].includes(lobby?.phase))) return <ReconnectNotice lobby={lobby} reconnecting={reconnecting} code={code} />;
 
   if (!lobby) {
     return (
@@ -180,6 +202,16 @@ export default function HostStub() {
         <div className="host-lobby__utilities">{audio.controls}<ThemeToggle /></div>
       </header>
       {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your session.</p> : null}
+      {lobby.resumeGame ? <section className="host-lobby__resume" aria-labelledby="resume-match-title">
+        <h2 id="resume-match-title">Your game is still here</h2>
+        <p>Continue from the last completed {lobby.sport === 'bowling' ? 'roll' : 'point'}, or start fresh with this group.</p>
+        <div className="stub__actions">
+          <button type="button" className="btn btn--primary" disabled={resolvingMatch || !lobby.resumeGame.canContinue} onClick={() => resolveMatch('continue')}>Continue game</button>
+          <button type="button" className="btn btn--ghost" disabled={resolvingMatch} onClick={() => resolveMatch('new')}>New game</button>
+        </div>
+        {!lobby.resumeGame.canContinue ? <p role="status">Waiting for the controllers to reconnect.</p> : null}
+      </section> : null}
+      {lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} compact /> : null}
       <div className="host-lobby__content">
         <section className="host-lobby__invite" aria-label="Join with your phone">
           <h2>Scan to play</h2>

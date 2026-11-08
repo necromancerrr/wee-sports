@@ -32,8 +32,8 @@ export function classifyStroke(input) {
  */
 export function createStrokeIntentDetector() {
   let previous = null, candidate = null, current = null, quiet = 0, valley = null;
-  let stableAim = {x: 0, y: 0}, armed = true, identity = 0;
-  const reset = () => {previous = candidate = current = valley = null; quiet = 0; armed = true; stableAim = {x: 0, y: 0};};
+  let stableAim = {x: 0, y: 0}, armed = true, identity = 0, aimingSince = null;
+  const reset = () => {previous = candidate = current = valley = null; quiet = 0; aimingSince = null; armed = true; stableAim = {x: 0, y: 0};};
   const copy = value => value ? {...value, aim: {...value.aim}, spin: {...value.spin}} : null;
   return {
     reset,
@@ -52,6 +52,7 @@ export function createStrokeIntentDetector() {
       const travel = (rate + previous.rate) * .5 * dt;
       previous = {time: now, rate};
       if (rate <= .55) {
+        aimingSince = null;
         stableAim = aimOf(input);
         candidate = null;
         quiet += dt;
@@ -59,6 +60,16 @@ export function createStrokeIntentDetector() {
         return null;
       }
       quiet = 0;
+      // Gentle repositioning is aiming, even without a complete stop. Keep
+      // the onset frozen for a quick swing, but don't reuse a seconds-old aim
+      // when someone moves to a new target at a steady, sub-stroke speed.
+      if (rate < 1.1) {
+        aimingSince ??= now;
+        if (armed && now - aimingSince >= .08) {
+          stableAim = aimOf(input);
+          candidate = null;
+        }
+      } else aimingSince = null;
       if (current) current.strength = Math.max(current.strength, Math.min(rate, 30));
       if (!armed) {
         // Players keep moving between shots. A genuine deceleration followed

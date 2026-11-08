@@ -125,6 +125,7 @@ export const EVENTS = {
   PLAYER_JOIN: 'player:join',
   /** TV or P1 -> server: { gameId }. End this match while keeping the lobby and controller setup. */
   HOST_RETURN_TO_LOBBY: 'host:return-to-lobby',
+  HOST_RESOLVE_MATCH: 'host:resolve-match',
   PLAYER_RETURN_TO_LOBBY: 'player:return-to-lobby',
   /** Current TV/P1 -> server: { gameId, paused }. Explicit, shared manual pause. */
   HOST_PAUSE: 'host:pause',

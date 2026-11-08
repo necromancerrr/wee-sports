@@ -83,23 +83,24 @@ export default function JoinStub() {
     // alone cannot recover a phone that joined from an old LAN homepage.
     if (needsSecurePage && !phoneLinkLoading && secureUrl) window.location.replace(secureUrl);
   }, [needsSecurePage, phoneLinkLoading, secureUrl]);
-  const { snapshot: seat, reconnecting, ended, storageWarning, accept, leave: leaveSession } = useReconnect('player', code);
+  const { snapshot: seat, reconnecting, ended, storageWarning, accept, beginJoin, leave: leaveSession } = useReconnect('player', code);
   const lobby = seat;
   // Holds the vote's reveal on screen for a moment; a cancelled vote has none.
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
   const [error, setError] = useState(null);
   const [joining, setJoining] = useState(false);
-  const canJoin = !openingSecurePage && isRoomCode(code) && !joining;
+  const canJoin = !openingSecurePage && isRoomCode(code) && Boolean(cleanName(name)) && !joining;
 
   async function join(event) {
     event.preventDefault();
     if (!canJoin) return;
     setJoining(true);
     setError(null);
+    const joinOperation = beginJoin();
     // Start the browser permission prompt directly on this tap, before joining.
     const permission = controllerIntent?.mode === 'touch' || prefersTouch
       ? Promise.resolve({mode: 'touch', permission: 'unavailable'}) : requestControllerIntent();
-    const playerName = cleanName(name) || 'Player';
+    const playerName = cleanName(name);
     const [result, intent] = await Promise.all([
       request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code, name: playerName, capabilities: createControllerCapabilities({motion: typeof DeviceMotionEvent !== "undefined", orientation: typeof DeviceOrientationEvent !== "undefined", haptics: typeof navigator.vibrate === "function"}) }),
       permission,
@@ -111,7 +112,7 @@ export default function JoinStub() {
     }
     saveName(playerName);
     rememberControllerIntent(intent); setControllerIntent(intent);
-    accept(result);
+    if (!accept(result, joinOperation)) return;
     setParams({ code }, { replace: true });
   }
 
@@ -129,7 +130,7 @@ export default function JoinStub() {
       <>
         <GuestResultClaim lobby={lobby} />
         <PhoneSoundToggle lobby={lobby} disabled={reconnecting} />
-        {seat.slot === (lobby.leaderSlot ?? 0) ? <details><summary>Change sport</summary><SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /></details> : null}
+        {seat.slot === (lobby.leaderSlot ?? 0) && !lobby.resumeGame ? <details><summary>Change sport</summary><SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /></details> : null}
         <a className="btn btn--ghost" href="/profile">Profile & history</a>
         <RoomScanner label="Scan another TV" activeRoom={seat} onLeave={leaveSession} disabled={reconnecting} />
         <h2>In this lobby</h2>
@@ -222,7 +223,7 @@ export default function JoinStub() {
         </p>
       ) : null}
 
-      <RoomScanner />
+      {!isRoomCode(code) ? <RoomScanner /> : null}
       <form onSubmit={join} noValidate>
         {!isRoomCode(normalizeCode(params.get('code'))) ? <div className="field">
           <label htmlFor="join-code">Lobby code</label>
@@ -240,8 +241,8 @@ export default function JoinStub() {
             spellCheck={false}
           />
         </div> : <p className="phone-join__code">Game {code}</p>}
-        <details className="phone-join__name"><summary>{name ? `Playing as ${name}` : 'Add your name (optional)'}</summary><div className="field">
-          <label htmlFor="join-name">Your name (optional)</label>
+        <div className="field phone-join__name">
+          <label htmlFor="join-name">Your playing name</label>
           <input
             id="join-name"
             className="text-input"
@@ -250,9 +251,10 @@ export default function JoinStub() {
             maxLength={NAME_MAX}
             autoComplete="nickname"
             enterKeyHint="go"
-            placeholder="Player"
+            placeholder="Your name"
+            required
           />
-        </div></details>
+        </div>
         <div className="stub__actions">
           <button type="submit" className="btn btn--primary" disabled={!canJoin}>
             {joining ? 'Connecting…' : 'Play'}

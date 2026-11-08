@@ -4,6 +4,29 @@ import type {BallPlayer} from '../src/Tennis/components/ball';
 const point = (score: ScoreSystem, winner: BallPlayer) => score.awardPoint(winner, winner === 'player1' ? 'player2' : 'player1');
 const straightSet = (score: ScoreSystem, winner: BallPlayer) => {for (let i = 0; i < 6; i++) point(score, winner); return point(score, winner);};
 
+test('tennis recovery preserves points, sets, serving side and service order through a deciding set', () => {
+    let score = new ScoreSystem();
+    const sequence: BallPlayer[] = [...Array(7).fill('player2'), ...Array(7).fill('player1'),
+        ...Array.from({length:12}, (_,i) => i%2 ? 'player2' : 'player1'), 'player2','player2'];
+    for (const winner of sequence) {
+        point(score,winner);
+        const before = score.getScore();
+        score = ScoreSystem.fromCheckpoint(score.checkpoint());
+        expect(score.getScore()).toMatchObject({...before,lastPoint:null});
+    }
+    expect(score.getScore().matchWinner).toBe('player2');
+});
+
+test('tennis recovery rejects unfinished sets, impossible final points and play after a winner', () => {
+    const bad = [
+        {version:1,points:[7,0],sets:[]}, {version:1,points:[0,0],sets:[{player1:7,player2:6}]},
+        {version:1,points:[0,0],sets:[{player1:8,player2:0}]},
+        {version:1,points:[0,0],sets:[{player1:7,player2:0},{player1:7,player2:0}]},
+        {version:1,points:[0,7],sets:[{player1:7,player2:0},{player1:7,player2:0},{player1:0,player2:7}]},
+    ];
+    for (const payload of bad) expect(() => ScoreSystem.fromCheckpoint(payload)).toThrow();
+});
+
 describe('best of three seven-point tennis sets', () => {
     test('each rally is one point, and service follows one then two with alternating service sides', () => {
         const score = new ScoreSystem();

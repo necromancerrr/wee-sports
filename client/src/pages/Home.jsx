@@ -9,9 +9,8 @@ import {MAIN_ISLAND, presentIslandSports} from '../lib/island.js';
 import {useIslandMotion} from '../lib/useIslandMotion.js';
 import {errorText} from '../lib/errors.js';
 import {request, useConnection} from '../lib/socket.js';
-import {saveToken} from '../lib/reconnect.js';
+import {saveToken, lastHostRoom} from '../lib/reconnect.js';
 import {SPORTS, playerRange} from '../lib/sports.js';
-import { enterFullscreen, exitFullscreen, fullscreenElement } from '../lib/fullscreen.js';
 import './Island.css';
 
 const PRESENTATION = presentIslandSports(SPORTS);
@@ -48,17 +47,13 @@ export default function Home() {
     openingRef.current = true;
     setOpening(sport.id);
     setFailure(null);
-    const alreadyFull = Boolean(fullscreenElement(document));
-    const display = enterFullscreen(document);
     const result = await request(EVENTS.HOST_CREATE, {v: PROTOCOL_VERSION, sport: sport.id,
       capabilities: createControllerCapabilities({buttons: true})});
-    const entered = await display;
     openingRef.current = false;
     if (result?.ok) {
       saveToken('host', result.code, result.token);
       if (mounted.current) navigate(`/host/${result.code}`);
     } else if (mounted.current) {
-      if (entered && !alreadyFull) void exitFullscreen(document);
       setOpening(null);
       setFailure({sport: sport.id, message: errorText(result?.error)});
     }
@@ -110,6 +105,7 @@ export default function Home() {
     <div className="island-status" role="status" aria-live="polite">{status}</div>
     <footer className="island-footer">
       <Link to="/" className="island-small-control"><ArrowLeft />Back</Link>
+      {lastHostRoom() ? <Link to={`/host/${lastHostRoom()}`} className="island-small-control">Return to room {lastHostRoom()}</Link> : null}
       <button type="button" ref={gamesButton} className="island-small-control island-games-button"
         aria-haspopup="dialog" onClick={() => gamesDialog.current.showModal()}>Games</button>
       {PRESENTATION.unmapped.length > 0 && <span className="island-unmapped-note">More sports in Games</span>}

@@ -15,6 +15,18 @@ async function fixture({sensorError = false} = {}) {
   return {flow,session,calls,motions};
 }
 
+test('a missing TV does not trigger repeated ready requests; returning resumes automatic readiness', async () => {
+  const {flow,session,calls}=await fixture({sensorError:true});
+  session.seat.paused=true;
+  flow.update(session.seat,'online');await tick();
+  for(let i=0;i<5;i++){flow.update(session.seat,'online');await tick();}
+  assert.equal(calls.filter(call=>call.event==='player:ready').length,0);
+  session.seat.paused=false;
+  flow.update(session.seat,'online');await tick();
+  assert.deepEqual(calls.filter(call=>call.event==='player:ready'),[{event:'player:ready',payload:{ready:true,skipTutorial:true}}]);
+  flow.stop();
+});
+
 test('native auto-ready requires real sample readiness and accepted setup', async () => {
   const {flow,session,calls,motions} = await fixture();
   const setupAck = deferred();
@@ -137,6 +149,6 @@ test('Wait for friends cancels countdown without automatically readying again', 
   session.seat.phase = 'ready'; flow.update(session.seat,'online'); await tick();
   assert.equal(calls.length,before);
   flow.play(); await tick();
-  assert.deepEqual(calls.at(-1),{event:'player:ready',payload:{ready:true}});
+  assert.deepEqual(calls.at(-1),{event:'player:ready',payload:{ready:true,skipTutorial:true}});
   flow.stop();
 });

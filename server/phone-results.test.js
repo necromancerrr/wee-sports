@@ -106,11 +106,11 @@ test('P1 confirms a return without requiring game options or every participant t
   expect(f.button('Return to lobby').props.disabled).toBe(false);
   await f.button('Return to lobby').props.onClick(); f.render();
   expect(h.request).not.toHaveBeenCalled();
-  expect(f.text()).toContain('controller setup stay in the lobby');
+  expect(f.text()).toContain('Continue the unfinished match from the TV');
   f.button('Keep playing').props.onClick(); f.render();
-  expect(f.button('End match and return')).toBeUndefined();
+  expect(f.button('Save and return')).toBeUndefined();
   await f.button('Return to lobby').props.onClick(); f.render();
-  await f.button('End match and return').props.onClick(); f.render();
+  await f.button('Save and return').props.onClick(); f.render();
   expect(h.request).toHaveBeenCalledExactlyOnceWith(EVENTS.PLAYER_RETURN_TO_LOBBY, { gameId: 'game-1' });
   expect(f.dialog.close).toHaveBeenCalled();
 });
@@ -132,7 +132,7 @@ test('return requests are coalesced, and a stale reply cannot alter the next mat
   await f.button('Return to lobby').props.onClick(); f.render();
   let finish;
   h.request.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-  const action = f.button('End match and return').props.onClick;
+  const action = f.button('Save and return').props.onClick;
   const first = action(); action();
   expect(h.request).toHaveBeenCalledTimes(1);
   f.render({ lobby: { ...tennis(), gameId: 'game-2' } }); f.render();
@@ -140,16 +140,16 @@ test('return requests are coalesced, and a stale reply cannot alter the next mat
   finish({ ok: false, error: 'timeout' }); await first; f.render();
   expect(f.dialog.close).not.toHaveBeenCalled();
   expect(f.text()).not.toContain("Couldn't reach the game server.");
-  expect(f.button('End match and return')).toBeUndefined();
+  expect(f.button('Save and return')).toBeUndefined();
 });
 
 test('a failed return retains its confirmation and tells the player why', async () => {
   const f = mount();
   await f.button('Return to lobby').props.onClick(); f.render();
   h.request.mockResolvedValue({ ok: false, error: 'disconnected' });
-  await f.button('End match and return').props.onClick(); f.render();
+  await f.button('Save and return').props.onClick(); f.render();
   expect(f.text()).toContain('Reconnecting… Keep this page open.');
-  expect(f.button('End match and return').props.disabled).toBe(false);
+  expect(f.button('Save and return').props.disabled).toBe(false);
 });
 
 test('P1 pause is explicit, coalesced and remains resumable while shared play is paused', async () => {

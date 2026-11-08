@@ -40,6 +40,11 @@ export function PhoneVote({ lobby, slot, automatic = false }) {
     else setError(result.error);
   }
 
+  if (automatic) return <section className="phone-vote" aria-live="polite">
+    <p className="stub__status">Watch the TV. Your game is starting.</p>
+    {error ? <button type="button" className="btn btn--ghost" disabled={sending} onClick={() => vote(false)}>Continue</button> : null}
+  </section>;
+
   if (!open) {
     const mine = lobby.vote.picks.find((entry) => entry.slot === slot)?.pick;
     return (
@@ -52,11 +57,6 @@ export function PhoneVote({ lobby, slot, automatic = false }) {
       </section>
     );
   }
-
-  if (automatic) return <section className="phone-vote" aria-live="polite">
-    <p className="stub__status">Watch the TV. Your game is starting.</p>
-    {error ? <button type="button" className="btn btn--ghost" disabled={sending} onClick={() => vote(false)}>Continue</button> : null}
-  </section>;
 
   return (
     <section className="phone-vote" aria-live="polite">

@@ -3,6 +3,17 @@ import {createStrokeIntentDetector} from '../src/tabletennis/strokeIntent.js';
 
 const input = (axis, rate, aim = 0) => ({angularVelocity: {x: 0, y: 0, z: 0, [axis]: rate}, reach: {x: aim, y: 0}});
 
+test('a gentle aim change is current at the next swing without requiring a full stop', () => {
+  for (const direction of [-1,1]) {
+    const detector = createStrokeIntentDetector();
+    detector.push(input('y',0,-direction*.7),0);
+    for (let i=1;i<=30;i++) expect(detector.push(input('y',.8,direction*.7),i/60)).toBeNull();
+    let gesture;
+    for (let i=31;i<=35;i++) gesture = detector.push(input('y',direction*4,-direction*.9),i/60) || gesture;
+    expect(gesture.aim.x).toBe(direction*.7);
+  }
+});
+
 test('forehand and backhand bursts work in every phone axis at realistic sensor cadences', () => {
   for (const hz of [30, 60, 100]) for (const axis of ['x', 'y', 'z']) for (const sign of [-1, 1]) {
     const detector = createStrokeIntentDetector(), requests = [];

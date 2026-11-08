@@ -89,7 +89,6 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
     const post = message => frame.current?.contentWindow?.postMessage(message, window.location.origin);
     const recoverHost = async () => {
       if (controller || !ready.current || !recovering.current || connection !== 'online') return;
-      if (sport === 'tennis') {recovering.current = false; publishState(); return;}
           const control = currentControl.current;
           if (recoveryRequest.current === control) return;
           recoveryRequest.current = control;
@@ -122,7 +121,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         }
         setSaveIssue(data.ok ? '' : 'Could not restore this checkpoint. Return to the lobby to start again.');
       } else if (!controller && data?.type === 'wee:game-checkpoint' && data.gameId === gameId &&
-          ['bowling', 'table-tennis'].includes(sport) && !recovering.current) {
+          ['bowling', 'table-tennis', 'tennis'].includes(sport) && !recovering.current) {
         const key = checkpointKey.current;
         const control = currentControl.current;
         checkpointQueue.current = checkpointQueue.current.catch(() => {}).then(async () => {
@@ -133,7 +132,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
             setSaveIssue('Progress changed in another TV session. Reload to recover the saved game.'); return;
           }
           if (result.ok) checkpointRevision.current = result.revision;
-          setSaveIssue(result.ok && result.saved ? '' : 'Progress is not saved to disk. Keep the TV open.');
+          setSaveIssue(result.ok && (result.saved || sport === 'tennis') ? '' : 'Progress is not saved to disk. Keep the TV open.');
         });
       } else if (controller && data?.type === 'wee:player-game-command' && isGameCommand(data.command, sport)) {
         const result = !ready.current || !playing || paused || data.command.gameId !== gameId ? {ok:false,error:'not-playing'}

@@ -43,9 +43,9 @@ export function TvGame({ lobby, paused, onClose, error, immersive = true, fullsc
                 <button type="button" disabled={returnDisabled || returning}
                   aria-describedby={confirmReturn ? 'tv-return-explanation' : undefined}
                   onClick={() => { if (confirmReturn) void onReturnToLobby(); else setConfirmReturn(true); }}>
-                  {confirmReturn ? returning ? 'Returning…' : 'End match and return' : 'Return to lobby'}
+                  {confirmReturn ? returning ? 'Returning…' : 'Save and return' : 'Return to lobby'}
                 </button>
-                {confirmReturn ? <><p id="tv-return-explanation">End this match and clear its score? Players and controller setup stay in the lobby.</p>
+                {confirmReturn ? <><p id="tv-return-explanation">Return with everyone? An unfinished match can continue from its last completed point or roll.</p>
                   <button type="button" disabled={returning} onClick={() => setConfirmReturn(false)}>Keep playing</button></> : null}
               </div> : null}
               <button type="button" onClick={onClose}>Close lobby</button>

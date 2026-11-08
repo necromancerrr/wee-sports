@@ -64,6 +64,8 @@ export class World {
     public getScore(): Score {
         return this.gameLogic.getScore();
     }
+    public checkpoint() { return this.gameLogic.checkpoint(); }
+    public restoreCheckpoint(value: Parameters<GameLogic['restoreCheckpoint']>[0]): boolean { return this.gameLogic.restoreCheckpoint(value); }
 
     constructor(container: HTMLElement) {
         this.scene = new THREE.Scene();

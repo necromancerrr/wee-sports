@@ -13,11 +13,15 @@ export function useReconnect(role, code) {
   const [storageWarning, setStorageWarning] = useState(false);
   const token = useRef(null);
   const needsResume = useRef(false);
-  const accept = useCallback(result => {
+  const operation = useRef(0);
+  const leaving = useRef(false);
+  const accept = useCallback((result, expectedOperation) => {
+    if (expectedOperation !== undefined && expectedOperation !== operation.current) return false;
     token.current = result.token;
     needsResume.current = false;
     setStorageWarning(!saveToken(role, code, result.token));
     setSnapshot(result); setReconnecting(false); setEnded(null);
+    return true;
   }, [role, code]);
   useEffect(() => {
     const departureKey = `${role}:${code}`;
@@ -26,13 +30,16 @@ export function useReconnect(role, code) {
     let live = true, pending = false, stopped = false;
     token.current = loadToken(role, code);
     needsResume.current = Boolean(token.current);
+    leaving.current = false;
+    operation.current++;
     setSnapshot(null); setEnded(null); setReconnecting(needsResume.current);
     async function resume() {
-      if (!live || stopped || pending || !token.current || !needsResume.current || !socket.connected) return;
+      if (!live || stopped || pending || leaving.current || !token.current || !needsResume.current || !socket.connected) return;
       pending = true;
+      const attempt = operation.current;
       const result = await request(EVENTS.SESSION_RESUME, { v: PROTOCOL_VERSION, code, role, token: token.current });
       pending = false;
-      if (!live || stopped) return;
+      if (!live || stopped || leaving.current || attempt !== operation.current) return;
       if (result.ok) accept(result);
       else if (['no-room', 'bad-session'].includes(result.error)) {
         clearToken(role, code); token.current = null; needsResume.current = false;
@@ -47,11 +54,14 @@ export function useReconnect(role, code) {
       if (!token.current || stopped) return;
       needsResume.current = true; setReconnecting(true);
     };
-    const closed = () => {
+    const closed = event => {
+      if (event?.code && event.code !== code) return;
+      operation.current++;
       clearToken(role, code); token.current = null; needsResume.current = false;
       setSnapshot(null); setReconnecting(false); setEnded('ended');
     };
     const replaced = () => {
+      operation.current++;
       stopped = true; token.current = null; needsResume.current = false;
       setSnapshot(null); setReconnecting(false); setEnded('replaced');
     };
@@ -77,6 +87,7 @@ export function useReconnect(role, code) {
     const timer = setInterval(resume, 2000);
     resume();
     return () => {
+      operation.current++;
       live = false; clearInterval(timer);
       window.removeEventListener('pagehide', away);
       window.removeEventListener('pageshow', pageShow);
@@ -92,11 +103,16 @@ export function useReconnect(role, code) {
     };
   }, [role, code, accept]);
   async function leave() {
-    const result = await request(role === 'host' ? EVENTS.HOST_CLOSE : EVENTS.PLAYER_LEAVE, {});
-    if (!result.ok) return false;
+    if (leaving.current) return false;
+    leaving.current = true; operation.current++;
+    const result = await request(role === 'host' ? EVENTS.HOST_CLOSE : EVENTS.PLAYER_LEAVE, {code, token:token.current});
+    if (!result?.ok) {leaving.current = false; return false;}
+    clearTimeout(pendingDepartures.get(`${role}:${code}`));
+    pendingDepartures.delete(`${role}:${code}`);
     clearToken(role, code); token.current = null; needsResume.current = false;
     setSnapshot(null); setReconnecting(false); setEnded(null);
+    leaving.current = false;
     return true;
   }
-  return { snapshot, reconnecting, ended, storageWarning, accept, leave };
+  return { snapshot, reconnecting, ended, storageWarning, accept, leave, beginJoin: () => ++operation.current };
 }

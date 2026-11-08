@@ -49,7 +49,7 @@ export class ControllerSession {
     this.socket = makeSocket(this.origin, { transports: ['websocket', 'polling'], autoConnect: false, reconnection: true,
       auth: profileToken ? { profileToken } : {} });
     this.socket.on('connect', () => this.onConnect());
-    this.socket.on('disconnect', () => { this.connectionAttempt++; this.resuming = false; this.clearTransient(); this.changed(this.seat, 'offline'); });
+    this.socket.on('disconnect', () => { clearTimeout(this.resumeRetry); this.connectionAttempt++; this.resuming = false; this.clearTransient(); this.changed(this.seat, 'offline'); });
     this.socket.on('connect_error', () => this.changed(this.seat, 'offline'));
     this.socket.on(EVENTS.LOBBY_UPDATE, snapshot => {
       if (!this.seat || snapshot.code !== this.seat.code) return;
@@ -71,14 +71,22 @@ export class ControllerSession {
   }
 
   async onConnect() {
-    if (!this.active) { this.socket.disconnect(); return; }
+    clearTimeout(this.resumeRetry);
+    if (!this.active || this.leaving) { if (!this.leaving) this.socket.disconnect(); return; }
     const attempt = ++this.connectionAttempt;
-    const current = () => this.active && this.socket.connected && attempt === this.connectionAttempt;
+    const current = () => this.active && !this.leaving && this.socket.connected && attempt === this.connectionAttempt;
     if (this.token && this.seat?.code) {
       this.resuming = true;
       const result = await this.request(EVENTS.SESSION_RESUME, { v: PROTOCOL_VERSION, role: 'player', code: this.seat.code, token: this.token });
       if (!current()) return;
-      if (!result?.ok) { this.ended('Your room session expired. Join again.'); return; }
+      if (!result?.ok) {
+        if (['no-room','bad-session','recovery-owner-required'].includes(result?.error)) this.ended('Your room session expired. Join again.');
+        else {
+          this.changed(this.seat, 'offline');
+          this.resumeRetry = setTimeout(() => {if (current()) void this.onConnect();}, 2000);
+        }
+        return;
+      }
       await this.accept(result, {notify:false});
       if (!current()) return;
       // Clear old setup before allowing the automatic flow to restart.
@@ -148,8 +156,10 @@ export class ControllerSession {
 
   async join(code, name, capabilities) {
     await this.connect();
+    const attempt = this.connectionAttempt;
     const result = await this.request(EVENTS.PLAYER_JOIN, { v: PROTOCOL_VERSION, code: normalizeCode(code), name, capabilities });
-    if (result.ok && this.active && this.socket.connected) await this.accept(result);
+    if (result.ok && this.active && !this.leaving && this.socket.connected && attempt === this.connectionAttempt) await this.accept(result);
+    else if (result.ok) return {ok:false,error:'room-ended'};
     return result;
   }
 
@@ -160,7 +170,7 @@ export class ControllerSession {
   }
 
   playing() {
-    return this.active && this.inputActive && !this.resuming && this.socket.connected && this.seat?.phase === 'game' && !this.seat.paused && this.seat.gameId;
+    return this.active && this.inputActive && !this.leaving && !this.resuming && this.socket.connected && this.seat?.phase === 'game' && !this.seat.paused && this.seat.gameId;
   }
 
   configure({hand} = {}) {if (['Left','Right'].includes(hand)) this.hand = hand;}
@@ -225,12 +235,14 @@ export class ControllerSession {
     // Server reads account identity from the authenticated handshake, never room data.
     if (this.active && this.token) { this.socket.disconnect(); this.socket.connect(); }
   }
-  ended(message) { this.token = null; this.seat = null; this.clearTransient(); this.socket.disconnect(); this.save(null); this.changed(null, message); }
+  ended(message) { clearTimeout(this.resumeRetry); this.connectionAttempt++; this.resuming = false; this.token = null; this.seat = null; this.inputSetup = null; this.clearTransient(); this.socket.disconnect(); this.save(null); this.changed(null, message); }
   async leave() {
-    const result=await this.request(EVENTS.PLAYER_LEAVE, {});
-    if(!result?.ok) throw new Error('Could not leave the room yet. Reconnect and try again.');
+    clearTimeout(this.resumeRetry); this.leaving = true; this.connectionAttempt++; this.clearTransient();
+    const result=await this.request(EVENTS.PLAYER_LEAVE, {code:this.seat?.code,token:this.token});
+    this.leaving = false;
+    if(!result?.ok) {if (this.resuming) {this.resuming = false; void this.onConnect();} throw new Error('Could not leave the room yet. Reconnect and try again.');}
     this.ended('Left room');
     return result;
   }
-  dispose() { this.active = false; this.clearTransient(); this.socket.removeAllListeners(); this.socket.disconnect(); }
+  dispose() { clearTimeout(this.resumeRetry); this.active = false; this.clearTransient(); this.socket.removeAllListeners(); this.socket.disconnect(); }
 }

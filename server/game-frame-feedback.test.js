@@ -39,7 +39,7 @@ function mount(overrides = {}) {
   let effects = h.effects;
   cleanups = effects.map(({ effect }) => effect());
   const receive = (data, envelope = {}) => listener({ data, source: contentWindow, origin: window.location.origin, ...envelope });
-  receive({ type: 'wee:bridge-ready' });
+  const ready = receive({ type: 'wee:bridge-ready' });
   // Recovery is part of mounting a modern host; individual bridge assertions start after that handshake.
   h.request.mockClear();
   const rerender = changes => {
@@ -55,7 +55,7 @@ function mount(overrides = {}) {
     effects = h.effects;
   };
   const unmount = () => { cleanups.forEach(cleanup => cleanup?.()); cleanups = []; };
-  return { onAudio, contentWindow, receive, rerender, unmount };
+  return { onAudio, contentWindow, receive, rerender, unmount, ready };
 }
 
 test('homepage audio accepts only the current game frame, sport, session and known event', async () => {
@@ -124,6 +124,7 @@ const commandResult = (extra = {}) => ({ type: 'wee:game-command-result', id: 'o
 
 test('phone commands wait for a matching result from the current TV iframe', async () => {
   const f = mount(), ack = vi.fn();
+  await f.ready;
   const command = gameCommand();
   h.socketHandlers.get(EVENTS.GAME_COMMAND)(command, ack);
   expect(f.contentWindow.postMessage).toHaveBeenCalledWith({ type: 'wee:game-command', command }, window.location.origin);
@@ -141,8 +142,9 @@ test('phone commands wait for a matching result from the current TV iframe', asy
   expect(ack).toHaveBeenCalledTimes(1);
 });
 
-test('commands reject stale games, unsupported sport controls and duplicate pending delivery', () => {
+test('commands reject stale games, unsupported sport controls and duplicate pending delivery', async () => {
   const f = mount(), ack = vi.fn(), duplicateAck = vi.fn();
+  await f.ready;
   const command = h.socketHandlers.get(EVENTS.GAME_COMMAND);
   f.contentWindow.postMessage.mockClear();
   command(gameCommand({ gameId: 'old' }), ack);

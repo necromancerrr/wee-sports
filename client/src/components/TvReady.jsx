@@ -19,7 +19,7 @@ export function TvReady({ lobby }) {
   const { players } = lobby;
   const leader = players.find(player => player.slot === lobby.leaderSlot);
   if (!players.length) return <p className="host-lobby__waiting" role="status">Waiting for players…</p>;
-  const cue = counting ? 'Starting…' : lobby.canStart && leader ? `Start from ${leader.name}’s phone` : 'Get ready on your phone';
+  const cue = lobby.resumeGame ? 'Everyone keeps their place.' : counting ? 'Starting…' : lobby.canStart && leader ? `Start from ${leader.name}’s phone` : 'Get ready on your phone';
 
   return (
     <section className="ready" data-counting={counting} aria-label="Lobby players">

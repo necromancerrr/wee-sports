@@ -16,6 +16,19 @@ function create() {
   return {session, messages, lastSetup, acknowledge, warm};
 }
 
+test('ordinary 15–19 ms sensor jitter sends each fresh pose without alternating-frame delay', () => {
+  const f = create(); f.session.select('motion'); f.warm(); f.acknowledge();
+  f.session.lobby({connected:true,playing:true,paused:false,gameId:'cadence',generation:1});
+  let time = .22;
+  for (let i=0;i<60;i++) {
+    time += i % 2 ? .019 : .015;
+    f.session.sample(sample(time,11+i,{x:0,y:.8,z:0}));
+  }
+  const poses = f.messages.filter(message => message.type === 'wee:player-pose');
+  expect(poses).toHaveLength(60);
+  expect(f.session.frame(time)).toBeNull(); // No replay of the last sensor sample.
+});
+
 test('motion startup needs continuous live samples and a matching server acknowledgement', () => {
   const f = create();
   f.session.select('motion');

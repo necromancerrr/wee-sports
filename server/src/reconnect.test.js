@@ -131,9 +131,9 @@ test('expiration frees the reserved seat and invalidates the old token', () => {
   assert.equal(restore(store, 'late', players[0]).ok, false);
 });
 
-test('a host timeout closes the room and invalidates all player sessions', () => {
+test('a host timeout closes the room when all players have disconnected', () => {
   const { store, host, players, clock, code } = setup();
-  store.disconnect('host'); clock.now += RECONNECT_MS;
+  store.disconnect('host'); store.disconnect('p0'); clock.now += RECONNECT_MS;
   assert.equal(store.expireDisconnected()[0].closed, true);
   assert.equal(store.lobby(code), null);
   assert.equal(restore(store, 'host-back', host).error, 'no-room');
@@ -163,7 +163,7 @@ test('navigating away and creating another lobby on the same socket does not ove
   assert.equal(store.lobby(next.code).paused, false);
   clock.now += RECONNECT_MS;
   store.expireDisconnected();
-  assert.equal(store.lobby(code), null);
+  assert.equal(store.lobby(code).players.length, 1);
   assert.equal(store.hostedBy('host'), next.code);
-  assert.equal(restore(store, 'back', host).error, 'no-room');
+  assert.equal(restore(store, 'back', host).ok, true);
 });

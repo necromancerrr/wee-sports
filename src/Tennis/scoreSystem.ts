@@ -9,6 +9,12 @@ export interface CompletedSet {
     player2: number;
 }
 
+export interface TennisScoreCheckpoint {
+    version: 1;
+    points: [number, number];
+    sets: CompletedSet[];
+}
+
 export interface Score {
     player1: number;
     player2: number;
@@ -61,6 +67,36 @@ export class ScoreSystem {
 
     public get isComplete(): boolean {
         return this.matchWinner !== null;
+    }
+
+    public checkpoint(): TennisScoreCheckpoint {
+        return {version: 1, points: [this.points.player1, this.points.player2], sets: this.completedSets.map(set => ({...set}))};
+    }
+
+    public static fromCheckpoint(value: unknown): ScoreSystem {
+        const data = value as TennisScoreCheckpoint;
+        const point = (n: number) => Number.isSafeInteger(n) && n >= 0 && n <= 10000;
+        const finished = (a: number, b: number) => Math.max(a, b) >= 7 && Math.abs(a - b) >= 2;
+        if (!data || data.version !== 1 || !Array.isArray(data.points) || data.points.length !== 2 || !data.points.every(point) ||
+            !Array.isArray(data.sets) || data.sets.length > 3) throw new Error('Invalid tennis score');
+        const score = new ScoreSystem();
+        for (const set of data.sets) {
+            if (score.matchWinner || !set || !point(set.player1) || !point(set.player2) || !finished(set.player1, set.player2) ||
+                (Math.min(set.player1, set.player2) < 6 ? Math.max(set.player1, set.player2) !== 7 : Math.abs(set.player1 - set.player2) !== 2)) throw new Error('Invalid tennis set');
+            const winner = set.player1 > set.player2 ? 'player1' : 'player2';
+            score.sets[winner]++;
+            score.completedSets.push({...set});
+            if (score.sets[winner] === 2) score.matchWinner = winner;
+        }
+        const final = data.sets.at(-1);
+        if (score.matchWinner ? !final || final.player1 !== data.points[0] || final.player2 !== data.points[1]
+            : finished(...data.points)) throw new Error('Invalid tennis point boundary');
+        score.points = {player1: data.points[0], player2: data.points[1]};
+        const setIndex = data.sets.length - (score.matchWinner ? 1 : 0);
+        score.setStarter = setIndex % 2 === 0 ? 'player1' : 'player2';
+        const played = data.points[0] + data.points[1] - (score.matchWinner ? 1 : 0);
+        score.server = Math.floor((played + 1) / 2) % 2 === 0 ? score.setStarter : opponent(score.setStarter);
+        return score;
     }
 
     public getScore(): Score {

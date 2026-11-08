@@ -26,6 +26,16 @@ async function main(): Promise<void> {
     const world = new World(container as HTMLElement);
     const embedded = window.parent !== window;
     let lobbyPaused = embedded;
+    let publishedCheckpoint = '';
+    function publishCheckpoint(): void {
+        if (!embedded || !activeGameId || paused) return;
+        const payload = world.checkpoint();
+        if (!payload) return;
+        const key = JSON.stringify(payload);
+        if (key === publishedCheckpoint) return;
+        publishedCheckpoint = key;
+        window.parent.postMessage({type:'wee:game-checkpoint',gameId:activeGameId,sport:'tennis',rulesVersion:1,checkpointVersion:1,payload}, location.origin);
+    }
     let pageSuspended = false;
     let manuallyPaused = false;
     let paused = embedded;
@@ -227,6 +237,7 @@ async function main(): Promise<void> {
             }
         }
         publishOptions();
+        publishCheckpoint();
     };
     world.onGameEvent = event => {
         playSound(event.kind);
@@ -304,6 +315,16 @@ async function main(): Promise<void> {
     }
     const receiveState = (event: MessageEvent): void => {
         if (event.source !== window.parent || event.origin !== location.origin) return;
+        if (embedded && event.data?.type === 'wee:restore-checkpoint' && event.data.gameId === activeGameId) {
+            const ok = world.restoreCheckpoint(event.data.payload);
+            publishedState = ''; publishedCheckpoint = '';
+            window.parent.postMessage({type:'wee:restore-checkpoint-result',gameId:activeGameId,ok}, location.origin);
+            updateScore();
+            return;
+        }
+        if (embedded && event.data?.type === 'wee:checkpoint-request' && event.data.gameId === activeGameId) {
+            publishedCheckpoint = ''; publishCheckpoint(); return;
+        }
         if (embedded && event.data?.type === 'wee:game-command') {
             const command = event.data.command;
             if (typeof command?.id !== 'string') return;
@@ -318,7 +339,7 @@ async function main(): Promise<void> {
         const p2 = players.find((player: {slot: number}) => player.slot === 1);
         humanOpponent = Boolean(p2);
         const nextGameId = typeof event.data.gameId === 'string' ? event.data.gameId : null;
-        if (nextGameId !== activeGameId) { deliveredCommands.clear(); publishedOptions = ''; }
+        if (nextGameId !== activeGameId) { deliveredCommands.clear(); publishedOptions = ''; publishedCheckpoint = ''; }
         activeGameId = nextGameId;
         names = [p1?.name ?? 'Player 1', p2?.name ?? 'Bot'];
         world.botEnabled = !p2;

@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import {TABLE, BALL} from './physics.js';
 import {paddlePresentation} from './paddlePresentation.js';
 import {createTableTennisViews} from './views.js';
+import {createIslandCourt} from './islandCourt.js';
 
 /** Lightweight court presentation. The live contact face follows the simulation;
  * only disabled windup/recovery poses receive a decorative follow-through. */
 export function createTableTennisScene(container, game, {onMove, onAction, labels = []} = {}) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#283b49');
-  scene.fog = new THREE.Fog('#283b49', 8, 20);
+  scene.background = new THREE.Color('#6c9fa7');
+  scene.fog = new THREE.Fog('#6c9fa7', 12, 32);
   const views = createTableTennisViews(), camera = views.cameras[0];
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: false, powerPreference: 'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
@@ -17,10 +18,10 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   renderer.shadowMap.autoUpdate = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = .88;
+  renderer.toneMappingExposure = .82;
   container.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight('#d6e7f6', '#172531', 1.25));
-  const light = new THREE.DirectionalLight('#e5eff8', 2);
+  scene.add(new THREE.HemisphereLight('#cee2de', '#324b3b', 1.5));
+  const light = new THREE.DirectionalLight('#ffedce', 1.7);
   light.position.set(-3, 7, 4); light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);
   Object.assign(light.shadow.camera, {left: -4, right: 4, top: 4, bottom: -4, near: .5, far: 16});
@@ -42,14 +43,9 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     const item = mesh(new THREE.SphereGeometry(radius, 16, 12), color, parent);
     item.position.set(...position); return item;
   }
-  box([24, .08, 24], [0, -.055, 0], '#304350');
-  box([4.6, .012, 6], [0, -.005, 0], '#3d5966');
-  for (const x of [-2.25, 2.25]) box([.025, .014, 5.85], [x, .004, 0], '#6b8999');
-  for (const z of [-2.93, 2.93]) box([4.5, .014, .025], [0, .004, z], '#6b8999');
-  // Quiet surroundings keep the moving ball, paddles and court readable.
-  // No garden props or background geometry compete with the rally.
-  box([TABLE.width + .025, .10, TABLE.length + .025], [0, TABLE.height - .075, 0], '#5c7786');
-  box([TABLE.width, .055, TABLE.length], [0, TABLE.height - .0275, 0], '#246b83');
+  const island = createIslandCourt(scene);
+  box([TABLE.width + .025, .10, TABLE.length + .025], [0, TABLE.height - .075, 0], '#b8b99e');
+  box([TABLE.width, .055, TABLE.length], [0, TABLE.height - .0275, 0], '#247da0');
   for (const x of [-.55, .55]) for (const z of [-1, 1]) box([.075, .65, .075], [x, .33, z], '#1d3441');
   for (const x of [-.55, .55]) box([.055, .055, 2.1], [x, .22, 0], '#1d3441');
   for (const x of [-TABLE.width / 2 + .012, TABLE.width / 2 - .012]) box([.018, .002, TABLE.length], [x, TABLE.height + .001, 0], '#dcebf1');
@@ -103,6 +99,7 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   const normal = new THREE.Vector3(), lookAt = new THREE.Vector3(), screen = new THREE.Vector3();
   let contactId = null, contactAt = -Infinity;
   function render(now) {
+    island.update(now, motionPreference?.matches);
     if (split !== (game.mode === 'versus')) {split = game.mode === 'versus'; resize();}
     const p = game.physics.ball.position;
     ball.position.set(p.x, p.y, p.z); ball.visible = game.physics.ball.active;

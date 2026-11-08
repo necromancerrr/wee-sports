@@ -25,6 +25,38 @@ async function fixture() {
   return { session, socket, feedback, EVENTS, advance: ms => { now += ms; } };
 }
 
+test('a room close or explicit leave cannot be undone by a late resume response', async () => {
+  for (const leave of [false,true]) {
+    const {session, socket, EVENTS} = await fixture();
+    session.token='private-seat';
+    const old = {...session.seat,token:session.token,ok:true};
+    let complete;
+    session.request = event => event === EVENTS.SESSION_RESUME ? new Promise(resolve=>{complete=resolve;}) : Promise.resolve({ok:true});
+    const reconnect = session.onConnect();
+    if (leave) await session.leave(); else socket.emit(EVENTS.ROOM_CLOSED,{code:old.code});
+    complete(old); await reconnect;
+    assert.equal(session.seat,null); assert.equal(session.token,null); assert.equal(session.playing(),false);
+  }
+});
+
+test('a temporary resume timeout keeps the seat and retries without replaying motion', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const {session,socket,EVENTS}=await fixture();
+  session.token='private-seat';
+  const restored={...session.seat,ok:true,token:session.token};
+  socket.responses.set(EVENTS.SESSION_RESUME,{ok:false,error:'outcome-unknown'});
+  await session.onConnect();
+  assert.equal(session.token,'private-seat');assert.equal(session.seat.gameId,'game-a');
+  assert.equal(session.playing(),false);
+  socket.responses.set(EVENTS.SESSION_RESUME,restored);
+  t.mock.timers.tick(2000);
+  for(let i=0;i<6;i++)await Promise.resolve();
+  assert.equal(socket.sent.filter(event=>event.event===EVENTS.SESSION_RESUME).length,2);
+  assert.equal(session.resuming,false);assert.equal(session.seat.gameId,'game-a');
+  assert.equal(socket.sent.filter(event=>event.event===EVENTS.PLAYER_POSE).length,0);
+  session.dispose();
+});
+
 test('only public HTTPS join links are accepted by the scanner', async () => {
   const { parseRoomLink, serverOrigin } = await import('../src/session.js');
   assert.deepEqual(parseRoomLink('https://game.example/join?code=K7PM'), { origin: 'https://game.example', code: 'K7PM' });

@@ -85,6 +85,16 @@ export function checkpoint(sport, value) {
     keys(value.settings, ['assistance', 'sensitivity']);
     if (!['friendly', 'standard'].includes(value.settings.assistance) || !Number.isFinite(value.settings.sensitivity) ||
         value.settings.sensitivity < .25 || value.settings.sensitivity > 2) fail('invalid-state');
+  } else if (sport === 'tennis') {
+    keys(value, ['version', 'boundary', 'score', 'settings', 'humanOpponent']);
+    if (value.boundary !== 'point' || typeof value.humanOpponent !== 'boolean') fail('unstable-checkpoint');
+    keys(value.score, ['version', 'points', 'sets']);
+    if (!Array.isArray(value.score.sets) || value.score.sets.length > 3) fail('invalid-checkpoint');
+    for (const set of value.score.sets) keys(set, ['player1', 'player2']);
+    keys(value.settings, ['format', 'assistance', 'botDifficulty', 'timingAssist', 'autoMove']);
+    if (value.settings.format !== 'full' || !['beginner', 'standard'].includes(value.settings.assistance) ||
+        !['beginner', 'standard'].includes(value.settings.botDifficulty) || typeof value.settings.timingAssist !== 'boolean' ||
+        typeof value.settings.autoMove !== 'boolean') fail('invalid-state');
   } else fail('unsupported-checkpoint');
   return boundedJson(value);
 }

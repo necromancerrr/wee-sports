@@ -22,7 +22,7 @@ import { planCourtShot } from './shotTrajectory';
 import { chooseBotStroke, type BotStroke } from './botPlayer';
 import { predictBaselineIntercept, lateralSteering } from './autoPosition';
 import { sweptRacketContact, contactWindowCrossed } from './components/racketContact';
-import { ScoreSystem, type Score, type PointResult, type MatchFormat } from './scoreSystem';
+import { ScoreSystem, type Score, type PointResult, type MatchFormat, type TennisScoreCheckpoint } from './scoreSystem';
 import { TENNIS_COURT, serviceSign, pointReasonLabel } from './tennisRules';
 
 const AUTO_TRACKING_SPEED = 0.75;
@@ -50,6 +50,14 @@ export interface TennisSettings {
     botDifficulty: 'beginner' | 'standard';
     timingAssist: boolean;
     autoMove: boolean;
+}
+
+export interface TennisCheckpoint {
+    version: 1;
+    boundary: 'point';
+    score: TennisScoreCheckpoint;
+    settings: TennisSettings;
+    humanOpponent: boolean;
 }
 export interface PracticeState {
     active: boolean;
@@ -103,7 +111,7 @@ export class GameLogic {
     private readonly getSwingFeedback: () => (message: string) => void;
     private readonly onHit: (player: 1 | 2) => void;
     private readonly onGameEvent: (event: TennisGameEvent) => void;
-    private readonly scoreSystem = new ScoreSystem();
+    private scoreSystem = new ScoreSystem();
     private readonly onStrokeResult: (result: StrokeResult) => void;
     private readonly settings: TennisSettings = {format: 'full', assistance: 'standard', botDifficulty: 'standard', timingAssist: true, autoMove: true};
     private practice: PracticeState = {active: false, stroke: 'alternate', hand: 'Right', attempts: 0, returns: 0, streak: 0, bestStreak: 0};
@@ -140,6 +148,27 @@ export class GameLogic {
 
     public getScore(): Score {
         return this.scoreSystem.getScore();
+    }
+
+    public checkpoint(): TennisCheckpoint | null {
+        const ball = this.ball.userData as BallUserData;
+        if (this.practice.active || (!this.scoreSystem.isComplete && !ball.isWaitingForServe)) return null;
+        return {version: 1, boundary: 'point', score: this.scoreSystem.checkpoint(), settings: this.getSettings(), humanOpponent: !this.botEnabled};
+    }
+
+    public restoreCheckpoint(value: TennisCheckpoint): boolean {
+        if (value?.version !== 1 || value.boundary !== 'point' || value.humanOpponent !== !this.botEnabled) return false;
+        let restored: ScoreSystem;
+        try {restored = ScoreSystem.fromCheckpoint(value.score);} catch {return false;}
+        this.startRound();
+        this.scoreSystem = restored;
+        this.configure(value.settings);
+        const score = restored.getScore(), data = this.ball.userData as BallUserData;
+        data.servingPlayer = score.server; data.serviceSide = score.serviceSide;
+        data.serveAttempt = 1; data.serveStatus = 'ready';
+        prepareServe(this.ball, .3);
+        this.setServerPosition();
+        return true;
     }
 
     public constructor(options: GameLogicOptions) {

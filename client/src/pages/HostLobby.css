@@ -34,6 +34,10 @@
 .host-lobby[data-party='true'] .ready-card__status { grid-column: 2; font-size: .85rem; }
 .host-lobby[data-party='true'] .ready-card .seat__badge { grid-row: 1 / 3; width: 2.35rem; height: 2.35rem; font-size: .9rem; }
 .host-lobby > .stub__actions { margin-top: 2rem; }
+.host-lobby__resume { padding: 1.5rem; margin: 0 0 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.host-lobby__resume h2 { margin: 0 0 .5rem; font-size: clamp(1.4rem, 2.3vw, 2rem); }
+.host-lobby__resume p { color: var(--text-muted); }
+.host-lobby__resume .btn { min-height: 3.5rem; }
 
 @media (max-width: 700px) {
   .host-lobby__mark { opacity: .065; }

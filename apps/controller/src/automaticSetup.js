@@ -92,7 +92,7 @@ export class AutomaticControllerSetup {
 
   async ready() {
     const seat = this.session.seat;
-    if (!this.online || !seat || this.readyPending || !this.playIntent) return;
+    if (!this.online || !seat || seat.paused || this.readyPending || !this.playIntent) return;
     const player = seat.players?.find(value => value.slot === seat.slot);
     const event = seat.phase === 'vote' ? EVENTS.TUTORIAL_VOTE :
       seat.phase === 'ready' && this.setup && !player?.ready ? EVENTS.PLAYER_READY : null;
@@ -101,7 +101,7 @@ export class AutomaticControllerSetup {
     if (key === this.readyKey) return;
     this.readyPending = true;
     const attempt = this.attempt;
-    const response = await this.session.request(event, event === EVENTS.TUTORIAL_VOTE ? {watch:false} : {ready:true});
+    const response = await this.session.request(event, event === EVENTS.TUTORIAL_VOTE ? {watch:false} : {ready:true,skipTutorial:true});
     if (attempt !== this.attempt) return;
     this.readyPending = false;
     if (response?.ok) this.readyKey = key;

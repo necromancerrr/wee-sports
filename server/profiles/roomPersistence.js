@@ -1,10 +1,16 @@
 import {BowlingMatch} from '../../src/bowling/match.ts';
 import {TableTennisGame} from '../../src/tabletennis/game.js';
+import {ScoreSystem} from '../../src/Tennis/scoreSystem.ts';
 import {checkpoint, fail, ProfileError} from './validation.js';
 
 /** Derive casual results from the same validated stable state we commit. */
 export function validateSportState(room, payload) {
   checkpoint(room.sport, payload);
+  if (room.sport === 'tennis') {
+    try {ScoreSystem.fromCheckpoint(payload.score);} catch {fail('invalid-checkpoint');}
+    if (room.players.length !== (payload.humanOpponent ? 2 : 1)) fail('wrong-roster');
+    return undefined; // Live room recovery; tennis profile history is separate.
+  }
   if (room.sport === 'bowling') {
     let match;
     try { match = BowlingMatch.fromCheckpoint(payload.match); } catch { fail('invalid-checkpoint'); }

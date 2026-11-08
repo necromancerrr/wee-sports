@@ -1,0 +1,106 @@
+{
+  "recordedAt": "2026-11-08T06:44:45.837Z",
+  "baseCommit": "5dbd98083514502a1537b56b6eb6c8028bcf104e",
+  "automated": {
+    "root": {
+      "files": 72,
+      "passed": 628
+    },
+    "server": {
+      "passed": 170
+    },
+    "nativeController": {
+      "passed": 68
+    },
+    "finalCameraAndPresentation": {
+      "passed": 6
+    },
+    "typeScript": "passed",
+    "productionBuild": "passed; all six pages and required assets",
+    "expoExports": "iOS and Android Hermes bundles passed"
+  },
+  "recovery": {
+    "recordedAt": "2026-11-08T06:41:34.868Z",
+    "checks": [
+      "Tennis: scan asks for a name, lobby stays windowed, fullscreen starts at countdown and tutorials skip automatically",
+      "Tennis: leaving the TV returns the phone to the lobby; Continue restores the nonzero score with the original player",
+      "Tennis: New game starts fresh; closing the room releases the controller",
+      "Table Tennis: scan asks for a name, lobby stays windowed, fullscreen starts at countdown and tutorials skip automatically",
+      "Table Tennis: leaving the TV returns the phone to the lobby; Continue restores the nonzero score with the original player",
+      "Table Tennis: New game starts fresh; closing the room releases the controller",
+      "Bowling: scan asks for a name, lobby stays windowed, fullscreen starts at countdown and tutorials skip automatically",
+      "Bowling: leaving the TV returns the phone to the lobby; Continue restores the nonzero score with the original player",
+      "Bowling: New game starts fresh; closing the room releases the controller"
+    ],
+    "errors": [],
+    "limitations": [
+      "Synthetic touch phone; nonzero stable checkpoints seeded through the trusted TV recovery bridge. Physical iPhone motion and wireless latency require device testing."
+    ]
+  },
+  "motion": {
+    "recordedAt": "2026-11-08T06:25:00.255Z",
+    "runtime": "v24.22.1",
+    "browser": "156.0.8078.79",
+    "rendering": "headless Chromium software WebGL; 960x640 functional viewport",
+    "sensorSource": "Generated DeviceMotion and matching DeviceOrientation at 16 ms; continuous 3 rad/s sine gestures with a 700 ms period and no rest interval",
+    "checks": [
+      "Play joins and the leader starts a scored table-tennis motion game without a calibration checklist",
+      "An idle motion controller produces no automatic player hit or credited return",
+      "Y sideways continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+      "Z screen-up continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+      "Hidden controller stops pose delivery and foreground resumes only with fresh input",
+      "Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt",
+      "The same controller can enter the twelve-point bot game",
+      "No uncaught browser errors"
+    ],
+    "axisResults": [
+      {
+        "axis": "Y sideways",
+        "hostHits": 3,
+        "legalReturns": 3,
+        "elapsedMs": 6134
+      },
+      {
+        "axis": "Z screen-up",
+        "hostHits": 3,
+        "legalReturns": 3,
+        "elapsedMs": 5547
+      }
+    ],
+    "errors": [],
+    "limitations": [
+      "Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.",
+      "No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established."
+    ],
+    "scope": "Run after input/recovery fixes and before the scenery-only follow-up."
+  },
+  "splitViewAndLobby": {
+    "recordedAt": "2026-11-08T06:42:49.854Z",
+    "checks": [
+      "Table Tennis: solo starts from the phone and its controller works after return and restart",
+      "Table Tennis: leaving during play promotes the remaining phone, which can start and control a new game",
+      "Table Tennis: sport selection stays on the phone; closing the room releases the controller",
+      "No uncaught browser errors"
+    ],
+    "errors": [],
+    "limitations": [
+      "Touch controls in generated browser contexts; does not measure physical phone motion or latency."
+    ]
+  },
+  "visualReview": {
+    "reference": "public/island/homepage.webp",
+    "scene": "Open-air table-tennis pavilion with a blue table, muted deck, wood supports, peripheral trees and surrounding water.",
+    "checked": [
+      "Solo court and both split-screen views keep the table unobstructed.",
+      "Each view hides its near roof crossbeam.",
+      "Score and status text use dark backplates against the water and foliage.",
+      "Playing-name entry retains the original Pick up. Play. heading."
+    ]
+  },
+  "limitations": [
+    "Browser input is synthetic and rendering uses software WebGL; physical iPhone motion, haptics and wireless latency still need device testing.",
+    "Remote starts request fullscreen at countdown, but a browser may require a TV-side tap.",
+    "Tennis recovery is live-room memory and requires the game server to remain running.",
+    "Expo bundle exports are not signed installable builds."
+  ]
+}

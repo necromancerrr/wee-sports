@@ -2,7 +2,7 @@ import {createAutomaticMotionSetup, createPaddleIntentController} from '../../sh
 
 // A 60 Hz target with room for sub-millisecond browser scheduling jitter.
 // Latest state is coalesced, never buffered for a later catch-up burst.
-const POSE_INTERVAL_SECONDS = .016;
+const POSE_INTERVAL_SECONDS = .012;
 
 /** Owns freshness and acknowledged readiness; browser permission alone never
  * makes a motion controller playable. No DOM or sensor APIs live here. */

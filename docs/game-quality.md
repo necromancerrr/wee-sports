@@ -1,6 +1,6 @@
 # Consistent shots and clearer TV play
 
-The scan → Play → allow motion flow remains automatic. This follow-up focuses
+The scan → name → Play → allow motion flow keeps automatic motion setup. This follow-up focuses
 on repeatable table-tennis placement, visible contact, scoring and feedback.
 
 The subsequent [input and contact repair](table-tennis-research.md) addresses
@@ -22,9 +22,9 @@ roster, setup or sport changes invalidate an open confirmation. Sport selection
 lives in **Tools → Change sport** on the phone. Web and native still have their
 own UI implementations; the proposed shared UI migration is deferred.
 
-The TV's sport-selection click requests browser fullscreen while it has user
-activation. Fullscreen stays through pairing, countdown and play. Browser denial
-keeps a full-window stage with a Full screen action on the TV. The large 5–1
+The lobby stays windowed. The TV requests fullscreen at countdown, then stays
+in the game view. Browser denial keeps a full-window stage with a Full screen
+action on the TV; the phone cannot grant the TV browser transient activation. The large 5–1
 countdown keeps the original rounded type and tick animation, with the number
 on its own above the lobby’s faint sports-icon backdrop. There is no colored
 box behind the number; reduced-motion preferences are respected.
@@ -55,6 +55,45 @@ restart/sport switching for every sport. Browser input is synthetic; the restore
 winner check seeds a valid 12–10 checkpoint. These checks do not measure physical
 recognition accuracy or wireless latency. Exports are not signed iPhone builds.
 
+## Join, aim and unfinished-room recovery
+
+Web keeps **Pick up. Play.** and Expo keeps **Ready to play?**. Both show a
+playing-name field before joining; scanning in Expo no longer joins a default
+“Player” immediately. Both automatic ready paths request tutorial skipping,
+so the server goes directly from countdown to play. Legacy vote handling remains
+compatible without showing a choice or “You picked No” screen on modern phones.
+
+All three games retain stable checkpoints on a TV departure or return to lobby.
+The TV chooses **Continue game / New game**, and the controllers show a matching
+waiting message. Continue preserves the match identity and score, rotates input
+generation and host epoch, and starts with a fresh countdown. A different roster
+invalidates the saved match. A missing TV stays reserved while any controller is
+connected; an abandoned room with nobody connected still expires. Explicitly
+closing a room removes its players. A late resume or join response cannot undo
+Leave/Close, including a close during the motion permission prompt.
+
+Tennis now checkpoints seven-point sets, service order and settings between
+points. Its checkpoint is live-room memory, not durable profile history. Bowling
+and table tennis retain their existing disk-backed checkpoints. Interrupted
+rallies and rolls restart at the last completed boundary; server restarts still
+expire room codes. The homepage offers a link back to the last hosted room.
+
+Table-tennis web pose delivery allows ordinary 15–19 ms sensor jitter without
+dropping alternating samples. Gentle, sustained repositioning refreshes the
+stroke's aim even without a full stop; the stroke still locks its onset target
+and continuous wrist movement still needs a genuine new gesture. Tests cover
+both directions, stale input, sensor gaps, idle motion and the complete contact
+path. Native reconnect now retains its seat across transient request timeouts
+and keeps gameplay input suspended until the resume handshake succeeds.
+
+Validation for this follow-up: 628 root tests, 170 server tests and 68 native
+controller tests passed, along with TypeScript, all six production pages and
+iOS/Android Hermes exports. The [browser evidence](system-plan/room-recovery-browser.json)
+records name entry, countdown-only fullscreen requests, automatic tutorial
+skipping, nonzero score restoration, new-game resets and controller exit, plus
+generated-motion contact checks. Physical iPhone motion and wireless latency
+remain device checks; exports are not signed installable builds.
+
 ## Table tennis
 
 Friendly mode captures a table-relative landing target when a stroke starts.
@@ -75,8 +114,14 @@ checks, not phone recognition accuracy measurements.
 
 The TV shows a landing ring before the shot and a marker at the actual contact
 position. The rendered paddle matches the collider's position, face and size,
-and remains visible while recovering even when contact is disabled. Player labels identify the two paddles; table-tennis avatars and limbs have been removed. The quiet
-court keeps the table and floor, one net mesh and bounded pixel density. Score,
+and remains visible while recovering even when contact is disabled. Player labels identify the two paddles; table-tennis avatars and limbs have been removed.
+The court now takes its setting from the homepage island's table-tennis pavilion:
+a blue table on a muted deck, warm wood supports, peripheral greenery and water.
+Each camera sees a cutaway at its own end so a roof beam cannot cover the rally.
+Scenery has no colliders, and the table dimensions, cameras and contact geometry
+stay unchanged. Trees and shoreline rocks use instanced meshes; subtle water
+strokes freeze with Reduce Motion. One net mesh and bounded pixel density keep
+the presentation inexpensive in both solo and split views. Score,
 serve, deuce, game-point and winner banners accompany short local sound cues.
 Muted, paused and hidden sessions remain silent. The TV's activated audio
 context now survives sport changes.
@@ -102,7 +147,7 @@ updates. Renaming the bridge does not substitute for gameplay validation.
 
 ## Responsiveness
 
-Browser table-tennis motion now sends from the sensor callback, with a 16 ms
+Browser table-tennis motion now sends from the sensor callback, with a 12 ms
 minimum interval. A render frame can flush only the latest unsent sample; it
 does not resend the same motion or catch up a buffered queue. Previously input
 waited for a render frame and a 33.3 ms send gate. Native sends preserve the

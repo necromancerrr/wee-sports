@@ -38,7 +38,7 @@ export function PhoneReady({ lobby, slot, disabled = false }) {
   useEffect(() => {
     if (lobby.phase !== PHASES.READY || ready || needsSetup || disabled) return;
     let live = true;
-    request(EVENTS.PLAYER_READY, {ready: true}).then(result => {
+    request(EVENTS.PLAYER_READY, {ready: true, skipTutorial: true}).then(result => {
       if (live && !result?.ok) setError(result?.error ?? 'disconnected');
     });
     return () => {live = false;};
@@ -58,11 +58,11 @@ export function PhoneReady({ lobby, slot, disabled = false }) {
   const count = lobby.players.length;
   return <section className="phone-ready">
     {counting ? <h2 className="phone-ready__title" role="timer">{secondsLeft > 0 ? `Starting in ${secondsLeft}…` : 'Go!'}</h2> : <>
-      <p className="phone-ready__count" role="status">{needsSetup ? 'Getting your controller ready…'
+      <p className="phone-ready__count" role="status">{lobby.resumeGame ? 'Choose Continue game or New game on the TV.' : needsSetup ? 'Getting your controller ready…'
         : !ready ? 'Connecting your controls…'
           : isLeader ? `${count} ${count === 1 ? 'player' : 'players'} connected. Start when everyone’s here.`
             : `You’re ready. ${leader?.name || 'The first player'} starts the game.`}</p>
-      {isLeader ? <button type="button" className="btn btn--primary phone-ready__btn"
+      {isLeader && !lobby.resumeGame ? <button type="button" className="btn btn--primary phone-ready__btn"
         disabled={disabled || sending || !lobby.canStart} onClick={() => setConfirmation(confirmationKey)}>{sending ? 'Starting…' : 'Start game'}</button> : null}
     </>}
     {error ? <><p className="alert" role="alert">{errorText(error)}</p>
