@@ -22,8 +22,8 @@ export const CODE_ALPHABET = '23456789CDFGHJKLMNPQRTVWXYZ';
 /** Four characters: easy to read off a TV and quick to type on a phone. */
 export const CODE_LENGTH = 4;
 
-/** Largest supported party; tennis has two playing seats. */
-export const MAX_PLAYERS = 4;
+/** Largest supported party; racket sports have two playing seats. */
+export const MAX_PLAYERS = 8;
 export function playerCapacity(sport) {
   return getSport(sport)?.players.max ?? 0;
 }
@@ -102,6 +102,7 @@ export const PHASES = {
 export const EVENTS = {
   /** TV -> server: open a lobby. Ack: { ok, ...snapshot }. */
   HOST_CREATE: 'host:create',
+  HOST_PLAYER_COUNT: 'host:player-count',
   HOST_SWITCH_SPORT: 'host:switch-sport',
   PLAYER_SWITCH_SPORT: 'player:switch-sport',
   PLAYER_POSE: 'player:pose',
@@ -245,13 +246,13 @@ export function isBowlingState(state) {
   if (!isRecord(state) || !['ready', 'rolling', 'complete'].includes(state.phase) ||
       !Number.isInteger(state.frame) || state.frame < 1 || state.frame > 10) return false;
   if (state.phase !== 'complete') {
-    return Number.isInteger(state.currentPlayer) && state.currentPlayer >= 1 && state.currentPlayer <= 4 &&
+    return Number.isInteger(state.currentPlayer) && state.currentPlayer >= 1 && state.currentPlayer <= playerCapacity('bowling') &&
       state.winners === undefined && state.winnerScore === undefined;
   }
   if (state.currentPlayer !== null || state.frame !== 10) return false;
   if (state.winners === undefined && state.winnerScore === undefined) return true;
-  return Array.isArray(state.winners) && state.winners.length > 0 && state.winners.length <= 4 &&
-    state.winners.every(player => Number.isInteger(player) && player >= 1 && player <= 4) &&
+  return Array.isArray(state.winners) && state.winners.length > 0 && state.winners.length <= playerCapacity('bowling') &&
+    state.winners.every(player => Number.isInteger(player) && player >= 1 && player <= playerCapacity('bowling')) &&
     new Set(state.winners).size === state.winners.length &&
     Number.isInteger(state.winnerScore) && state.winnerScore >= 0 && state.winnerScore <= 300;
 }

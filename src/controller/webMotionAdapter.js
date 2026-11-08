@@ -16,6 +16,7 @@ export function createWebMotionAdapter({target = globalThis.window, document = t
   clock = () => globalThis.performance.now() / 1000, onSample = () => {}, onState = () => {},
   onReset = () => {}, calibrationRevision = () => 0} = {}) {
   let active = false, disposed = false, pageActive = true, orientation, orientationAt = null, lastAngle = null, sequence = 0, attempt = 0;
+  let wasHidden = Boolean(document?.hidden);
   const screenAngle = () => Number.isFinite(target?.screen?.orientation?.angle) ? target.screen.orientation.angle
     : Number.isFinite(target?.orientation) ? target.orientation : 0;
   const reset = reason => {orientation = undefined; orientationAt = null; lastAngle = null; onReset(reason);};
@@ -31,9 +32,14 @@ export function createWebMotionAdapter({target = globalThis.window, document = t
     if (sample) onSample(sample);
   };
   const rotation = event => {if (active && pageActive && !document?.hidden) {orientation = orientationFromWebEvent(event); orientationAt = clock();}};
-  const visibility = () => {reset(document?.hidden ? 'hidden' : 'visible'); onState(document?.hidden ? 'suspended' : active ? 'listening' : 'stopped');};
-  const hide = () => {pageActive = false; reset('pagehide'); onState('suspended');};
-  const show = () => {pageActive = true; reset('pageshow'); onState(active ? 'listening' : 'stopped');};
+  const visibility = () => {
+    const hidden = Boolean(document?.hidden);
+    if (hidden === wasHidden) return;
+    wasHidden = hidden;
+    reset(hidden ? 'hidden' : 'visible'); onState(hidden ? 'suspended' : active ? 'listening' : 'stopped');
+  };
+  const hide = () => {if (pageActive) {pageActive = false; reset('pagehide'); onState('suspended');}};
+  const show = () => {if (!pageActive) {pageActive = true; reset('pageshow'); onState(active ? 'listening' : 'stopped');}};
   const stop = () => {
     attempt++;
     if (!active) return;
@@ -71,6 +77,7 @@ export function createWebMotionAdapter({target = globalThis.window, document = t
       // A pagehide handler may stop/remove pageshow listeners before BFCache
       // restore. Starting again belongs to the current page lifecycle.
       pageActive = true;
+      wasHidden = Boolean(document?.hidden);
       target.addEventListener('devicemotion', motion);
       target.addEventListener('deviceorientation', rotation);
       target.addEventListener('pagehide', hide);

@@ -1,4 +1,5 @@
 import {createWebMotionAdapter} from '../controller/webMotionAdapter.js';
+import {createScreenAwake} from '../controller/phoneExperience.js';
 import {createTableTennisControllerSession} from './controllerSession.js';
 import './controller.css';
 
@@ -8,6 +9,8 @@ const post = message => { if (embedded) window.parent.postMessage(message, locat
 let attempt = 0, lastParentIntent = null, pendingRecenter = null, commandSequence = 0;
 let haptics = true, notice = '', noticeUntil = 0, motionStartedAt = null, motionAcquired = false;
 let frameTime = 0;
+let humanOpponent = false;
+const screenAwake = createScreenAwake({navigator, document});
 const session = createTableTennisControllerSession({send(message) {
   post(message);
   if (!embedded && message.type === 'wee:controller-setup') {
@@ -17,6 +20,7 @@ const session = createTableTennisControllerSession({send(message) {
 
 function render() {
   const state = session.state;
+  screenAwake.setActive(state.connected && Boolean(state.mode) && !state.suspended);
   if (state.mode === 'motion' && state.motionReady) motionAcquired = true;
   let title = 'Ready to rally', cue = state.mode === 'touch' ? 'Slide to aim. Tap to return.' : 'Swing to return';
   let label = state.mode === 'touch' ? 'Touch controls' : state.setup ? 'Motion on' : 'Getting ready…';
@@ -27,7 +31,7 @@ function render() {
   else if (!state.mode) {title = 'Your phone. Your paddle.'; cue = 'Tap Play, then watch the TV.'; label = 'Let’s play';}
   else if (!state.setup) {title = 'Getting ready…'; cue = 'Pick up your phone. We’ll do the rest.';}
   else if (!state.playing) {title = 'You’re in'; cue = 'Watch the TV. The game starts together.';}
-  if (state.setupError) {title = 'Let’s reconnect'; cue = 'Tap Play to try again, or use touch.'; label = 'Connection interrupted';}
+  if (state.setupError) {title = 'Reconnecting your controls…'; cue = 'Keep this page open. We’ll retry automatically.'; label = 'Reconnecting';}
   $('tt-title').textContent = title;
   $('tt-cue').textContent = cue;
   $('tt-phone-status').textContent = label;
@@ -39,6 +43,7 @@ function render() {
   $('tt-options').hidden = !state.mode;
   $('tt-touch-stroke').disabled = !session.canSend;
   for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) $(id).disabled = !session.canSend;
+  for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) $(id).hidden = humanOpponent;
   const showNotice = notice && performance.now() < noticeUntil;
   $('tt-notice').textContent = showNotice ? notice : '';
   $('tt-notice').hidden = !showNotice;
@@ -78,7 +83,7 @@ $('tt-use-touch').onclick = () => session.state.mode === 'touch' ? useMotion() :
 
 function command(action) {
   const state = session.state;
-  if (!state.gameId || !session.canSend) return null;
+  if (!state.gameId || !session.canSend || humanOpponent) return null;
   const id = `tt-${Date.now().toString(36)}-${commandSequence++}`;
   post({type: 'wee:player-game-command', command: {id, gameId: state.gameId, action}});
   return id;
@@ -121,7 +126,10 @@ $('tt-touchpad').onkeydown = event => {
 window.addEventListener('message', event => {
   if (!embedded || event.origin !== location.origin || event.source !== window.parent) return;
   const data = event.data;
-  if (data?.type === 'wee:lobby-state' && data.sport === 'table-tennis') session.lobby(data);
+  if (data?.type === 'wee:lobby-state' && data.sport === 'table-tennis') {
+    humanOpponent = (data.players?.length ?? 0) > 1;
+    session.lobby(data);
+  }
   else if (data?.type === 'wee:controller-intent' && ['motion', 'touch'].includes(data.mode)) {
     const key = `${data.mode}:${data.permission}`;
     if (lastParentIntent === key) return;
@@ -148,6 +156,7 @@ window.addEventListener('message', event => {
 });
 
 document.addEventListener('visibilitychange', () => document.hidden ? session.suspend() : session.resume());
+document.addEventListener('pointerdown', () => screenAwake.retry());
 window.addEventListener('pagehide', () => session.suspend());
 window.addEventListener('pageshow', () => session.resume());
 function frame(now) {

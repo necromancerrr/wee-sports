@@ -106,6 +106,20 @@ function render(state: BowlingState): void {
   const cue = paused ? manuallyPaused ? 'Paused · resume on your phone or TV' : 'Paused · waiting for controllers' : state.complete ? 'Final scores' : state.phase === 'rolling' ? `${player?.name} · ball in play` :
     `${result ? `${result} · ` : ''}${player?.name}, ${last?.player === state.currentPlayer ? 'roll again' : 'your turn'}`;
   if (el('roll-status').textContent !== cue) el('roll-status').textContent = cue;
+  el('score-totals').replaceChildren(...state.players.map(score => {
+    const item = document.createElement('li');
+    item.dataset.active = String(!state.complete && score.player === state.currentPlayer);
+    item.style.setProperty('--player-color', `var(--p${score.player}, var(--accent-ink))`);
+    const name = document.createElement('span'); name.className = 'bowling-standings__name';
+    name.textContent = `P${score.player} · ${score.name}`; name.title = score.name;
+    const total = document.createElement('strong'); total.textContent = String(score.total);
+    total.setAttribute('aria-label', `${score.total} points`);
+    const marks = document.createElement('span'); marks.className = 'bowling-standings__frame';
+    marks.textContent = frameMarks(score.frames[state.frame - 1] || [], state.frame - 1).filter(Boolean).join(' ') || '—';
+    marks.setAttribute('aria-label', `Frame ${state.frame}: ${marks.textContent}`);
+    item.append(name, total, marks);
+    return item;
+  }));
   const body = el('score-body'); body.replaceChildren();
   for (const score of state.players) {
     const row = document.createElement('tr');
@@ -234,8 +248,11 @@ function receive(event: MessageEvent): void {
     const aim = data.event;
     const sequence = aim?.seq ?? aim?.sequence;
     const generation = aim?.inputGeneration ?? aim?.generation;
+    // One snapshot per update avoids rebuilding eight scorecards repeatedly
+    // inside the high-frequency live-aim validation path.
+    const target = world?.getState();
     if (!world || paused || !connected || aim?.gameId !== gameId ||
-        world.getState().phase !== 'ready' || aim.player !== world.getState().currentPlayer ||
+        target?.phase !== 'ready' || aim.player !== target.currentPlayer ||
         !Number.isFinite(aim.aim) || Math.abs(aim.aim) > 1 || typeof aim.locked !== 'boolean' ||
         !Number.isSafeInteger(sequence) || sequence < 0 || sequence <= lastAimSequence ||
         (inputGeneration !== undefined && generation !== inputGeneration) ||
@@ -281,6 +298,11 @@ for (const label of [...Array.from({length: 10}, (_, i) => String(i + 1)), 'Tota
   const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; el('score-head').append(th);
 }
 el('replay').onclick = () => { if (!paused) newMatch(); };
+const scorecard = el('scorecard-dialog') as HTMLDialogElement;
+el('open-scorecard').onclick = () => scorecard.showModal();
+el('close-scorecard').onclick = () => scorecard.close();
+scorecard.onclose = () => el('open-scorecard').focus({preventScroll: true});
+scorecard.onclick = event => { if (event.target === scorecard) scorecard.close(); };
 el('roll').onclick = () => {
   const player = world?.getState().currentPlayer;
   if (!world || !player || paused) return;

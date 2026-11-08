@@ -2,7 +2,7 @@
  * The ready check, shown inside the TV lobby in place of the seat list. Read
  * from across a room, so the type is big.
  *
- * Seat colors (--p1..--p4) are identity only. P2 is red, P3 green and P4
+ * Seat colors (--p1..--p8) are identity only. P2 is red, P3 green and P4
  * yellow, so ready state never uses color: it is the border style (dashed or
  * solid), a check mark, and a word.
  */
@@ -19,6 +19,7 @@ export function TvReady({ lobby }) {
   const counting = lobby.phase === PHASES.COUNTDOWN;
   const { players } = lobby;
   const readyCount = players.filter((player) => player.ready).length;
+  const expectedCount = Math.max(lobby.expectedPlayers ?? players.length, players.length);
   const title = counting ? 'Everyone’s ready!' : 'Pick up your controller';
 
   return (
@@ -27,7 +28,7 @@ export function TvReady({ lobby }) {
         <h2 className="ready__title">{title}</h2>
         <p className="ready__count" aria-hidden="true">
           <span className="ready__number">
-            {readyCount}/{lobby.players.length}
+            {readyCount}/{expectedCount}
           </span>{' '}
           ready
         </p>
@@ -54,7 +55,7 @@ export function TvReady({ lobby }) {
       </ul>
 
       <p className="visually-hidden" role="status" aria-live="polite">
-        {counting ? title : `${readyCount} of ${lobby.players.length} players ready.`}
+        {counting ? title : `${readyCount} of ${expectedCount} players ready.`}
       </p>
     </section>
   );

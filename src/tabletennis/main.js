@@ -8,9 +8,9 @@ import './style.css';
 const $ = id => document.getElementById(id);
 const embedded = window.parent !== window && new URLSearchParams(location.search).has('lobby');
 const post = message => { if (embedded) window.parent.postMessage(message, location.origin); };
-let gameId = null, connected = !embedded, playing = !embedded, generation = null, hostEpoch = null, lastSeq = -1;
+let gameId = null, connected = !embedded, playing = !embedded, generation = null, hostEpoch = null, lastSeq = [-1, -1];
 let localPaused = false, lastCheckpoint = '', lastState = '';
-let playerName = 'You', announcedServe = -1, announcementUntil = 0;
+let playerName = 'You', opponentName = 'Bot', humanCount = 1, announcedServe = -1, announcementUntil = 0;
 const sound = embedded ? null : createSportsAudio('table-tennis');
 sound?.mountButton($('tt-sound'));
 function audioEvent(event) {
@@ -21,7 +21,7 @@ function audioEvent(event) {
 }
 function announce(event) {
   const state = game.snapshot();
-  const message = tableTennisAnnouncement(state, event, playerName);
+  const message = tableTennisAnnouncement(state, event, playerName, opponentName);
   if (!message) return;
   $('tt-announcement-title').textContent = message.title;
   $('tt-announcement-detail').textContent = message.detail;
@@ -35,10 +35,11 @@ const game = new TableTennisGame({now: () => performance.now() / 1000, onEvent: 
     audioEvent('paddle-hit');
   }
   if (event.type === 'point') {
-    audioEvent(game.rules.winner ? game.rules.winner === 1 ? 'match-win' : 'match-lose' : event.winner === 1 ? 'point-win' : 'point-lose');
+    const celebrate = game.mode === 'versus' || (game.rules.winner || event.winner) === 1;
+    audioEvent(game.rules.winner ? celebrate ? 'match-win' : 'match-lose' : celebrate ? 'point-win' : 'point-lose');
     announce(event);
   } else if (event.type === 'let') { audioEvent('let'); announce(event); }
-  if (event.type === 'state' && game.mode === 'bot' && game.rules.phase === 'serve' && game.rules.pointId !== announcedServe) {
+  if (event.type === 'state' && game.mode !== 'practice' && game.rules.phase === 'serve' && game.rules.pointId !== announcedServe) {
     announcedServe = game.rules.pointId; audioEvent('serve'); announce({type: 'serve'});
   }
   if (['state', 'point', 'let'].includes(event.type)) publish();
@@ -71,8 +72,8 @@ function publish() {
 }
 
 function command(value) {
-  if (value.action === 'new-match' || value.action === 'practice-stop') { announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startMatch(); return true; }
-  if (value.action === 'practice-start') { announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startPractice(); return true; }
+  if (value.action === 'new-match' || value.action === 'practice-stop') { announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startMatch({players: humanCount}); return true; }
+  if (value.action === 'practice-start') { if (humanCount > 1) return false; announcedServe = -1; lastCheckpoint = ''; lastState = ''; game.startPractice(); return true; }
   if (value.action === 'feed') return game.mode === 'practice' ? game.feed() : game.serve();
   if (value.action === 'recenter') return game.recenter();
   if (value.action === 'configure') return game.configure(value.settings);
@@ -83,15 +84,18 @@ window.addEventListener('message', event => {
   if (!embedded || event.source !== window.parent || event.origin !== location.origin) return;
   const data = event.data;
   if (data?.type === 'wee:lobby-state' && data.sport === 'table-tennis') {
+    humanCount = data.players?.some(player => player.slot === 1) ? 2 : 1;
+    opponentName = humanCount === 2 ? data.players.find(player => player.slot === 1)?.name || 'Player 2' : 'Bot';
     if (data.gameId !== gameId) {
       gameId = data.gameId;
       announcedServe = -1; announcementUntil = 0;
-      game.startPractice();
-      lastState = ''; lastCheckpoint = ''; lastSeq = -1;
+      game.startMatch({players: humanCount});
+      game.players[1].remote = humanCount === 2;
+      lastState = ''; lastCheckpoint = ''; lastSeq = [-1, -1];
     }
     if (generation !== data.generation || hostEpoch !== data.hostEpoch || data.paused || !data.connected) {
-      lastSeq = -1;
-      game.inputAt = -Infinity;
+      lastSeq = [-1, -1];
+      for (const player of game.players) player.inputAt = -Infinity;
     }
     playerName = data.players?.find(player => player.slot === 0)?.name || 'You';
     generation = data.generation;
@@ -104,9 +108,10 @@ window.addEventListener('message', event => {
     publish();
   } else if (data?.type === 'wee:table-tennis-pose' && connected && playing && !game.paused) {
     const input = data.event;
-    if (!input || input.gameId !== gameId || !Number.isInteger(input.seq) || input.seq <= lastSeq ||
+    const player = input?.player;
+    if (![1, 2].includes(player) || player > humanCount || input.gameId !== gameId || !Number.isInteger(input.seq) || input.seq <= lastSeq[player - 1] ||
       (generation != null && input.generation !== generation) || (hostEpoch != null && input.hostEpoch !== hostEpoch)) return;
-    if (game.setInput(input, {remote: true})) lastSeq = input.seq;
+    if (game.setInput(input, {remote: true, player})) lastSeq[player - 1] = input.seq;
   } else if (data?.type === 'wee:game-command' && !game.paused) {
     const value = data.command;
     if (value?.gameId !== gameId) return;
@@ -190,19 +195,22 @@ let previous = performance.now(), nextPublish = 0;
 function frame(now) {
   game.update((now - previous) / 1000); previous = now;
   const state = game.snapshot();
+  const winnerName = state.winner === 1 ? playerName : opponentName;
+  const winnerText = winnerName === 'You' ? 'You win' : `${winnerName} wins`;
   setText('tt-you-label', state.practice ? 'Returns' : playerName);
-  setText('tt-bot-label', state.practice ? 'Best rally' : 'Bot');
+  setText('tt-bot-label', state.practice ? 'Best rally' : opponentName);
   const score = document.querySelector('.tt-score');
   const scoreLabel = state.practice ? 'Practice returns and best rally' : 'Match score';
   if (score.getAttribute('aria-label') !== scoreLabel) score.setAttribute('aria-label', scoreLabel);
   setText('tt-you', state.practice ? state.returns : state.score[0]);
   setText('tt-bot', state.practice ? game.bestRally : state.score[1]);
   setText('tt-mode', state.practice ? `${game.settings.assistance === 'friendly' ? 'Friendly' : 'Standard'} practice` : `First to ${state.targetPoints || 12} · win by 2`);
-  setText('tt-status', game.paused ? 'Paused' : state.stale ? 'Waiting for your controller' : state.winner ? `${state.winner === 1 ? 'You win' : 'Bot wins'} · ${state.score.join(' – ')}` : state.practice ? game.physics.ball.active ? 'Swing after the bounce' : 'Next ball coming' : state.deuce ? 'Deuce · win by two' : state.gamePoint ? `Game point · ${state.gamePoint === 1 ? playerName : 'Bot'}` : game.physics.ball.active ? 'Keep the rally going' : `${state.server === 1 ? 'Your' : 'Bot’s'} serve next`);
+  setText('tt-status', game.paused ? 'Paused' : state.stale ? 'Waiting for your controller' : state.winner ? `${winnerText} · ${state.score.join(' – ')}` : state.practice ? game.physics.ball.active ? 'Swing after the bounce' : 'Next ball coming' : state.deuce ? 'Deuce · win by two' : state.gamePoint ? `Game point · ${state.gamePoint === 1 ? playerName : opponentName}` : game.physics.ball.active ? 'Keep the rally going' : `${state.server === 1 ? playerName : opponentName} serves next`);
   setText('tt-detail', game.paused ? 'Resume when everyone is ready.' : state.stale ? 'Play resumes when fresh motion arrives.' : game.lastReason === 'Contact' || game.lastReason === 'Bot returned' ? 'Aim ring shows your next return.' : state.reason);
   setText('tt-action', game.physics.ball.active ? 'Stroke · Space' : state.practice ? 'Feed ball · Space' : 'Serve · Space');
   setText('tt-pause', game.paused ? 'Resume · P' : 'Pause · P');
   setText('tt-player-tag', playerName);
+  setText('tt-bot-tag', opponentName);
   $('tt-practice').classList.toggle('selected', state.practice); $('tt-match').classList.toggle('selected', !state.practice);
   $('tt-you-side').classList.toggle('serving', !state.practice && state.server === 1);
   $('tt-bot-side').classList.toggle('serving', !state.practice && state.server === 2);

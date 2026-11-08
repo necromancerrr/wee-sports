@@ -11,6 +11,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
   let paddle = createPaddleIntentController();
   let mode = null, connected = false, playing = false, paused = true, suspended = false;
   let phase = 'ready', accepted = null, requested, pending = null, setupId = 0;
+  let clock = 0, setupSentAt = 0, retryAfter = Infinity;
   let latest = null, corrected = null, motionReady = false, setupError = false;
   let neutralPose = true;
   let sentSampleSequence = null;
@@ -18,17 +19,18 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
   let reach = {x: 0, y: 0};
   const changed = () => onChange(api.state);
   const expected = () => mode === 'touch' ? 'buttons' : mode === 'motion' && motionReady ? 'motion' : null;
-  function setup(value, force = false) {
+  function setup(value, force = false, reason) {
     if (!force && requested === value) return;
     requested = value; accepted = null; setupError = false;
     pending = ++setupId;
-    send({type: 'wee:controller-setup', setup: value, requestId: pending});
+    setupSentAt = clock; retryAfter = Infinity;
+    send({type: 'wee:controller-setup', setup: value, requestId: pending, ...(reason ? {reason} : {})});
   }
   function clearMotion() {
     automatic.reset(); paddle.reset(); latest = corrected = null; motionReady = false; strokeUntil = 0; neutralPose = true; sentSampleSequence = null;
   }
-  function invalidate() {
-    clearMotion(); setup(null); changed();
+  function invalidate(reason) {
+    clearMotion(); setup(null, Boolean(reason), reason); changed();
   }
   const api = {
     get state() {return {mode, connected, playing, paused, suspended, setup: accepted, pending: pending !== null,
@@ -64,6 +66,7 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       pending = null;
       accepted = result?.ok && !suspended && requested === expected() ? requested : null;
       setupError = result?.ok !== true;
+      if (setupError) retryAfter = clock + 1;
       changed();
     },
     lobby(value) {
@@ -78,12 +81,12 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
       changed();
     },
     setPhase(value) {phase = value;},
-    suspend() {if (!suspended) {suspended = true; invalidate();}},
+    suspend() {if (!suspended) {suspended = true; invalidate('background');}},
     resume() {
       if (!suspended) return;
       suspended = false; clearMotion(); setup(expected(), true); changed();
     },
-    resetMotion() {if (mode === 'motion') invalidate();},
+    resetMotion() {if (mode === 'motion') invalidate('reset');},
     recenter() {
       if (phase !== 'ready' && phase !== 'complete') return false;
       if (corrected) paddle.recenter(corrected);
@@ -100,6 +103,9 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     },
     get canSend() {return connected && playing && !paused && !suspended && accepted !== null && accepted === expected() && pending === null;},
     frame(now) {
+      if (!Number.isFinite(now)) return null;
+      clock = now;
+      if (connected && !suspended && mode && (pending !== null && now - setupSentAt > 6 || setupError && now >= retryAfter)) setup(expected(), true);
       if (mode === 'motion' && motionReady && !automatic.read(now).ready) invalidate();
       if (!api.canSend || !Number.isFinite(now) || now - lastSent < POSE_INTERVAL_SECONDS - 1e-9) return null;
       let value = latest;

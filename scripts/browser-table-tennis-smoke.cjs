@@ -84,8 +84,11 @@ async function visibility(frame, hidden) {
     assert.equal(permission.length, 2); assert.ok(permission.every(call => call.active));
     assert.deepEqual(await controller.evaluate(() => window.__permissionCalls), []);
     assert.equal(await phone.getByRole('button', {name: 'Ready', exact: true}).count(), 0);
+    await game.getByText('First to 12 · win by 2', {exact: true}).waitFor();
+    pass('One Play tap starts a scored table-tennis motion game without another setup or Ready step');
+    await controller.locator('details summary').click();
+    await controller.locator('#tt-practice-phone').click();
     await game.getByText('Friendly practice', {exact: true}).waitFor();
-    pass('One Play tap starts actual table-tennis motion practice without another setup or Ready step');
 
     const playerHits = () => host.evaluate(() => window.__gameFeedback.filter(message => message.type === 'wee:game-hit' && message.player === 1).length);
     await phone.waitForTimeout(4500);
@@ -93,7 +96,6 @@ async function visibility(frame, hidden) {
     assert.equal(await game.locator('#tt-you').innerText(), '0');
     pass('An idle motion controller produces no automatic player hit or credited return');
 
-    await controller.locator('details summary').click();
     async function practice() {
       await setPattern(controller);
       await controller.locator('#tt-practice-phone').click();

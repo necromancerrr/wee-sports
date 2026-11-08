@@ -25,6 +25,8 @@ const TEXT = {
   'not-player': "You're not in this game. Join again to get back in.",
   'no-ready-check': "It's not time to get ready yet.",
   'bad-ready': "That didn't go through. Tap Ready again.",
+  'bad-player-count': 'Choose a player count supported by this sport.',
+  'players-already-joined': 'Ask extra players to leave before reducing the player count.',
   'setup-required': 'Calibrate your phone or choose button controls before pressing Ready.',
   'bad-setup': 'Choose your controller again.',
   'not-host': 'Only the TV can do that.',

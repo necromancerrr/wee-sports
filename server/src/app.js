@@ -142,6 +142,11 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       const code = payload?.code;
       reply(ack, code && store.hostedBy(socket.id) === code ? { ok: true, ...store.lobby(code) } : { ok: false, error: ERRORS.NO_ROOM });
     });
+    socket.on(EVENTS.HOST_PLAYER_COUNT, (payload, ack) => {
+      const result = store.setPlayerCount(socket.id, payload);
+      reply(ack, result);
+      if (result.ok) broadcast(result.code);
+    });
     socket.on(EVENTS.PLAYER_READY, (payload, ack) => {
       const result = store.setReady(socket.id, payload);
       reply(ack, result);

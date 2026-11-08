@@ -38,7 +38,7 @@ export class AutomaticControllerSetup {
     this.running = true;
     const attempt = ++this.attempt;
     this.setup = null;
-    const mode = this.session.seat?.sport === 'tennis' ? 'touch' : this.mode;
+    const mode = this.mode;
     this.changed({mode,setup:null,state:'starting'});
     this.session.inputSetup = null;
     const player = this.session.seat?.players?.find(value => value.slot === this.session.seat.slot);

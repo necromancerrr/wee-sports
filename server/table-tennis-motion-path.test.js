@@ -8,15 +8,15 @@ import {TableTennisGame} from '../src/tabletennis/game.js';
  */
 function receive({axis = 'x', sign = 1, hz = 60, fps = 60, screenAngle = 0,
   native = false, peak = 4, idle = false, threshold = .5, jitter = false,
-  renderStall = 0, pulseSeconds = .24} = {}) {
+  renderStall = 0, pulseSeconds = .24, networkDelay = 0} = {}) {
   let now = 0, sequence = 0, angle = 0, started = null, samples = 0;
   const game = new TableTennisGame({now: () => now});
-  const messages = [], events = [], packets = [];
+  const messages = [], events = [], packets = [], delivery = [];
   const session = createTableTennisControllerSession({send: message => {
     messages.push(message);
     if (message.type === 'wee:player-pose') {
       packets.push(message.event);
-      game.setInput(message.event, {remote: true});
+      delivery.push({at: now + networkDelay, input: message.event});
     }
   }});
   const sample = (rate = 0, dt = 1 / hz) => {
@@ -51,6 +51,7 @@ function receive({axis = 'x', sign = 1, hz = 60, fps = 60, screenAngle = 0,
       sample(!idle && phase >= 0 && phase <= 1 ? sign * peak * Math.sin(phase * Math.PI) : 0, dt);
       samples++; nextSensor += dt;
     }
+    while (delivery.length && delivery[0].at <= now) game.setInput(delivery.shift().input, {remote: true});
     const stalled = started !== null && now >= started && now < started + renderStall;
     if (!stalled && now + 1e-9 >= nextFrame) {
       game.update(now - previousFrame);
@@ -167,5 +168,15 @@ test('pause and new calibration each discard a pending gesture without replay', 
     expect(game.pendingStroke).toBeNull();
     game.update(1 / 60);
     expect(game.physics.paddles[0].enabled).toBe(false);
+  }
+});
+
+
+test('gentle strokes survive realistic one-way input delay without moving their landing target', () => {
+  for (const networkDelay of [0, .04, .08]) for (const axis of ['x', 'y', 'z']) {
+    const result = receive({axis, hz: 60, fps: 30, peak: 1.2, threshold: .5, jitter: true, networkDelay});
+    expect(result.hits, `${axis}, ${networkDelay * 1000}ms delay`).toHaveLength(1);
+    expect(result.landing?.side).toBe(2);
+    expect(Math.abs(result.landing.position.x)).toBeLessThan(.03);
   }
 });

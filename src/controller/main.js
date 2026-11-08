@@ -1,7 +1,7 @@
 import { createSwingStream } from './swingStream.js';
 import { createSimpleSwingStream, createBowlingDeliveryGate, bowlingTiltAim } from './motionGestures.js';
-import { createTimeConstantFilter, createAutomaticMotionSetup, toLegacyMotionSample } from '../../shared/motion.js';
-import { createBowlingAimStream } from './bowlingAim.js';
+import { createAutomaticMotionSetup, toLegacyMotionSample } from '../../shared/motion.js';
+import { createBowlingAimStream, createBowlingAimFilter } from './bowlingAim.js';
 import { readLegacyWebMotion } from './webMotionAdapter.js';
 import { createControllerPreferences } from './preferences.js';
 import { tennisPower, tennisStrength } from './tennisPower.js';
@@ -24,7 +24,7 @@ const query = new URLSearchParams(location.search);
 let bowling = query.get('sport') === 'bowling';
 const room = query.get('room');
 if (!/^[a-zA-Z0-9-]{6,40}$/.test(room ?? '')) throw new Error('Open the controller link from the game to join its room.');
-const player = Math.max(1, Math.min(4, Number(query.get('player')) || 1));
+const player = Math.max(1, Math.min(8, Math.trunc(Number(query.get('player'))) || 1));
 const post = data => { if (embedded) window.parent.postMessage(data, location.origin); };
 const lobbyCode = query.get('lobby');
 element('room').textContent = lobbyCode && embedded ? `Lobby ${lobbyCode} · P${player}` : `Room: ${room}`;
@@ -75,7 +75,8 @@ let latestRate = null;
 let eventsSeen = 0;
 let validReadings = 0;
 let buttonMode = false;
-let lastSetup;
+let lastSetup, lastSetupReason;
+let setupRequest = 0, pendingSetup = null, setupSentAt = 0, setupRetryAt = 0;
 let wasConnected = false;
 let canRoll = false;
 let currentPlayer = null;
@@ -94,7 +95,7 @@ let setupError = '';
 let feedbackUntil = 0;
 let lastTiltReading = null;
 let liveAim = 0;
-const aimFilter = createTimeConstantFilter({ timeConstantSeconds: .084 });
+const aimFilter = createBowlingAimFilter();
 const aimStream = createBowlingAimStream(event => post({ type: 'wee:player-aim', event }));
 let lockedAim = null;
 let bowlingReadout = null;
@@ -151,9 +152,13 @@ function recentReadings() { return lastReading !== null && performance.now() - l
 function publishSetup() {
   const setup = !pageActive || document.hidden ? null : buttonMode ? 'buttons' : bias && !rehearsal ? 'motion' : null;
   element('setup-status').textContent = setup === 'motion' ? 'Motion ready' : setup === 'buttons' ? 'Touch controls ready' : 'Connecting motion';
-  if (embedded && setup !== lastSetup) {
-    lastSetup = setup;
-    post({ type: 'wee:controller-setup', setup });
+  const now = performance.now();
+  const reason = !pageActive || document.hidden ? 'background' : undefined;
+  if (embedded && (setup !== lastSetup || reason !== lastSetupReason || connected && (pendingSetup !== null && now - setupSentAt > 6000 || setupError && now >= setupRetryAt))) {
+    lastSetup = setup; lastSetupReason = reason;
+    pendingSetup = ++setupRequest; setupSentAt = now; setupRetryAt = Infinity;
+    post({ type: 'wee:controller-setup', setup, requestId: pendingSetup,
+      ...(reason ? {reason} : {}) });
   }
 }
 function turnReady() { return bowling && gameActive && connected && !lobbyPaused && canRoll && currentPlayer === player && !pendingRoll; }
@@ -485,7 +490,10 @@ window.addEventListener('message', event => {
     return;
   }
   if (data?.type === 'wee:setup-ack') {
-    setupError = data.result?.ok ? '' : 'Setup could not be saved. Reconnect or select your controls again.';
+    if (data.requestId !== pendingSetup) return;
+    pendingSetup = null;
+    setupError = data.result?.ok ? '' : 'Reconnecting your controls…';
+    if (setupError) setupRetryAt = performance.now() + 1000;
     if (setupError) element('setup-status').textContent = setupError;
     renderPlayState();
     return;
@@ -767,6 +775,7 @@ function sensorStatus(now) {
 }
 setInterval(() => {
   const now = performance.now();
+  publishSetup();
   if (automaticSetupPending && enabled && !buttonMode && !motionAcquired && !permissionPending &&
       pageActive && !document.hidden && now - permissionAt >= 3000) {
     element('use-buttons').onclick();

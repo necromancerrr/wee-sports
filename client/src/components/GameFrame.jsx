@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { EVENTS, isRoll, isSwing, isGameHit, isTennisState, isBowlingState, isStrokeResult, isGameSoundEvent, isGameCommand, isGameOptions, isPose, isAim, isTableTennisState } from '@wee/shared/protocol.js';
 import { request, requestSwing, socket, useConnection } from '../lib/socket.js';
 import { createInputId } from '../../../src/network/inputId.js';
+import {createControllerSetupRelay} from '../lib/controllerSetupRelay.js';
 
 const NO_PLAYERS = [];
 /** Authenticated bridge between the lobby and an isolated WebGL game/controller.
@@ -39,10 +40,21 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
   const [attempt, setAttempt] = useState(0);
   const [height, setHeight] = useState(1050);
   const connection = useConnection();
+  const setupRelay = useRef(null);
+  const setupLifecycle = useRef(0);
+  if (!setupRelay.current) setupRelay.current = createControllerSetupRelay({
+    request: setup => request(EVENTS.PLAYER_SETUP, {setup}),
+  });
+  useEffect(() => {
+    const visibility = () => {if (document.hidden) setupRelay.current.flush();};
+    document.addEventListener('visibilitychange', visibility);
+    return () => {document.removeEventListener('visibilitychange', visibility); setupRelay.current.reset();};
+  }, []);
   const room = `lobby-${code}`;
   // A sport change is a bridge message, not a controller navigation: keep the
   // phone’s sensor permission and verified setup alive for the next game.
   const src = `/${controller ? sport === 'table-tennis' ? 'table-tennis-controller' : 'controller' : sport === 'table-tennis' ? 'table-tennis' : sport === 'bowling' ? 'bowling' : 'game'}.html?room=${encodeURIComponent(room)}&lobby=${code}&player=${player}${controller ? '' : `&sport=${sport}`}`;
+  useEffect(() => {setupLifecycle.current++; setupRelay.current.reset();}, [connection, src, attempt, sport]);
   function publishState() {
     const post = message => frame.current?.contentWindow?.postMessage(message, window.location.origin);
     post({ type: 'wee:lobby-state', paused: paused || connection !== 'online' || (!controller && recovering.current), manuallyPaused, connected: connection === 'online', players, playing, sport, gameId, generation, inputGeneration: generation, hostEpoch });
@@ -195,8 +207,9 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
         const delivery = pending.current.get(data.id);
         if (delivery) { clearTimeout(delivery.timer); pending.current.delete(data.id); delivery.ack(data.result); }
       } else if (controller && data?.type === 'wee:controller-setup') {
-        const result = await request(EVENTS.PLAYER_SETUP, { setup: data.setup });
-        post({ type: 'wee:setup-ack', requestId: data.requestId, result });
+        const lifecycle = setupLifecycle.current;
+        const result = await setupRelay.current.submit(data.setup, {immediate: data.reason === 'background' || data.reason === 'reset'});
+        if (lifecycle === setupLifecycle.current) post({ type: 'wee:setup-ack', requestId: data.requestId, result });
       } else if (controller && data?.type === 'wee:controller-mode' && ['motion', 'touch'].includes(data.mode)) {
         onControllerMode?.(data.mode);
       } else if (controller && data?.type === 'wee:controller-height' && Number.isFinite(data.height)) {

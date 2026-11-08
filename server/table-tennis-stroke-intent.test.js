@@ -33,7 +33,7 @@ test('gentle compact strokes still register when a low-rate sensor misses the ex
     const detector = createStrokeIntentDetector(), requests = [];
     for (let index = 0; index <= hz; index++) {
       const time = index / hz, phase = (time - .151) / .24;
-      const request = detector.push(input('z', phase >= 0 && phase <= 1 ? 1.5 * Math.sin(phase * Math.PI) : 0), time);
+      const request = detector.push(input('z', phase >= 0 && phase <= 1 ? 1.2 * Math.sin(phase * Math.PI) : 0), time);
       if (request) requests.push(request);
     }
     expect(requests).toHaveLength(1);

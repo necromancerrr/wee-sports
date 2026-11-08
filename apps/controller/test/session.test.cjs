@@ -89,13 +89,34 @@ test('native table-tennis poses preserve 60 Hz samples and drop congestion witho
   session.dispose();
 });
 
-test('faster table-tennis input does not raise bowling aim traffic', async () => {
+test('bowling aim keeps 60 Hz fresh updates while rejecting same-tick bursts', async () => {
   const {session, socket, advance} = await fixture();
   for (let index = 0; index < 60; index++) {
-    session.latest('aim', {aim: index / 60});
+    assert.equal(session.latest('aim', {aim: index / 60}), true);
+    assert.equal(session.latest('aim', {aim: -1}), false);
     advance(1000 / 60);
   }
-  assert.ok(socket.sent.length >= 15 && socket.sent.length <= 20);
+  assert.equal(socket.sent.length, 60);
+  session.dispose();
+});
+
+test('temporary native inactivity suppresses input without disconnecting, pausing or replaying old sequence IDs', async () => {
+  const {session, socket, EVENTS, advance, feedback} = await fixture();
+  session.token = 'reconnect-token';
+  session.latest('pose', {reach:{x:0,y:0}});
+  const sequence = socket.sent[0].payload.seq;
+  const hit = {id:'once',gameId:'game-a',generation:3,hostEpoch:2};
+  session.onFeedback(hit);
+  session.inactive();
+  assert.equal(socket.connected, true);
+  assert.equal(session.latest('pose', {}), false);
+  assert.equal((await session.action(EVENTS.PLAYER_SWING, {})).ok, false);
+  session.foreground(); advance(17);
+  assert.equal(session.latest('pose', {reach:{x:.2,y:0}}), true);
+  assert.equal(socket.sent.at(-1).payload.seq, sequence + 1);
+  session.onFeedback(hit);
+  assert.equal(feedback.length,1);
+  assert.equal(socket.sent.some(item => [EVENTS.SESSION_AWAY, EVENTS.SESSION_RESUME].includes(item.event)), false);
   session.dispose();
 });
 

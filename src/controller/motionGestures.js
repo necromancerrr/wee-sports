@@ -158,7 +158,10 @@ export function createBowlingDeliveryGate({quietMs = 250, quietSpeed = 45} = {})
  * Reject vigorous movement/near-vertical grips rather than letting them aim.
  */
 export function bowlingTiltAim(gravity, rotationSpeed) {
-  if (!gravity || !['x', 'y', 'z'].every(axis => Number.isFinite(gravity[axis])) || !Number.isFinite(rotationSpeed) || rotationSpeed > 65) return null;
+  // Ordinary aiming tilts often exceed 65°/s. Freezing there made the TV guide
+  // wait for the hand to stop. Reject only vigorous swing motion; the delivery
+  // gate independently freezes aim as soon as the forward swing starts.
+  if (!gravity || !['x', 'y', 'z'].every(axis => Number.isFinite(gravity[axis])) || !Number.isFinite(rotationSpeed) || rotationSpeed > 180) return null;
   const magnitude = Math.hypot(gravity.x, gravity.y, gravity.z);
   if (magnitude < 7.5 || magnitude > 12 || Math.abs(gravity.z) < 5) return null;
   // Engines expose either support acceleration or downward gravity. For the

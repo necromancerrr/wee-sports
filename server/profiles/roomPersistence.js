@@ -22,8 +22,15 @@ export function validateSportState(room, payload) {
   const game = new TableTennisGame();
   if (!game.restore(payload)) fail('invalid-checkpoint');
   const state = game.rules.snapshot();
-  if (payload.mode !== 'bot' || state.phase !== 'complete') return undefined;
+  if (payload.mode === 'versus') {
+    if (room.players.length !== 2 || new Set(room.players.map(player => player.slot)).size !== 2 ||
+        room.players.some(player => ![0, 1].includes(player.slot))) fail('wrong-roster');
+    if (state.phase !== 'complete') return undefined;
+    return room.players.map(player => ({memberId: player.memberId, score: state.score[player.slot],
+      rank: state.winner === player.slot + 1 ? 1 : 2, outcome: state.winner === player.slot + 1 ? 'win' : 'loss'}));
+  }
   if (room.players.length !== 1 || room.players[0].slot !== 0) fail('wrong-roster');
+  if (payload.mode !== 'bot' || state.phase !== 'complete') return undefined;
   return [{memberId: room.players[0].memberId, score: state.score[0], rank: state.winner === 1 ? 1 : 2,
     outcome: state.winner === 1 ? 'win' : 'loss'}];
 }

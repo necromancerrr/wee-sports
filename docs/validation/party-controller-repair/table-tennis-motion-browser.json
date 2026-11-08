@@ -1,0 +1,37 @@
+{
+  "recordedAt": "2026-11-08T02:30:51.700Z",
+  "base": "http://127.0.0.1:5201",
+  "runtime": "v24.22.1",
+  "browser": "156.0.8078.79",
+  "rendering": "headless Chromium software WebGL; 960x640 functional viewport",
+  "sensorSource": "Generated DeviceMotion and matching DeviceOrientation at 16 ms; alternating 220 ms angular pulses",
+  "checks": [
+    "One Play tap starts a scored table-tennis motion game without another setup or Ready step",
+    "An idle motion controller produces no automatic player hit or credited return",
+    "Y sideways generated swings cause a real host contact and legal opponent-table return",
+    "Z screen-up generated swings cause a real host contact and legal opponent-table return",
+    "Hidden controller stops pose delivery and foreground resumes only with fresh input",
+    "Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt",
+    "The same controller can enter the twelve-point bot game",
+    "No uncaught browser errors"
+  ],
+  "axisResults": [
+    {
+      "axis": "Y sideways",
+      "hostHits": 1,
+      "legalReturns": 1,
+      "elapsedMs": 6292
+    },
+    {
+      "axis": "Z screen-up",
+      "hostHits": 1,
+      "legalReturns": 1,
+      "elapsedMs": 23268
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Pulse cycling validates real software routing/contact/return; it is not a recognition-accuracy or latency benchmark.",
+    "No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established."
+  ]
+}

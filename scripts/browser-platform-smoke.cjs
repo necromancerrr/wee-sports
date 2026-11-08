@@ -105,10 +105,12 @@ async function waitForRoll(controller, host) {
         await host.getByRole('heading', { name: 'Table Tennis', exact: true }).waitFor({ timeout: 15000 });
         const tg = host.frameLocator('iframe[title="Table Tennis game"]');
         await tg.locator('canvas').waitFor();
-        await tg.getByText('Friendly practice', { exact: true }).waitFor();
-        pass('Same-room switch retains identity and starts solo Table Tennis practice with touch controls');
+        await tg.getByText('First to 12 · win by 2', { exact: true }).waitFor();
+        pass('Same-room switch retains identity and starts a scored solo Table Tennis game with touch controls');
         await tc.locator('#tt-touch-stroke').click();
         await tc.getByText('Options', { exact: true }).click();
+        await tc.locator('#tt-practice-phone').click();
+        await tg.getByText('Friendly practice', { exact: true }).waitFor();
         await tc.locator('#tt-match-phone').click();
         await tg.getByText('First to 12 · win by 2', { exact: true }).waitFor({ timeout: 6000 });
         pass('Table Tennis automatic touch setup, compact stroke and optional scored bot mode');

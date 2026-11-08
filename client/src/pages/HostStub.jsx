@@ -1,9 +1,5 @@
 import {SportSwitcher} from '../components/SportSwitcher.jsx';
-/**
- * Placeholder TV lobby. Functional only: the TV display owner restyles and
- * owns this page. It exists to prove the join works end to end — code, QR,
- * link, and seats that fill in live.
- */
+/** Shared TV lobby: choose the party size, invite phones and watch readiness. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -25,6 +21,7 @@ import { enterFullscreen, exitFullscreen, fullscreenElement } from '../lib/fulls
 import { useTvAudio } from '../lib/useTvAudio.jsx';
 import { useRevealHold } from '../lib/useRevealHold.js';
 import '../styles/game-shell.css';
+import './HostLobby.css';
 
 export default function HostStub() {
   const { code } = useParams();
@@ -36,6 +33,7 @@ export default function HostStub() {
   // A vote cancelled by someone leaving has nothing to reveal.
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
   const [startError, setStartError] = useState(null);
+  const [changingCount, setChangingCount] = useState(false);
   const [returning, setReturning] = useState(false);
   const returnPending = useRef(false);
   const [pausing, setPausing] = useState(false);
@@ -180,10 +178,25 @@ export default function HostStub() {
   );
 
   return (
-    <main className="stub host-lobby">
+    <main className="stub host-lobby" data-party={capacity > 4}>
       <div className="session-heading"><p className="eyebrow">TV lobby</p>{audio.controls}<ThemeToggle /></div>
       <h1>{sportName(lobby.sport)} lobby</h1>
-      <p className="stub__muted">{lobby.sport === 'table-tennis' ? 'One player, one phone. Practise returns or play a scored game against the bot.' : lobby.sport === 'bowling' ? 'One to four players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
+      <p className="stub__muted">{lobby.sport === 'table-tennis' ? 'One or two players. Rally with a friend or play solo. First to 12, win by two.' : lobby.sport === 'bowling' ? 'One to eight players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
+      <div className="lobby-party-size">
+        <label>Players in this game <select aria-label="Players in this game" value={Math.max(lobby.expectedPlayers ?? 1, lobby.players.length)}
+          disabled={changingCount || reconnecting || lobby.recovery?.ownerRequired}
+          onChange={async event => {
+            setChangingCount(true); setStartError(null);
+            const result = await request(EVENTS.HOST_PLAYER_COUNT, {count: Number(event.target.value)});
+            setChangingCount(false); if (!result?.ok) setStartError(result?.error);
+          }}>
+          {Array.from({length: capacity}, (_, index) => index + 1).map(count =>
+            <option key={count} value={count} disabled={count < lobby.players.length}>{count === 1 ? '1 · Solo' : `${count} players`}</option>)}
+        </select></label>
+        <p role="status">{lobby.players.length < (lobby.expectedPlayers ?? 1)
+          ? `Waiting for ${(lobby.expectedPlayers ?? 1) - lobby.players.length} more ${(lobby.expectedPlayers ?? 1) - lobby.players.length === 1 ? 'player' : 'players'}.`
+          : 'Starts when everyone taps Play on their phone.'}</p>
+      </div>
       {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your session.</p> : null}
       {url ? <>
         <p className="stub__muted">Scan with your phone camera, tap Play, and allow motion if asked.</p>

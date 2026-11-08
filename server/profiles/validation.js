@@ -1,3 +1,5 @@
+import {playerCapacity} from '../../shared/protocol.js';
+
 export class ProfileError extends Error {
   constructor(code, status = 400) { super(code); this.code = code; this.status = status; }
 }
@@ -55,11 +57,11 @@ export function checkpoint(sport, value) {
     keys(value, ['version', 'boundary', 'match', 'pins', 'settings']);
     if (value.boundary !== 'settled' || !object(value.match) || !Array.isArray(value.pins) || value.pins.length > 10) fail('unstable-checkpoint');
     keys(value.match, ['version', 'players', 'deliveries']);
-    if (value.match.version !== 1 || !Array.isArray(value.match.players) || value.match.players.length < 1 || value.match.players.length > 4 ||
-        !Array.isArray(value.match.deliveries) || value.match.deliveries.length > 84) fail('invalid-checkpoint');
+    if (value.match.version !== 1 || !Array.isArray(value.match.players) || value.match.players.length < 1 || value.match.players.length > playerCapacity('bowling') ||
+        !Array.isArray(value.match.deliveries) || value.match.deliveries.length > 21 * playerCapacity('bowling')) fail('invalid-checkpoint');
     for (const player of value.match.players) {
       keys(player, ['player', 'name']);
-      if (!Number.isInteger(player.player) || player.player < 1 || player.player > 4) fail('invalid-checkpoint');
+      if (!Number.isInteger(player.player) || player.player < 1 || player.player > playerCapacity('bowling')) fail('invalid-checkpoint');
       text(player.name, 80);
     }
     keys(value.settings, ['aim', 'practice']);
@@ -77,7 +79,7 @@ export function checkpoint(sport, value) {
   } else if (sport === 'table-tennis') {
     keys(value, ['version', 'boundary', 'rules', 'settings', 'seed', 'mode', 'practiceReturns']);
     if (value.boundary !== 'point' || !object(value.rules) || !Number.isInteger(value.seed) || value.seed < 0 || value.seed > 0xffffffff ||
-        !['practice', 'bot'].includes(value.mode) || !Number.isSafeInteger(value.practiceReturns) || value.practiceReturns < 0) fail('unstable-checkpoint');
+        !['practice', 'bot', 'versus'].includes(value.mode) || !Number.isSafeInteger(value.practiceReturns) || value.practiceReturns < 0) fail('unstable-checkpoint');
     keys(value.rules, ['firstServer', 'score', 'pointId', 'phase', 'winner', 'targetPoints']);
     if (value.rules.targetPoints !== undefined && ![11, 12].includes(value.rules.targetPoints)) fail('invalid-state');
     keys(value.settings, ['assistance', 'sensitivity']);

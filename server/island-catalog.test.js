@@ -13,7 +13,7 @@ test('each supported game is discoverable with the authoritative name and player
     expect(entry.players).toEqual(SPORT_REGISTRY[id].players);
     expect(presentIslandSports(SPORTS).venues.some(venue => venue.sportId === id)).toBe(true);
   }
-  expect(playerRange(SPORTS.find(sport => sport.id === 'table-tennis').players)).toBe('1 player');
+  expect(playerRange(SPORTS.find(sport => sport.id === 'table-tennis').players)).toBe('1–2 players');
   expect(TableTennisIcon).not.toBe(RacketIcon);
 });
 

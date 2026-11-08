@@ -28,8 +28,7 @@ checks, not phone recognition accuracy measurements.
 
 The TV shows a landing ring before the shot and a marker at the actual contact
 position. The rendered paddle matches the collider's position, face and size,
-and remains visible while recovering even when contact is disabled. Simple
-avatars and connected hands make the paddle's ownership clear. The quiet
+and remains visible while recovering even when contact is disabled. Player labels identify the two paddles; table-tennis avatars and limbs have been removed. The quiet
 court keeps the table and floor, one net mesh and bounded pixel density. Score,
 serve, deuce, game-point and winner banners accompany short local sound cues.
 Muted, paused and hidden sessions remain silent. The TV's activated audio
@@ -44,9 +43,8 @@ two-point lead; service alternates after every point from 11–11. Existing
 Bowling now has a filled, outlined arrow that follows accepted live aim,
 turns gold when locked, hides during delivery and resets for the next turn.
 Its projection uses the physical ball's release origin and direction. The
-active lane and TV aim readout have clearer contrast. Tennis now renders only
-the rackets, retaining the invisible animation rig for swing and collision
-poses. Both racket sports have plain backgrounds without garden props.
+active lane and TV aim readout have clearer contrast. Tennis retains its visible avatars and Park Club background. The simplified
+background and avatar removal apply to table tennis.
 
 `GameFrame.jsx` names the existing production bridge accurately: it owns the
 authenticated iframe messages, pause/reconnect gating and saved-game recovery.
@@ -98,8 +96,8 @@ The subsequent input/contact repair passed 528 root tests in 59 files,
 TypeScript, the six-page production build and [eight focused production browser
 checks](system-plan/table-tennis-repair-browser.json). Those browser checks
 include actual legal returns from generated Y- and Z-axis phone motion, idle
-input, and hidden/silent sensor recovery. Tennis avatar removal and both quiet
-court scenes were also reviewed in Chromium. Native packaging was unchanged;
+input, and hidden/silent sensor recovery. That earlier repair also removed Tennis avatars; the current follow-up restores
+them and applies avatar removal to table tennis, as requested. Native packaging was unchanged;
 the earlier Expo export results were not repeated for this repair.
 
 The functional browser harness uses software WebGL. A measured bowling run

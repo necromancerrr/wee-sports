@@ -245,7 +245,7 @@ describe('solo controls and persistence', () => {
     expect(g.physics.ball.active).toBe(false);
     for (let i = 0; i < 60; i++) {g.setInput(pose(), {remote: true}); g.update(FIXED_STEP);}
     expect(g.rules.pointId).toBeGreaterThan(0);
-    for (let i = 0; i < 40; i++) g.update(FIXED_STEP);
+    for (let i = 0; i < 70; i++) g.update(FIXED_STEP);
     const frozen = {...g.physics.ball.position};
     for (let i = 0; i < 120; i++) g.update(FIXED_STEP);
     expect(g.physics.ball.position).toEqual(frozen);

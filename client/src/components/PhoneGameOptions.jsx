@@ -25,6 +25,7 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
   const playing = lobby.phase === PHASES.GAME;
   const tennis = lobby.sport === 'tennis';
   const tableTennis = lobby.sport === 'table-tennis';
+  const tableTennisDuel = tableTennis && lobby.players.length > 1;
   const settings = options?.settings;
   const completed = playing && lobby.gameState?.phase === 'complete';
   const winners = completed ? tennis || tableTennis ? [lobby.gameState.winner] : lobby.gameState.winners ?? [] : [];
@@ -147,10 +148,12 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
                   <option value="friendly">Friendly</option><option value="standard">Standard</option></select></label>
                 <label>Paddle sensitivity<input type="range" min="0.25" max="2" step="0.05" value={settings.sensitivity}
                   onChange={event => configure('sensitivity', Number(event.target.value))} /></label>
+                {tableTennisDuel ? <p>Two players · first to 12, win by 2. Watch your side of the TV and swing after the bounce.</p> : <>
                 <button type="button" className="btn btn--secondary" onClick={() => command(options.practice.active ? 'practice-stop' : 'practice-start')}>
                   {options.practice.active ? 'Start a bot game' : 'Practice feeds (resets score)'}</button>
                 <button type="button" className="btn btn--secondary" onClick={() => command('feed')}>Serve / feed ball</button>
                 <button type="button" className="btn btn--ghost" onClick={() => command('recenter')}>Recenter paddle</button>
+                </>}
               </> : <>
                 <p className="stub__muted">Ten frames. Strike and spare bonuses update as your next rolls finish.</p>
                 {lobby.players.length === 1 ? <button type="button" className="btn btn--secondary"

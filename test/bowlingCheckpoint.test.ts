@@ -24,7 +24,7 @@ test('checkpoint replay rejects invented pins, duplicate pins, invalid players a
   const base = new BowlingMatch([{player: 1, name: 'Solo'}]).exportCheckpoint();
   for (const checkpoint of [null, {...base, version: 2}, {...base, deliveries: [[1, 1]]},
     {...base, deliveries: [[11]]}, {...base, deliveries: [[1], [2]]}, {...base, deliveries: [[1.5]]},
-    {...base, deliveries: Array(85).fill([])}, {...base, players: [{player: 5, name: 'Solo'}]}]) {
+    {...base, deliveries: Array(169).fill([])}, {...base, players: [{player: 9, name: 'Solo'}]}]) {
     expect(() => BowlingMatch.fromCheckpoint(checkpoint)).toThrow();
   }
 });

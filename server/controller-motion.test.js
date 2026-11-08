@@ -224,7 +224,7 @@ test('live sport switching keeps motion setup and permission while discarding th
   expect(elements.get('setup-panel').hidden).toBe(true);
   expect(elements.get('calibration-progress').hidden).toBe(true);
   expect(messages.filter(message => message.type === 'wee:controller-setup')).toEqual([
-    { type: 'wee:controller-setup', setup: 'motion' },
+    expect.objectContaining({ type: 'wee:controller-setup', setup: 'motion', requestId: expect.any(Number) }),
   ]);
   expect(permission).toHaveBeenCalledOnce();
   state({ playing: true, paused: false, sport: 'bowling', gameId: 'bowling-one' });
@@ -438,7 +438,7 @@ test('optional strength rehearsal uses real completed strokes, pauses setup, and
   state({ playing: true, paused: false });
   elements.get('toggle-settings').onclick();
   elements.get('tune-strength').onclick();
-  expect(messages.at(-1)).toEqual({ type: 'wee:controller-setup', setup: null });
+  expect(messages.at(-1)).toMatchObject({ type: 'wee:controller-setup', setup: null });
   state({ playing: true, paused: true }); // Host pauses while this phone rehearses.
   const rehearsalSwing = direction => {
     for (let i = 0; i < 15; i++) tick(20, { alpha: 300 * direction, beta: 600 * direction, gamma: 0 });
@@ -450,7 +450,7 @@ test('optional strength rehearsal uses real completed strokes, pauses setup, and
   expect(elements.get('strength-status').textContent).toContain('saved');
   expect(elements.get('tune-strength').textContent).toBe('Retune power');
   expect(relay.sendSwing).not.toHaveBeenCalled();
-  expect(messages.at(-1)).toEqual({ type: 'wee:controller-setup', setup: 'motion' });
+  expect(messages.at(-1)).toMatchObject({ type: 'wee:controller-setup', setup: 'motion' });
   state({ playing: true, paused: false });
   elements.get('toggle-settings').onclick();
   rehearsalSwing(1);
@@ -468,7 +468,7 @@ test('rehearsal is optional, cancels cleanly on hidden page, and recalibration c
   await calibrate();
   elements.get('skip-strength').onclick();
   expect(elements.get('strength-panel').hidden).toBe(true);
-  expect(messages.at(-1)).toEqual({ type: 'wee:controller-setup', setup: 'motion' });
+  expect(messages.at(-1)).toMatchObject({ type: 'wee:controller-setup', setup: 'motion' });
   elements.get('toggle-settings').onclick();
   elements.get('tune-strength').onclick();
   for (let i = 0; i < 15; i++) tick(20, { alpha: 300, beta: 600, gamma: 0 });
@@ -515,7 +515,7 @@ test('Calibrate itself requests permission; only real still readings unlock setu
   state({});
   await calibrate();
   expect(permission).toHaveBeenCalledTimes(1);
-  expect(messages).toContainEqual({ type: 'wee:controller-setup', setup: 'motion' });
+  expect(messages).toContainEqual(expect.objectContaining({ type: 'wee:controller-setup', setup: 'motion' }));
   expect(elements.get('setup-panel').hidden).toBe(true);
   expect(elements.get('play-panel').hidden).toBe(false);
   expect(elements.get('play-title').textContent).toBe('You’re in');
@@ -574,17 +574,18 @@ test('pause, reconnect and stale sensors show the next action while preserving c
   expect(relay.sendSwing).not.toHaveBeenCalled();
 });
 
-test('a rejected setup save remains visible on the calibrated waiting screen', async () => {
+test('a rejected setup save is visible and automatically retries on the calibrated waiting screen', async () => {
   await import('../src/controller/main.js');
   state({});
   await calibrate();
   emit('message', { source: parent, origin: location.origin,
-    data: { type: 'wee:setup-ack', result: { ok: false, error: 'disconnected' } } });
+    data: { type: 'wee:setup-ack', requestId: messages.filter(message => message.type === 'wee:controller-setup').at(-1).requestId, result: { ok: false, error: 'disconnected' } } });
   expect(elements.get('play-panel').hidden).toBe(false);
   expect(elements.get('play-notice').hidden).toBe(false);
   expect(elements.get('play-notice').textContent).toMatch(/setup|reconnect/i);
+  tick(1100);
   emit('message', { source: parent, origin: location.origin,
-    data: { type: 'wee:setup-ack', result: { ok: true } } });
+    data: { type: 'wee:setup-ack', requestId: messages.filter(message => message.type === 'wee:controller-setup').at(-1).requestId, result: { ok: true } } });
   expect(elements.get('play-notice').hidden).toBe(true);
   expect(elements.get('play-title').textContent).toBe('You’re in');
 });
@@ -625,7 +626,7 @@ test('granted permission without gyro readings does not claim calibration succes
   state({});
   await elements.get('calibrate').onclick();
   for (let i = 0; i < 51; i++) tick(200, { alpha: null, beta: null, gamma: null });
-  expect(messages).not.toContainEqual({ type: 'wee:controller-setup', setup: 'motion' });
+  expect(messages).not.toContainEqual(expect.objectContaining({ type: 'wee:controller-setup', setup: 'motion' }));
   expect(elements.get('motion').textContent).toContain('live gyroscope readings');
   expect(elements.get('sensor-status').textContent).toContain('without gyroscope data');
 });
@@ -640,9 +641,9 @@ test('insecure phone links and denied permission provide a usable explanation', 
   permission.mockResolvedValue('denied');
   await elements.get('calibrate').onclick();
   expect(elements.get('motion').textContent).toContain('denied');
-  expect(messages).not.toContainEqual({ type: 'wee:controller-setup', setup: 'motion' });
+  expect(messages).not.toContainEqual(expect.objectContaining({ type: 'wee:controller-setup', setup: 'motion' }));
   elements.get('use-buttons').onclick();
-  expect(messages).toContainEqual({ type: 'wee:controller-setup', setup: 'buttons' });
+  expect(messages).toContainEqual(expect.objectContaining({ type: 'wee:controller-setup', setup: 'buttons' }));
   state({ playing: true, paused: false });
   expect(elements.get('play-title').textContent).toBe('Tap to swing');
   expect(elements.get('manual-controls').hidden).toBe(false);
@@ -734,7 +735,12 @@ test('bowling tilt aims before the forward swing, locks during delivery and send
   });
   const rolls = messages.filter(message => message.type === 'wee:player-roll');
   expect(rolls).toHaveLength(1);
-  expect(rolls[0].event.aim).toBe(aim);
+  // The opening sample is still a positioning tilt. Lock the latest line at
+  // the actual forward swing, then ignore gravity changes through release.
+  const locked = messages.filter(message => message.type === 'wee:player-aim' && message.event.locked);
+  expect(locked.length).toBeGreaterThan(0);
+  expect(locked.every(message => message.event.aim === locked[0].event.aim)).toBe(true);
+  expect(rolls[0].event.aim).toBe(locked[0].event.aim);
   expect(rolls[0].event.spin).toBeGreaterThan(0);
   expect(rolls[0].event.power).toBeGreaterThan(.5);
   expect(Number(elements.get('motion-power').value)).toBe(rolls[0].event.power);
@@ -867,7 +873,7 @@ for (const [name, hand, expected] of teamRecordings) {
       expect(power).toBeGreaterThanOrEqual(0.2);
       expect(power).toBeLessThanOrEqual(1);
     }
-    expect(messages).toContainEqual({ type: 'wee:controller-setup', setup: 'motion' });
+    expect(messages).toContainEqual(expect.objectContaining({ type: 'wee:controller-setup', setup: 'motion' }));
   });
 }
 

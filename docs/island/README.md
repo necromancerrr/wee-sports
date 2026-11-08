@@ -31,7 +31,7 @@ permission flow are unchanged. Camera scanning and phone motion need HTTPS;
 
 Landing Play opens the selector without creating a room. Tennis, Bowling and
 Table Tennis reuse authenticated room creation and host-token storage. Golf
-remains informational, Table Tennis remains one player, and the reserved future
+remains informational, Table Tennis supports one or two players, and the reserved future
 billiards area is not advertised as playable. Menu contains manual joining,
 profiles, help, appearance and Motion.
 

@@ -138,16 +138,18 @@ documentation on 7 November 2026.
 
 ## Try the controller
 
-1. Create a Bowling or Table Tennis lobby on the TV and scan from the app.
+1. Create a Tennis, Bowling or Table Tennis lobby on the TV and scan from the app.
 2. Allow motion if the operating system asks. The controller checks fresh
    samples and automatically readies after the server accepts its setup.
    Denied or unavailable sensors select touch controls automatically.
 3. Bowl with a gentle forward swing, or make compact table-tennis strokes.
    Bowling waits for a quiet start, locks aim at forward onset, and releases
    at most once until the TV reports the next delivery. No Arm button is needed.
-   Table-tennis serves are automatic. Existing tennis uses touch controls.
+   Table-tennis serves are automatic. Tennis uses the browser's fast forehand /
+   backhand recognizer and strength mapping. Options also offers simple
+   forehand/backhand motion and touch buttons.
 4. **Options** contains touch/motion choice, centering, profile preferences,
-   practice mode and P1's pause/lobby/sport choices. Switching sports checks
+   playing hand, sensitivity, solo practice mode and P1's pause/lobby/sport choices. Switching sports checks
    fresh samples automatically, without another QR or setup confirmation.
    Returning to the lobby waits for **Play** before another match; **Wait for
    friends** can stop a countdown without restarting it automatically.
@@ -155,6 +157,23 @@ documentation on 7 November 2026.
    reconnects with its private token, and fresh samples restore play automatically.
    Buffered motion is discarded. An unresolved roll is queried by its original
    action ID; the app never generates a replacement roll automatically.
+
+Temporary iOS inactive states (including permission sheets) suppress input
+without dropping the room or cancelling motion permission. The joined controller
+keeps the screen awake; leaving releases that request. The touch paddle measures
+its actual size and captures dragging so the surrounding page does not scroll.
+During a table-tennis match, touch mode keeps sending a fresh, still paddle
+before the first drag and after lifting your finger. The paddle holds its last
+position, movement expires, and pause/background/disconnection suppress input.
+The main screen clearly says whether motion or touch is active. Guest players
+can change hand and sensitivity in Options without registering a profile.
+
+DeviceMotion's own Motion & Fitness permission is requested independently of
+Gyroscope. It supplies bowling tilt and acceleration; a missing or denied tilt
+sensor selects touch bowling instead of presenting an unresponsive aim. Gyro-only
+tennis and table tennis remain available when this optional sensor is denied.
+Run `npm run expo:install` after pulling this update. The keep-awake dependency
+matches Expo SDK 58; rebuild a development client if it lacks that native module.
 
 Optional profiles use the same server's `/api/profile` API. Sign-in tokens and
 room recovery tokens and guest-history ownership proofs are kept in SecureStore and scoped to the confirmed
@@ -166,13 +185,14 @@ are not uploaded to profiles.
 
 ## Measurement and remaining device checks
 
-The sensor adapter requests 60 Hz gyro and 30 Hz gravity/acceleration data and
+The sensor adapter requests 60 Hz gyro and gravity/acceleration data and
 records achieved sampling frequency and largest observed gap. These numbers
 are callback cadence, **not** end-to-end latency. Table-tennis gyro poses go
 directly to the socket on each fresh sample, with a 12 ms minimum spacing to
 admit normal 60 Hz scheduling jitter. Congested/disconnected samples are dropped
-instead of queued; bowling aim retains its separate 50 ms minimum. Pure math, filtering,
-calibration and bowling recognition are shared with web. Native Gyroscope
+instead of queued; bowling aim has a 16 ms minimum and streams only on the current
+player's ready turn. Pure math, adaptive aim filtering, calibration and tennis /
+bowling recognition are shared with web. Native Gyroscope
 measurements are already radians/second; DeviceMotion rotation-rate fields are
 deliberately unused because their native iOS and Android implementations name
 the axes differently. Expo's gravity-down vector is explicitly converted to a
@@ -181,17 +201,18 @@ Real-device grip/axis validation remains necessary, especially for the
 legacy bowling recognizer. Gyro-relative paddle orientation can drift; use
 recenter and do not treat it as tracked hand position.
 
-Local recognition and host-confirmed contact use different text and haptic
+Local recognition and host-confirmed contact use different haptic
 cues. Haptics may be disabled or unavailable without blocking play. The camera
 is closed before motion play. Pause, suspension and newer input generations
 cannot replay old poses or feedback.
 
 Verified in this cloud workspace:
 
-- 26 native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture and guest-claim tests, including cancellation
-  while a permission prompt or sensor availability request is unresolved.
-- The 60 Hz pose stream, burst bounds, congestion drops and unchanged bowling
-  aim rate through the real native session class.
+- 39 native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture, touch-paddle and guest-claim tests, including cancellation
+  while either sensor permission request is unresolved, native tennis forehand /
+  backhand traces and transient inactivity without sequence replay or reconnect.
+- The 60 Hz pose and bowling-aim streams, burst bounds and congestion drops
+  through the real native session class.
 - Metro/Hermes export for Android and iOS, using the pinned SDK dependencies.
 - Installed versions checked against the SDK's bundled native-module manifest.
 - The root `npm run expo` command starts Metro in Expo Go mode; local Android

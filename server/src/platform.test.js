@@ -114,7 +114,9 @@ test('the pose relay admits 60 Hz input with jitter and still rejects bursts wit
   const bowling = fixture('bowling');
   assert.equal(bowling.store.continuousTarget('p1', bowling.aim(0), 'aim').ok, true);
   bowling.advance(18);
-  assert.equal(bowling.store.continuousTarget('p1', bowling.aim(1), 'aim').error, 'rate-limited');
+  assert.equal(bowling.store.continuousTarget('p1', bowling.aim(1), 'aim').ok, true);
+  bowling.advance(1);
+  assert.equal(bowling.store.continuousTarget('p1', bowling.aim(2), 'aim').error, 'rate-limited');
 });
 
 test('pause cancels old-generation pose, and resume requires a fresh envelope', () => {
@@ -165,7 +167,7 @@ test('bowling preview is only from the current player in the ready phase and can
   assert.equal(f.store.continuousTarget('p1', f.pose(2), 'pose').error, 'not-controller');
 });
 
-test('table tennis has one seat; same-room switching preserves credentials and rechecks motion setup', () => {
+test('table tennis has two seats; same-room switching preserves credentials and rechecks motion setup', () => {
   const f = fixture('bowling', {playing: false});
   const before = f.view();
   assert.equal(f.store.switchSport('tv', {sport: 'table-tennis', gameId: null}).ok, true);
@@ -177,21 +179,22 @@ test('table tennis has one seat; same-room switching preserves credentials and r
   assert.equal(after.players[0].setup, null);
   assert.equal(after.players[0].ready, false);
   assert.ok(after.inputGeneration > before.inputGeneration);
-  assert.equal(f.store.join('second', {v, code: f.room.code, name: 'Extra', capabilities}).error, 'room-full');
+  assert.equal(f.store.join('second', {v, code: f.room.code, name: 'Friend', capabilities}).slot, 1);
+  assert.equal(f.store.join('third', {v, code: f.room.code, name: 'Extra', capabilities}).error, 'room-full');
   assert.equal(f.store.setReady('p1', {ready: true}).error, 'setup-required');
   assert.equal(f.store.resume('new-phone', {v, code: f.room.code, role: 'player', token: f.seats[0].token}).ok, true);
   assert.equal(f.store.resume('new-tv', {v, code: f.room.code, role: 'host', token: f.room.token}).ok, true);
-  assert.equal(f.view().players.length, 1);
+  assert.equal(f.view().players.length, 2);
 });
 
 test('sport switching keeps touch setup, refuses extra seats, and requires authenticated P1 or host', () => {
-  const f = fixture('bowling', {playing: false, count: 2, setup: 'buttons'});
+  const f = fixture('bowling', {playing: false, count: 3, setup: 'buttons'});
   const change = {sport: 'table-tennis', gameId: null};
   for (const [socket, role] of [['p1', 'host'], ['p2', 'player'], ['outsider', 'host']]) {
     assert.equal(f.store.switchSport(socket, change, role).error, 'not-game-leader');
   }
   assert.equal(f.store.switchSport('p1', change, 'player').error, 'too-many-players');
-  f.store.remove('p2');
+  f.store.remove('p3');
   assert.equal(f.store.switchSport('p1', change, 'player').ok, true);
   assert.equal(f.view().players[0].setup, 'buttons');
   assert.equal(f.store.setReady('p1', {ready: true}).ok, true);

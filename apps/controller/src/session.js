@@ -37,6 +37,7 @@ export class ControllerSession {
     this.seat = null;
     this.token = null;
     this.active = true;
+    this.inputActive = true;
     this.sequence = 0;
     this.connectionAttempt = 0;
     this.bowlingTurn = 0;
@@ -61,10 +62,9 @@ export class ControllerSession {
     this.socket.on(EVENTS.ROOM_CLOSED, () => this.ended('The TV closed this room.'));
   }
 
-  clearTransient() {
-    this.sequence = 0;
+  clearTransient({clearFeedback = true} = {}) {
     this.lastSent = { pose: -Infinity, aim: -Infinity };
-    this.feedbackIds.clear();
+    if (clearFeedback) this.feedbackIds.clear();
     this.socket.sendBuffer.length = 0;
   }
 
@@ -158,7 +158,7 @@ export class ControllerSession {
   }
 
   playing() {
-    return this.active && this.socket.connected && this.seat?.phase === 'game' && !this.seat.paused && this.seat.gameId;
+    return this.active && this.inputActive && !this.resuming && this.socket.connected && this.seat?.phase === 'game' && !this.seat.paused && this.seat.gameId;
   }
 
   latest(kind, value) {
@@ -167,7 +167,7 @@ export class ControllerSession {
     // The gyro provides about 60 samples/second. A little scheduling headroom
     // keeps alternate 16 ms callbacks from being dropped by a 16.67 ms gate.
     // Congestion still drops the current sample; no old pose is queued.
-    if (now - this.lastSent[kind] < (kind === 'pose' ? 12 : 50)) return false;
+    if (now - this.lastSent[kind] < (kind === 'pose' ? 12 : 16)) return false;
     const transport = this.socket.io?.engine?.transport;
     if (transport && !transport.writable) return false;
     this.lastSent[kind] = now;
@@ -199,12 +199,20 @@ export class ControllerSession {
   background() {
     if (this.socket.connected) this.socket.emit(EVENTS.SESSION_AWAY, {});
     this.active = false;
+    this.inputActive = false;
     this.clearTransient();
     this.socket.disconnect();
     this.changed(this.seat, 'suspended');
   }
 
-  foreground() { this.active = true; this.clearTransient(); if (this.token) this.socket.connect(); }
+  // Native 'inactive' includes permission sheets and transient system overlays.
+  // Suppress input without abandoning the room or cancelling a permission prompt.
+  inactive() { this.inputActive = false; this.clearTransient({clearFeedback:false}); }
+  foreground() {
+    const suspended = !this.active;
+    this.active = true; this.inputActive = true; this.clearTransient({clearFeedback:suspended});
+    if (this.token && !this.socket.connected) this.socket.connect();
+  }
   setProfileToken(token) {
     this.socket.auth = token ? { profileToken: token } : {};
     // Server reads account identity from the authenticated handshake, never room data.

@@ -73,9 +73,15 @@ single bowling releases, curve direction, sensor gaps and visibility changes.
 Its sensor/permission mocks are software evidence, not real phone acceptance.
 See [the controller design and research](controller-simplicity.md).
 
+`scripts/browser-party-smoke.cjs` checks an eight-player bowling lobby, sequential
+Play readiness, ninth-seat rejection, player-eight reconnect, compact standings,
+and two table-tennis phones making real paddle contacts. It accepts the same
+server and report variables. `WEE_PARTY_SCREENSHOT` saves the eight-player TV view.
+Run browser checks separately from CPU-heavy physics suites on shared machines.
+
 ## Owner trial: bowling
 
-1. Create a Bowling room on the display, scan its QR with the normal phone
+1. Create a Bowling room on the display, choose the party size (up to eight), scan its QR with the normal phone
    camera, and join as a guest. No account or native app is required.
 2. Tap Play and allow motion if asked. No name, grip checklist, Ready button or
    per-roll Arm button is required. Confirm left/center/right aim on the display;
@@ -96,14 +102,17 @@ oracles complement a real game; neither substitutes for the other.
 1. From the same room, return to the lobby and choose Table Tennis. Check that
    the player name and seat remain; fresh motion samples set up the paddle
    automatically without another permission prompt or direction check.
-2. Practice feeds start automatically. Try repeated slow returns. Compare a stationary block,
-   compact flat return, angled face, and upward/downward brushing.
+2. Solo starts a scored bot match. Choose Practice for repeated feeds, then try
+   compact flat returns and upward/downward brushing. In Friendly mode an idle
+   paddle must not hit the ball; make a deliberate short swing after the bounce.
 3. Try touch controls; use the standalone diagnostic view for keyboard controls
    to distinguish sensor mapping from simulation behavior. The ball should react at physical paddle contact,
    without waiting for a completed tennis swing animation.
 4. Pause and recenter between points. Neither action should cause an invisible
    high-speed strike. Test a short interruption and confirm stale input is frozen.
-5. Play a scored bot game, rematch, and switch back to bowling. Verify deuce,
+5. Set the TV party size to two before joining a second phone and play head to
+   head. Both paddles must respond to their own phone. Finish a game at 12 with
+   a two-point lead, rematch, and switch back to bowling. Verify deuce,
    alternating service at deuce, and serve lets through the automated rule cases.
 
 Assisted reach and an assisted serve are accessibility/gameplay choices. They

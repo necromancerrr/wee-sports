@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import { createCourtBackdrop } from './components/courtBackdrop';
+import { createParkClub } from './components/parkClub';
 import { createNet } from './components/net';
 import { createCourt } from './components/court';
 import {
@@ -41,7 +41,7 @@ export class World {
     private readonly shotTargetMarker: THREE.Mesh;
     private readonly gameLogic: GameLogic;
     private readonly worldCamera: WorldCamera;
-    private readonly courtBackdrop = createCourtBackdrop();
+    private readonly parkClub = createParkClub();
     private clock = new THREE.Clock();
     private animationFrameId: number | null = null;
 
@@ -67,8 +67,8 @@ export class World {
 
     constructor(container: HTMLElement) {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xdce5e1);
-        this.scene.fog = new THREE.Fog(0xdce5e1, 45, 110);
+        this.scene.background = new THREE.Color(0xd6e5e7);
+        this.scene.fog = new THREE.Fog(0xd6e5e7, 45, 110);
 
         this.worldCamera = new WorldCamera();
         this.camera = this.worldCamera.primary;
@@ -99,7 +99,7 @@ export class World {
         dirLight.shadow.normalBias = .03;
         this.scene.add(dirLight);
 
-        this.scene.add(this.courtBackdrop.group);
+        this.scene.add(this.parkClub.group);
         this.scene.add(createNet());
         this.scene.add(createCourt());
 
@@ -237,7 +237,7 @@ export class World {
 
     public dispose(): void {
         this.stop();
-        this.courtBackdrop.dispose();
+        this.parkClub.dispose();
         this.shotTargetMarker.geometry.dispose();
         (this.shotTargetMarker.material as THREE.Material).dispose();
         this.shotTargetMarker.removeFromParent();

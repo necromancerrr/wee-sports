@@ -185,7 +185,7 @@ export default function JoinStub() {
           <div className="phone-session__name">
             <h1>{sportName(seat.sport)}</h1>
             <p className="stub__muted">
-              {seat.name} · Connected
+              {seat.name} · {reconnecting ? 'Reconnecting' : 'Connected'}
             </p>
           </div>
           <PhoneGameOptions lobby={lobby} slot={seat.slot} disabled={reconnecting} />
@@ -202,10 +202,10 @@ export default function JoinStub() {
             onStart={() => setAutoStart(true)} onHold={waitForFriends} disabled={reconnecting || lobby.paused} />
         )}
 
-        {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} /> : null}
+        {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} compact /> : null}
         {isController(seat.sport, seat.slot) ? (
           <>
-            <GameFrame code={seat.code} controller controllerIntent={controllerIntent} onControllerMode={controllerMode} player={seat.slot + 1} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
+            <GameFrame code={seat.code} controller controllerIntent={controllerIntent} onControllerMode={controllerMode} player={seat.slot + 1} players={players} sport={seat.sport} gameId={seat.gameId} gameState={seat.gameState} generation={seat.inputGeneration} hostEpoch={seat.hostEpoch} matchRound={seat.matchRound}
               playing={phase === PHASES.GAME}
               paused={phase !== PHASES.GAME || reconnecting || seat.paused}
               manuallyPaused={Boolean(lobby.manuallyPaused && !reconnecting && !lobby.reconnecting?.length && !lobby.setupPending?.length)}

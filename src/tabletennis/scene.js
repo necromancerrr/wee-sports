@@ -68,11 +68,14 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   scene.add(halo);
   const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(.035, 20), new THREE.MeshBasicMaterial({color: '#122f36', transparent: true, opacity: .25, depthWrite: false}));
   ballShadow.rotation.x = -Math.PI / 2; scene.add(ballShadow);
-  const aim = new THREE.Group();
-  const ring = new THREE.Mesh(new THREE.RingGeometry(.085, .092, 40), new THREE.MeshBasicMaterial({color: '#e6f1a2', transparent: true, opacity: .65, depthWrite: false, side: THREE.DoubleSide}));
-  ring.rotation.x = -Math.PI / 2; aim.add(ring);
-  const dot = new THREE.Mesh(new THREE.CircleGeometry(.012, 12), ring.material);
-  dot.rotation.x = -Math.PI / 2; aim.add(dot); scene.add(aim);
+  const aims = ['#e6f1a2', '#e9997e'].map(color => {
+    const aim = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.085, .092, 40), new THREE.MeshBasicMaterial({color, transparent: true, opacity: .65, depthWrite: false, side: THREE.DoubleSide}));
+    ring.rotation.x = -Math.PI / 2; aim.add(ring);
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(.012, 12), ring.material);
+    dot.rotation.x = -Math.PI / 2; aim.add(dot); scene.add(aim);
+    return aim;
+  });
   const contact = new THREE.Mesh(new THREE.RingGeometry(.038, .045, 24), new THREE.MeshBasicMaterial({color: '#fff8d6', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide}));
   scene.add(contact);
   const paddles = [0, 1].map(index => {
@@ -80,39 +83,8 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     const face = mesh(new THREE.CylinderGeometry(.095, .095, .012, 32), index === 0 ? '#dce988' : '#e9997e', group);
     face.rotation.x = Math.PI / 2; face.scale.z = .12 / .095;
     const handle = box([.034, .115, .018], [0, -.14, 0], '#d2a672', group);
-    scene.add(group); return {group, handle};
+    scene.add(group); return {group, face, handle};
   });
-  const up = new THREE.Vector3(0, 1, 0), delta = new THREE.Vector3(), mid = new THREE.Vector3();
-  function segment(item, start, end) {
-    delta.subVectors(end, start); item.scale.y = delta.length();
-    item.position.copy(mid.addVectors(start, end).multiplyScalar(.5));
-    item.quaternion.setFromUnitVectors(up, delta.normalize());
-  }
-  function avatar(index) {
-    const group = new THREE.Group(), sign = index === 0 ? 1 : -1;
-    const shirt = index === 0 ? '#bace71' : '#df967d', skin = index === 0 ? '#b88160' : '#e3b58d';
-    const torso = mesh(new THREE.CapsuleGeometry(.16, .21, 4, 12), shirt, group);
-    torso.position.y = .83; torso.scale.z = .7;
-    sphere(.145, [0, 1.18, 0], skin, group);
-    const hair = sphere(.149, [0, 1.235, .025 * sign], '#3b3933', group);
-    hair.scale.y = .65;
-    for (const x of [-.09, .09]) {
-      const leg = mesh(new THREE.CapsuleGeometry(.062, .28, 3, 8), '#354f57', group);
-      leg.position.set(x, .36, 0);
-      const shoe = sphere(.08, [x, .09, -.045 * sign], '#f4ecdb', group); shoe.scale.set(1, .65, 1.5);
-    }
-    // An off hand rests at the hip; the playing arm connects to the real handle.
-    sphere(.056, [-.20 * sign, .70, -.025 * sign], skin, group);
-    const offArm = mesh(new THREE.CapsuleGeometry(.05, .20, 3, 8), shirt, group);
-    offArm.position.set(-.18 * sign, .85, 0); offArm.rotation.z = -.25 * sign;
-    for (const x of [-.045, .045]) sphere(.012, [x, 1.19, -.137 * sign], '#293c3a', group);
-    const upper = mesh(new THREE.CylinderGeometry(.053, .048, 1, 10), shirt);
-    const forearm = mesh(new THREE.CylinderGeometry(.042, .034, 1, 10), skin);
-    const hand = sphere(.052, [0, 1, 0], skin); hand.scale.y = 1.2;
-    scene.add(group);
-    return {group, upper, forearm, hand, sign, shoulder: new THREE.Vector3(), elbow: new THREE.Vector3(), grip: new THREE.Vector3()};
-  }
-  const players = [avatar(0), avatar(1)];
   let width = 1, height = 1;
   function resize() {
     width = Math.max(1, container.clientWidth); height = Math.max(1, container.clientHeight);
@@ -132,24 +104,24 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     ballShadow.position.set(p.x, TABLE.height + .004, p.z);
     ballShadow.visible = ball.visible && Math.abs(p.x) < TABLE.width / 2 && Math.abs(p.z) < TABLE.length / 2;
     ballShadow.scale.setScalar(1 + Math.max(0, p.y - TABLE.height) * .6);
-    aim.visible = Boolean(game.aimTarget) && game.settings.assistance === 'friendly' && !game.paused;
-    if (aim.visible) aim.position.set(game.aimTarget.x, TABLE.height + .006, game.aimTarget.z);
+    aims.forEach((aim, index) => {
+      const target = index === 0 ? game.aimTarget : game.mode === 'versus' ? game.players[1].aimTarget : null;
+      aim.visible = Boolean(target) && game.settings.assistance === 'friendly' && !game.paused;
+      if (aim.visible) aim.position.set(target.x, TABLE.height + .006, target.z);
+    });
     game.physics.paddles.forEach((paddle, index) => {
-      const display = paddles[index].group, player = players[index];
+      const {group: display, face, handle} = paddles[index];
       display.position.set(paddle.position.x, paddle.position.y, paddle.position.z);
       normal.set(paddle.normal.x, paddle.normal.y, paddle.normal.z).normalize();
       display.lookAt(lookAt.copy(display.position).add(normal));
-      // Collision-disabled recovery is still a visible hand and paddle.
+      // The paddle is the player's visible controller. Its face always matches
+      // the simulation's contact ellipse, including assistance settings.
+      face.scale.set(paddle.radiusX / .095, 1, paddle.radiusY / .095);
+      handle.position.y = -paddle.radiusY - .055;
       display.visible = true;
-      player.group.position.set((index === 0 ? -.60 : .60) + paddle.position.x * .35, 0, player.sign * 1.78);
-      player.shoulder.set(player.group.position.x + .17 * player.sign, .94, player.sign * 1.73);
-      player.grip.set(0, -.14, 0).applyQuaternion(display.quaternion).add(display.position);
-      player.elbow.copy(player.shoulder).lerp(player.grip, .5);
-      player.elbow.x += .1 * player.sign; player.elbow.y -= .09;
-      segment(player.upper, player.shoulder, player.elbow); segment(player.forearm, player.elbow, player.grip);
-      player.hand.position.copy(player.grip); player.hand.quaternion.copy(display.quaternion);
       if (labels[index]) {
-        screen.set(player.group.position.x, 1.43, player.group.position.z).project(camera);
+        // Names sit outside the table and remain still while players swing.
+        screen.set(index === 0 ? -1.05 : 1.05, TABLE.height + .10, index === 0 ? 1.5 : -1.5).project(camera);
         labels[index].style.transform = `translate(${(screen.x * .5 + .5) * width}px, ${(-screen.y * .5 + .5) * height}px) translate(-50%, 0)`;
       }
     });
@@ -166,8 +138,15 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   return {render, dispose() {
     observer.disconnect(); renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerdown', onAction);
-    scene.traverse(item => { item.geometry?.dispose(); });
-    for (const value of materials.values()) value.dispose();
-    renderer.dispose();
+    const geometries = new Set(), usedMaterials = new Set();
+    scene.traverse(item => {
+      if (item.geometry) geometries.add(item.geometry);
+      for (const value of Array.isArray(item.material) ? item.material : [item.material]) {
+        if (value) usedMaterials.add(value);
+      }
+    });
+    for (const geometry of geometries) geometry.dispose();
+    for (const value of usedMaterials) value.dispose();
+    renderer.dispose(); renderer.domElement.remove();
   }};
 }

@@ -137,7 +137,7 @@ test('removing someone who is not in a room is a no-op', () => {
 
 // Ready check -------------------------------------------------------------
 
-/** A room with a fake clock, filled with four players to retain multiplayer lobby coverage. Players are p0, p1, … */
+/** A room with a fake clock, filled to the sport’s capacity to retain multiplayer lobby coverage. Players are p0, p1, … */
 function startReadyCheck(sport = 'bowling') {
   const clock = { t: 1_000_000 };
   const { store, code } = openRoom(new RoomStore({ now: () => clock.t }), sport);
@@ -171,16 +171,16 @@ test(`the ready check starts at ${READY_AT_PLAYERS} players and not before`, () 
 test('ready toggles on and off, and the snapshot reflects it', () => {
   const { store, code } = startReadyCheck();
   assert.deepEqual(store.setReady('p1', { ready: true }), { ok: true, code });
-  assert.deepEqual(readyFlags(store, code), [false, true, false, false]);
+  assert.deepEqual(readyFlags(store, code), Array.from({length: MAX_PLAYERS}, (_, i) => i === 1));
   store.setReady('p1', { ready: false });
-  assert.deepEqual(readyFlags(store, code), [false, false, false, false]);
+  assert.deepEqual(readyFlags(store, code), Array(MAX_PLAYERS).fill(false));
   // Sending the same state twice is fine.
   store.setReady('p2', { ready: true });
   assert.equal(store.setReady('p2', { ready: true }).ok, true);
-  assert.deepEqual(readyFlags(store, code), [false, false, true, false]);
+  assert.deepEqual(readyFlags(store, code), Array.from({length: MAX_PLAYERS}, (_, i) => i === 2));
 });
 
-test('3 of 4 ready stays in the ready check', () => {
+test('all but one ready stays in the ready check', () => {
   const { store, code } = startReadyCheck();
   for (let i = 0; i < MAX_PLAYERS - 1; i += 1) {
     assert.equal(store.setReady(`p${i}`, { ready: true }).countdownStarted, undefined);
@@ -217,7 +217,7 @@ test('a bad ready payload is rejected and changes nothing', () => {
   for (const payload of [undefined, null, {}, { ready: 'yes' }, { ready: 1 }, 'true']) {
     assert.deepEqual(store.setReady('p0', payload), { ok: false, error: ERRORS.BAD_READY });
   }
-  assert.deepEqual(readyFlags(store, code), [false, false, false, false]);
+  assert.deepEqual(readyFlags(store, code), Array(MAX_PLAYERS).fill(false));
 });
 
 test('a player leaving restarts readiness for the remaining players', () => {
@@ -226,11 +226,11 @@ test('a player leaving restarts readiness for the remaining players', () => {
   store.setReady('p2', { ready: true });
   assert.deepEqual(store.remove('p1'), { code, closed: false });
   assert.equal(store.lobby(code).phase, PHASES.READY);
-  assert.deepEqual(readyFlags(store, code), [false, false, false]);
+  assert.deepEqual(readyFlags(store, code), Array(MAX_PLAYERS - 1).fill(false));
   assert.equal(store.setReady('p0', { ready: true }).ok, true);
 });
 
-test('a new 4th player restarts the ready check from scratch', () => {
+test('a replacement player joins the renewed ready check', () => {
   const { store, code } = startReadyCheck();
   store.setReady('p0', { ready: true });
   store.remove('p3');
@@ -263,7 +263,7 @@ test('the last player to ready up starts the countdown on its own', () => {
   assert.deepEqual(lobby.countdown, { msLeft: COUNTDOWN_MS });
   assert.equal(typeof lobby.gameId, 'string');
   // Everyone stays ready while the countdown runs, so anyone can still back out.
-  assert.deepEqual(readyFlags(store, code), [true, true, true, true]);
+  assert.deepEqual(readyFlags(store, code), Array(MAX_PLAYERS).fill(true));
 });
 
 test('msLeft counts down with the clock and never goes negative', () => {
@@ -283,7 +283,7 @@ test('un-readying during the countdown cancels it, and everyone else stays ready
   assert.equal(lobby.phase, PHASES.READY);
   assert.equal(lobby.countdown, null);
   assert.equal(lobby.gameId, null);
-  assert.deepEqual(readyFlags(store, code), [true, true, false, true]);
+  assert.deepEqual(readyFlags(store, code), Array.from({length: MAX_PLAYERS}, (_, i) => i !== 2));
   // The cancelled countdown's deadline passing later changes nothing.
   clock.t += COUNTDOWN_MS;
   assert.equal(store.finishCountdown(code), null);
@@ -304,7 +304,7 @@ test('a bowling countdown ends in the game, and not a moment early', () => {
   assert.equal(lobby.phase, PHASES.GAME);
   assert.equal(lobby.countdown, null);
   assert.equal(lobby.vote, null);
-  assert.deepEqual(readyFlags(store, code), [false, false, false, false]);
+  assert.deepEqual(readyFlags(store, code), Array(MAX_PLAYERS).fill(false));
   // A second, stale tick changes nothing.
   assert.equal(store.finishCountdown(code), null);
   assert.equal(store.finishCountdown('ZZZZ'), null);
@@ -317,10 +317,10 @@ test('a player leaving during the countdown cancels it and clears the ready flag
   const lobby = store.lobby(code);
   assert.equal(lobby.phase, PHASES.READY);
   assert.equal(lobby.countdown, null);
-  assert.deepEqual(readyFlags(store, code), [false, false, false]);
+  assert.deepEqual(readyFlags(store, code), Array(MAX_PLAYERS - 1).fill(false));
   clock.t += COUNTDOWN_MS;
   assert.equal(store.finishCountdown(code), null);
-  // A new 4th player starts a fresh ready check.
+  // A replacement fills the open seat in the ready check.
   assert.equal(store.join('new', { v, code, name: 'New' }).phase, PHASES.READY);
 });
 

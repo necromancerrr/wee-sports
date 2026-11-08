@@ -65,3 +65,99 @@ test('native automatic setup accepts fresh moving samples but never streams befo
   assert.equal(poses.length,2,'new input generation cancels movement without restarting setup in a loop');
   controller.stop();
 });
+
+test('DeviceMotion permission is requested separately and bowling cannot silently lose tilt aim', async () => {
+  const {sensors, controller} = await fixture();
+  let asked = 0;
+  sensors.DeviceMotion.requestPermissionsAsync = async () => {asked++; return {granted:false};};
+  controller.session.seat.sport = 'bowling';
+  await assert.rejects(controller.calibrate(), /aiming is unavailable/);
+  assert.equal(asked, 1);
+  assert.equal(sensors.Gyroscope.listeners.size, 0);
+  assert.equal(sensors.DeviceMotion.listeners.size, 0);
+  controller.stop();
+});
+
+test('denied optional DeviceMotion permission still permits gyro table tennis', async () => {
+  const {sensors, controller} = await fixture();
+  sensors.DeviceMotion.requestPermissionsAsync = async () => ({granted:false});
+  await controller.calibrate();
+  assert.equal(sensors.Gyroscope.listeners.size,1);
+  assert.equal(sensors.DeviceMotion.listeners.size,0);
+  controller.stop();
+});
+
+test('a late DeviceMotion permission grant cannot resurrect a backgrounded controller', async () => {
+  const {sensors, controller} = await fixture();
+  const permission = deferred();
+  sensors.DeviceMotion.requestPermissionsAsync = () => permission.promise;
+  const pending = controller.calibrate();
+  await new Promise(resolve => setImmediate(resolve));
+  controller.stop(); permission.resolve({granted:true}); await pending;
+  assert.equal(sensors.Gyroscope.listeners.size,0);
+  assert.equal(sensors.DeviceMotion.listeners.size,0);
+});
+
+test('native tennis recognizes the web forehand and backhand traces once in radians per second', async () => {
+  const {MotionController} = await import('../src/motionCore.js');
+  for (const [label, peak] of [['Forehand',[170,310,0]], ['Backhand',[-400,-300,0]]]) {
+    let now = 1000;
+    const strokes = [];
+    const session = {seat:{sport:'tennis'},inputSetup:'motion',playing:()=>true};
+    const sensors = {Gyroscope:sensor(),DeviceMotion:sensor()};
+    const controller = new MotionController({session,sensors,now:()=>now,onSwing:stroke=>strokes.push(stroke)});
+    try {
+      await controller.calibrate();
+      for (let time=0;time<=1200;time+=20) {
+        now=1000+time;
+        const rate = time < 400 ? [0,0,0] : time < 540 ? peak : time < 600 ? peak.map(value=>value*.35) : [0,0,0];
+        controller.sample(Object.fromEntries(['x','y','z'].map((axis,i)=>[axis,rate[i]*Math.PI/180])));
+      }
+      assert.equal(strokes.length,1);
+      assert.equal(strokes[0].label,label);
+      assert.equal(strokes[0].hand,'Right');
+      assert.ok(strokes[0].power>=.2 && strokes[0].power<=1);
+    } finally {controller.stop();}
+  }
+});
+
+test('native tennis discards a partial swing on interruption and suppresses paused movement', async () => {
+  const {MotionController} = await import('../src/motionCore.js');
+  let now = 1000, playing = true;
+  const strokes = [];
+  const session = {seat:{sport:'tennis'},inputSetup:'motion',playing:()=>playing};
+  const controller = new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now,onSwing:stroke=>strokes.push(stroke)});
+  try {
+    await controller.calibrate();
+    for (let i=0;i<15;i++) {controller.sample({x:0,y:0,z:0});now+=20;}
+    controller.sample({x:3,y:6,z:0}); now+=20;
+    playing=false;
+    for (let i=0;i<20;i++) {controller.sample({x:3,y:6,z:0});now+=20;}
+    playing=true;
+    for (let i=0;i<15;i++) {controller.sample({x:0,y:0,z:0});now+=20;}
+    assert.deepEqual(strokes,[]);
+  } finally {controller.stop();}
+});
+
+test('only the current native bowler streams aim, with fresh gravity samples', async () => {
+  const {MotionController} = await import('../src/motionCore.js');
+  let now = 1000;
+  const aims = [];
+  const session = {seat:{sport:'bowling',slot:1,gameState:{phase:'ready',currentPlayer:1}},
+    inputSetup:'motion',bowlingTurnKey:'turn-1',playing:()=>true,latest:(kind,value)=>aims.push({kind,value})};
+  const controller = new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now});
+  try {
+    await controller.calibrate();
+    const sample = () => {
+      controller.device = {acceleration:{x:0,y:0,z:0},accelerationIncludingGravity:{x:-3,y:0,z:-9.35}};
+      controller.deviceReceived = now;
+      controller.sample({x:0,y:0,z:0});now+=20;
+    };
+    for(let i=0;i<20;i++) sample();
+    assert.deepEqual(aims,[], 'waiting bowlers do not send aim traffic');
+    session.seat.gameState.currentPlayer=2; session.bowlingTurnKey='turn-2'; sample();
+    assert.equal(aims.length,1);
+    assert.equal(aims[0].kind,'aim');
+    assert.ok(Math.abs(aims[0].value.aim)>0, 'tilt reaches the TV instead of staying centered');
+  } finally {controller.stop();}
+});

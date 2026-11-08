@@ -1,0 +1,17 @@
+{
+  "recordedAt": "2026-11-08T02:42:14.109Z",
+  "base": "http://127.0.0.1:5202",
+  "checks": [
+    "Eight ready controllers join their chosen party, the first waits for friends, and a ninth is rejected",
+    "The real bowling renderer shows all eight names without horizontal page overflow",
+    "Player eight reconnects into the original seat and the bowling game resumes",
+    "Two phones start a scored table-tennis match with independent touch controls and no solo practice actions",
+    "Both human table-tennis players produce real rally contacts through their own controller, excluding assisted serves",
+    "Ordinary scroll, blur and duplicate pageshow do not pause the room",
+    "No uncaught browser errors"
+  ],
+  "errors": [],
+  "limitations": [
+    "Generated browser/button input and software WebGL; not physical phone comfort or end-to-end latency measurements."
+  ]
+}

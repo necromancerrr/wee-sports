@@ -126,7 +126,7 @@ export class RoomStore {
     }
     if (!code) return { ok: false, error: ERRORS.SERVER_BUSY };
 
-    this.#rooms.set(code, { code, sport, hostId, phase: PHASES.LOBBY, players: new Map(), deadline: null, pausedAt: null, manuallyPaused: false,
+    this.#rooms.set(code, { code, sport, hostId, expectedPlayers: 1, phase: PHASES.LOBBY, players: new Map(), deadline: null, pausedAt: null, manuallyPaused: false,
       gameId: null, matchRound: 0, inputGeneration: 0, hostEpoch: 1, profileBindings: new Map(), streams: new Map(), actionResults: new Map(), checkpoint: null, gameState: null, pendingRoll: null, seenRolls: new Set(),
       seenHits: new Set(), lastHitAt: new Map(), pendingStrokes: new Map(), soundMuted: null,
       gameOptions: null, seenCommands: new Set(), pendingGameCommand: null, vote: null, tutorial: null });
@@ -165,7 +165,8 @@ export class RoomStore {
     const memberId = this.#addSession(playerId, code, 'player');
     this.#members.get(memberId).capabilities = negotiation.capabilities;
     room.players.set(memberId, { slot, name: unique, ready: false, setup: null });
-    this.#resetReady(room);
+    // Existing phones have already confirmed Play; a new guest only readies their own seat.
+    if (room.phase !== PHASES.READY) this.#resetReady(room);
     return this.#sessionView(memberId);
   }
 
@@ -190,19 +191,7 @@ export class RoomStore {
     if (ready && isController(room.sport, player.slot) && !player.setup) return { ok: false, error: 'setup-required' };
     player.ready = ready;
 
-    if (room.phase === PHASES.READY && [...room.players.values()].every((seat) => seat.ready)) {
-      room.phase = PHASES.COUNTDOWN;
-      room.gameId = randomUUID();
-      room.profileBindings = new Map([...room.players.keys()].map(id => [id, this.#members.get(id)?.profileId ?? null]));
-      room.inputGeneration++;
-      room.streams.clear();
-      if (room.recoverySource?.payload) {
-        const payload = room.recoverySource.payload;
-        room.checkpoint = {payload, encoded:JSON.stringify(payload), revision:1, saved:false};
-      }
-      room.deadline = this.#now() + COUNTDOWN_MS;
-      return { ok: true, code: room.code, countdownStarted: true, msLeft: COUNTDOWN_MS };
-    }
+    if (room.phase === PHASES.READY) return this.#startWhenReady(room);
     if (room.phase === PHASES.COUNTDOWN && !ready) {
       // Everyone else stays ready, so readying up again restarts it at once.
       room.phase = PHASES.READY;
@@ -212,6 +201,44 @@ export class RoomStore {
       return { ok: true, code: room.code, countdownCancelled: true };
     }
     return { ok: true, code: room.code };
+  }
+
+  /** The TV chooses the party size before phones tap Play. It is a minimum
+   * roster, never an invitation to evict an already joined participant. */
+  setPlayerCount(socketId, payload) {
+    const member = this.#members.get(this.#sockets.get(socketId));
+    const room = member && this.#rooms.get(member.code);
+    if (member?.role !== 'host' || room?.hostId !== member.id) return {ok: false, error: ERRORS.NOT_HOST};
+    if (!BEFORE_PLAY.has(room.phase) && room.phase !== PHASES.COUNTDOWN) return {ok: false, error: 'in-progress'};
+    const count = payload?.count;
+    if (!Number.isInteger(count) || count < 1 || count > playerCapacity(room.sport)) return {ok: false, error: 'bad-player-count'};
+    if (count < room.players.size) return {ok: false, error: 'players-already-joined'};
+    if (room.recoverySource && count !== 1) return {ok: false, error: 'solo-only'};
+    room.expectedPlayers = count;
+    if (room.phase === PHASES.COUNTDOWN && room.players.size < count) {
+      room.phase = PHASES.READY;
+      room.deadline = null;
+      room.gameId = null;
+      room.inputGeneration++;
+      room.streams.clear();
+    }
+    return this.#startWhenReady(room);
+  }
+
+  #startWhenReady(room) {
+    if (room.phase !== PHASES.READY || room.pausedAt !== null ||
+        room.players.size < room.expectedPlayers || ![...room.players.values()].every(seat => seat.ready)) return {ok: true, code: room.code};
+    room.phase = PHASES.COUNTDOWN;
+    room.gameId = randomUUID();
+    room.profileBindings = new Map([...room.players.keys()].map(id => [id, this.#members.get(id)?.profileId ?? null]));
+    room.inputGeneration++;
+    room.streams.clear();
+    if (room.recoverySource?.payload) {
+      const payload = room.recoverySource.payload;
+      room.checkpoint = {payload, encoded:JSON.stringify(payload), revision:1, saved:false};
+    }
+    room.deadline = this.#now() + COUNTDOWN_MS;
+    return { ok: true, code: room.code, countdownStarted: true, msLeft: COUNTDOWN_MS };
   }
 
   /**
@@ -348,6 +375,7 @@ export class RoomStore {
     if (room.sport === payload.sport) return {ok: true, code: room.code};
     room.recoverySource = null;
     room.sport = payload.sport;
+    room.expectedPlayers = Math.min(room.expectedPlayers, playerCapacity(room.sport));
     // Motion grips are sport-specific. Touch setup remains valid across sports.
     for (const player of room.players.values()) if (player.setup === 'motion') player.setup = null;
     room.deadline = null;
@@ -373,7 +401,7 @@ export class RoomStore {
     const now = this.#now();
     // Admit ordinary 60 Hz paddle updates with transport jitter. The relay is
     // latest-state/volatile; reject bursts instead of building an input queue.
-    if (last && now - last.at < (kind === 'pose' ? 12 : 40)) {
+    if (last && now - last.at < 12) {
       last.seq = event.seq; return {ok: false, error: 'rate-limited'};
     }
     room.streams.set(key, {seq: event.seq, at: now});
@@ -427,6 +455,8 @@ export class RoomStore {
           ('botDifficulty' in event.settings || 'splitView' in event.settings))) {
       return { ok: false, error: 'solo-only' };
     }
+    if (room.sport === 'table-tennis' && humanOpponent &&
+        (event.action.startsWith('practice-') || event.action === 'feed')) return {ok: false, error: 'solo-only'};
     // Retain IDs for this whole lobby match, including timed-out requests: a
     // delayed retry must never reset a match twice. Bound memory without eviction.
     if (room.seenCommands.size >= 1024) return { ok: false, error: 'game-command-limit' };
@@ -455,6 +485,8 @@ export class RoomStore {
     if (room.sport === 'table-tennis') {
       snapshot.settings = {assistance: payload.settings.assistance, sensitivity: payload.settings.sensitivity};
       snapshot.practice = {active: payload.practice.active};
+      snapshot.humanOpponent = [...room.players.values()].some(player => player.slot === 1);
+      if (snapshot.humanOpponent && snapshot.practice.active) return {ok: false, error: 'solo-only'};
     }
     if (room.sport === 'bowling' && payload.practice) snapshot.practice = {active: payload.practice.active};
     if (room.sport === 'tennis') {
@@ -713,7 +745,7 @@ export class RoomStore {
       .filter(member => member.code === code && member.disconnectedAt !== null)
       .map(member => ({ name: member.role === 'host' ? 'TV' : room.players.get(member.id)?.name,
         msLeft: Math.max(0, this.#graceMs - (this.#now() - member.disconnectedAt)) }));
-    return { code: room.code, sport: room.sport, phase: room.phase, players, countdown,
+    return { code: room.code, sport: room.sport, phase: room.phase, players, countdown, expectedPlayers: room.expectedPlayers,
       vote: this.#voteView(room), tutorial: this.#tutorialView(room),
       paused: room.pausedAt !== null, manuallyPaused: room.manuallyPaused, reconnecting,
       setupPending: players.filter(player => isController(room.sport, player.slot) && !player.setup).map(player => player.name),

@@ -44,8 +44,9 @@ export function createStrokeIntentDetector() {
       }
       candidate.travel += travel;
       candidate.peak = Math.max(candidate.peak, rate);
-      // Leave margin for a gentle 1.5 rad/s pulse sampled between its peak.
-      if (candidate.peak < 1.3 || candidate.travel < .08) return null;
+      // Recognize a compact wrist movement promptly, while requiring travel
+      // as well as a peak so single-sample noise and slow aiming stay quiet.
+      if (candidate.peak < 1.1 || candidate.travel < .06) return null;
       current = {id: ++identity, strength: Math.min(candidate.peak, 30),
         aim: {...candidate.aim}, spin: {...input.angularVelocity}, startedAt: candidate.startedAt};
       candidate = null; armed = false;

@@ -56,3 +56,4 @@
 .controller-page .motion-visual[data-sport="bowling"] .motion-object { width: 140px; height: 180px; left: calc(50% - 70px); filter: drop-shadow(0 14px 10px rgb(10 100 153 / .16)); }
 .controller-page .motion-readout { background: var(--surface); border: 1px solid var(--border); }
 .controller-page #bowling-buttons { margin-top: 12px; }
+html:has(.controller-page), body:has(.controller-page) { overscroll-behavior-y: none; }

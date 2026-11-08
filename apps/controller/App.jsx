@@ -3,6 +3,7 @@ import { AppState, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Tex
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Gyroscope } from 'expo-sensors';
+import { useKeepAwake } from 'expo-keep-awake';
 import { EVENTS, normalizeCode } from '../../shared/protocol.js';
 import { createControllerCapabilities } from '../../shared/controllerCapabilities.js';
 import { ControllerSession, parseRoomLink, serverOrigin } from './src/session.js';
@@ -10,6 +11,7 @@ import { NativeMotionController } from './src/motion.js';
 import { profileRequest, readPrivate, writePrivate } from './src/storage.js';
 import { createGuestClaimVault } from './src/guestClaims.js';
 import { AutomaticControllerSetup } from './src/automaticSetup.js';
+import { TouchPaddleStream } from './src/touchPaddle.js';
 
 const title = sport => ({ bowling: 'Bowling', tennis: 'Tennis', 'table-tennis': 'Table Tennis' })[sport] || 'Wee Sports';
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -27,6 +29,7 @@ function Stepper({ label, value, change, min = -1, max = 1, step = .1 }) {
   return <View style={styles.stepper}><Text style={styles.label}>{label} {Math.round(value * 100)}%</Text>
     <View style={styles.row}><Button quiet onPress={() => change(clamp(value - step, min, max))}>−</Button><Button quiet onPress={() => change(clamp(value + step, min, max))}>+</Button></View></View>;
 }
+function KeepControllerAwake() { useKeepAwake('wee-controller', {suppressDeactivateWarnings:true}); return null; }
 
 export default function App() {
   const [origin, setOrigin] = useState('');
@@ -52,16 +55,23 @@ export default function App() {
   const [hand, setHand] = useState('Right');
   const [haptics, setHaptics] = useState(true);
   const [sensitivity, setSensitivity] = useState(1);
+  const [strokeMode, setStrokeMode] = useState('auto');
+  const [padDragging, setPadDragging] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [account, setAccount] = useState(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [history, setHistory] = useState([]);
   const sessionRef = useRef(null), motionRef = useRef(null), hapticsRef = useRef(true), flowRef = useRef(null);
-  const scanLock = useRef(false), preferencesRef = useRef({hand,sensitivity});
-  preferencesRef.current = {hand,sensitivity};
+  const scanLock = useRef(false), preferencesRef = useRef({hand,sensitivity,strokeMode});
+  const padSize = useRef({width:300,height:180});
+  preferencesRef.current = {hand,sensitivity,strokeMode};
   const boundaryRef = useRef(null);
-  const pendingRoll = useRef(false), touch = useRef(null), poseTimer = useRef(null);
+  const pendingRoll = useRef(false), touchStream = useRef(null);
+  if (!touchStream.current) touchStream.current = new TouchPaddleStream({
+    send: pose => sessionRef.current?.latest('pose', pose),
+    playing: () => sessionRef.current?.playing() && sessionRef.current.inputSetup === 'buttons' && sessionRef.current.seat?.sport === 'table-tennis',
+  });
   hapticsRef.current = haptics;
   const buzz = type => {
     if (!hapticsRef.current) return;
@@ -74,36 +84,50 @@ export default function App() {
   useEffect(() => {
     readPrivate('room').then(value => { if (value?.origin && value?.code && value?.token) setSavedSession(value); }).catch(() => {});
     const subscription = AppState.addEventListener('change', state => {
-      if (state !== 'active') {
+      if (state === 'background') {
         flowRef.current?.stop(); setSetup(null); setMotionStatus({ state: 'off' }); setScanner(false);
+        endTouch();
+        touchStream.current.stop();
         sessionRef.current?.background();
-      } else sessionRef.current?.foreground();
+      } else if (state === 'inactive') {
+        // Permission sheets are inactive too. Keep pending motion permission
+        // and the room alive, but discard gestures while the sheet is open.
+        endTouch(); motionRef.current?.resetInput(); sessionRef.current?.inactive();
+      } else if (state === 'active') {
+        motionRef.current?.resetInput(); sessionRef.current?.foreground();
+      }
     });
-    return () => { subscription.remove(); flowRef.current?.stop(); sessionRef.current?.dispose(); clearInterval(poseTimer.current); };
+    return () => { subscription.remove(); flowRef.current?.stop(); sessionRef.current?.dispose(); touchStream.current.stop(); };
   }, []);
+  useEffect(() => {motionRef.current?.updatePreferences({hand,sensitivity,strokeMode});}, [hand,sensitivity,strokeMode]);
 
   useEffect(() => {
     if (seat?.gameState?.phase === 'rolling' || seat?.gameState?.phase === 'complete') { pendingRoll.current = false; setRollState(null); }
     if (!seat || seat.paused || !['game', 'ready', 'countdown'].includes(seat.phase)) motionRef.current?.resetInput();
   }, [seat?.gameState?.phase, seat?.phase, seat?.paused]);
   async function makeSession(address) {
-    flowRef.current?.stop(); sessionRef.current?.dispose(); setSetup(null); pendingRoll.current = false;
+    flowRef.current?.stop(); sessionRef.current?.dispose(); touchStream.current.stop(); touchStream.current.reset(); setSetup(null); pendingRoll.current = false;
     const savedProfile = await readPrivate('profile').catch(() => null);
+    if (savedProfile?.origin === address && savedProfile.profile?.preferences) {
+      const saved = savedProfile.profile.preferences;
+      setHand(saved.hand); setSensitivity(saved.sensitivity); setHaptics(saved.haptics);
+      preferencesRef.current = {...preferencesRef.current, hand:saved.hand, sensitivity:saved.sensitivity};
+    }
     const session = new ControllerSession(address, {
       profileToken: savedProfile?.origin === address ? savedProfile.token : null,
       save: value => writePrivate('room', value).catch(() => setNotice('Secure storage is unavailable. Keep the app open to retain this room.')),
       saveClaim: (address, claim) => guestClaims.remember(address, claim),
       changed: (next, connection) => {
         const boundary = next ? `${next.gameId}:${next.inputGeneration}:${next.hostEpoch}` : null;
-        if (boundary !== boundaryRef.current) { motionRef.current?.resetInput(); touch.current = null; }
+        if (boundary !== boundaryRef.current) { motionRef.current?.resetInput(); touchStream.current.reset(); }
         boundaryRef.current = boundary;
         const currentPlayer = next?.players?.find(value => value.slot === next.slot);
         if (currentPlayer?.setup === null) setSetup(null);
         setSeat(next); setStatus(connection);
-        if (connection !== 'online') { setSetup(null); clearInterval(poseTimer.current); }
+        if (connection !== 'online') { setSetup(null); touchStream.current.stop(); }
         flowRef.current?.update(next, connection);
       },
-      feedback: () => { buzz('contact'); setNotice('Contact confirmed by the TV'); },
+      feedback: () => buzz('contact'),
     });
     sessionRef.current = session;
     flowRef.current = new AutomaticControllerSetup({session,notice:setNotice,
@@ -111,6 +135,12 @@ export default function App() {
       makeMotion: onStatus => {
         const motion = new NativeMotionController({session,...preferencesRef.current,onStatus,
           onRelease: roll => { buzz('recognized'); release(roll).catch(error => setNotice(error.message)); },
+          onSwing: swing => {
+            buzz('recognized');
+            session.action(EVENTS.PLAYER_SWING, swing).then(response => {
+              if (!response.ok && !['not-playing','not-your-turn'].includes(response.error)) setNotice('That swing could not reach the TV. Try your next swing when connected.');
+            });
+          },
         });
         motionRef.current = motion;
         return motion;
@@ -147,28 +177,13 @@ export default function App() {
   const command = async (action, extra = {}) => result(await sessionRef.current.action(EVENTS.PLAYER_GAME_COMMAND, { action, ...extra }));
   function touchPose(event, start = false) {
     const { locationX, locationY } = event.nativeEvent;
-    const time = performance.now();
-    const reach = { x: clamp((locationX - 150) / 150, -1, 1), y: clamp((90 - locationY) / 90, -1, 1) };
-    const previous = touch.current;
-    const dt = previous && !start ? Math.max(.016, (time - previous.time) / 1000) : Infinity;
-    const velocity = { x: previous ? clamp((reach.y - previous.reach.y) / dt, -12, 12) : 0,
-      y: previous ? clamp((reach.x - previous.reach.x) / dt, -12, 12) : 0, z: 0 };
-    touch.current = { reach, time, velocity };
-    sessionRef.current.latest('pose', { orientation: [0, 0, 0, 1], angularVelocity: velocity, reach, calibrationRevision: 0 });
-    if (start) {
-      clearInterval(poseTimer.current);
-      poseTimer.current = setInterval(() => {
-        const current = touch.current;
-        if (!current) return;
-        sessionRef.current.latest('pose', {orientation:[0,0,0,1],reach:current.reach,
-          angularVelocity:performance.now() - current.time < 70 ? current.velocity : {x:0,y:0,z:0},calibrationRevision:0});
-      }, 1000 / 60);
-    }
+    const {width,height} = padSize.current;
+    const reach = { x: clamp(locationX / width * 2 - 1, -1, 1), y: clamp(1 - locationY / height * 2, -1, 1) };
+    touchStream.current.move(reach, start);
   }
   function endTouch() {
-    clearInterval(poseTimer.current);
-    if (touch.current) sessionRef.current.latest('pose', {orientation:[0,0,0,1],angularVelocity:{x:0,y:0,z:0},reach:touch.current.reach,calibrationRevision:0});
-    touch.current = null;
+    setPadDragging(false);
+    touchStream.current.release();
   }
   async function openProfile() {
     const address = serverOrigin(origin.trim(), __DEV__);
@@ -198,9 +213,17 @@ export default function App() {
   const player = seat?.players?.find(value => value.slot === seat.slot);
   const playable = seat?.phase === 'game' && !seat.paused && status === 'online';
   const canRoll = playable && seat?.gameState?.phase === 'ready' && seat?.gameState?.currentPlayer === seat.slot + 1;
-  return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+  useEffect(() => {
+    if (playable && seat?.sport === 'table-tennis' && mode === 'touch' && setup === 'buttons') touchStream.current.start();
+    else { touchStream.current.stop(); setPadDragging(false); }
+    return () => touchStream.current.stop();
+  }, [playable,seat?.sport,mode,setup]);
+  useEffect(() => {
+    if (canRoll && mode === 'touch' && setup) sessionRef.current?.latest('aim', {aim,locked:false});
+  }, [canRoll,mode,setup,aim]);
+  return <SafeAreaView style={styles.safe}>{seat ? <KeepControllerAwake /> : null}<ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled" scrollEnabled={!padDragging}>
     <View style={styles.header}><Text style={styles.brand}>wee<Text style={styles.brandAccent}> sports</Text></Text><Text style={styles.pill}>CONTROLLER</Text></View>
-    <Text accessibilityLiveRegion="polite" style={styles.status}>{status === 'online' ? '● Connected to your TV' : status}</Text>
+    <Text accessibilityLiveRegion="polite" style={styles.status}>{status === 'online' ? '● Connected to your TV' : status === 'offline' ? 'Reconnecting to your TV…' : status === 'suspended' ? 'Return to the app to reconnect' : status}</Text>
     {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
     {profileOpen ? <View style={styles.card}>
       <Text style={styles.heading}>Your profile</Text><Text style={styles.copy}>Optional. Guest play is always available.</Text>
@@ -248,6 +271,7 @@ export default function App() {
     </> : <>
       <View style={styles.card}><Text style={styles.eyebrow}>ROOM {seat.code} · PLAYER {seat.slot + 1}</Text>
         <Text style={styles.heading}>{title(seat.sport)}</Text>
+        {setup ? <Text style={styles.small}>{mode === 'motion' ? 'Motion controls are on' : 'Touch controls are on'}</Text> : null}
         <Text style={styles.copy}>{seat.paused ? 'Paused on the TV' : !setup ? 'Getting ready…' : seat.phase === 'game' ? 'Watch the TV. You’re in.' : playIntent ? 'Ready when your friends are.' : 'Ready when you are.'}</Text>
         {!playIntent && ['ready','vote'].includes(seat.phase) ? <Button disabled={status !== 'online'} onPress={() => flowRef.current?.play()}>Play</Button> : null}
         {seat.phase === 'countdown' ? <><Text style={styles.meter}>Starting in {Math.ceil((seat.countdown?.msLeft || 0) / 1000)}</Text><Button quiet onPress={() => task(() => flowRef.current?.waitForFriends())}>Wait for friends</Button></> : null}
@@ -255,7 +279,7 @@ export default function App() {
       {seat.sport === 'bowling' ? <View style={styles.card}>
         <Text style={styles.subheading}>{seat.gameState?.phase === 'complete' ? 'Match complete' : `Frame ${seat.gameState?.frame || 1} of 10`}</Text>
         {rollState ? <Button quiet onPress={() => task(checkRoll)}>Check previous roll outcome</Button> : null}
-        {mode === 'touch' ? <><Stepper label="Aim" value={aim} change={value => { setAim(value); sessionRef.current.latest('aim', { aim: value, locked: false }); }}/>
+        {mode === 'touch' ? <><Stepper label="Aim" value={aim} change={setAim}/>
           <Button disabled={!canRoll || busy || !setup} onPress={() => task(() => release())}>Roll</Button></> : <View style={styles.playCue}>
           <Text style={styles.sportIcon}>●</Text>
           <Text style={styles.subheading}>{canRoll ? 'Swing to roll' : 'Watch the TV'}</Text>
@@ -265,20 +289,25 @@ export default function App() {
       </View> : seat.sport === 'table-tennis' ? <View style={styles.card}>
         <Text style={styles.subheading}>{mode === 'touch' ? 'Your paddle' : 'Swing to play'}</Text>
         {mode === 'touch' ? <View accessibilityLabel="Touch paddle. Drag to position and move the paddle." style={styles.touchPad}
+          onLayout={({nativeEvent}) => {padSize.current = nativeEvent.layout;}}
           onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
-          onResponderGrant={event => touchPose(event, true)} onResponderMove={event => touchPose(event)}
+          onResponderGrant={event => {setPadDragging(true); touchPose(event, true);}} onResponderMove={event => touchPose(event)}
           onResponderRelease={endTouch} onResponderTerminate={endTouch}>
           <Text style={styles.touchText}>Drag to move your paddle</Text>
         </View> : <View style={styles.playCue}><Text style={styles.sportIcon}>◉</Text><Text style={styles.copy}>Small swings. Keep your eyes on the TV.</Text></View>}
-      </View> : <View style={styles.card}><Text style={styles.copy}>Use touch controls for the existing tennis game.</Text>
-        {['Forehand', 'Backhand'].map(label => <Button key={label} disabled={!playable} onPress={() => task(async () => result(await sessionRef.current.action(EVENTS.PLAYER_SWING, { type: 'swing', label, hand, power })))}>{label}</Button>)}
+      </View> : <View style={styles.card}>
+        {mode === 'motion' ? <View style={styles.playCue}><Text style={styles.sportIcon}>◉</Text><Text style={styles.subheading}>Swing to play</Text><Text style={styles.copy}>{strokeMode === 'auto' ? 'Forehand or backhand. Watch the ball on your TV.' : `Small swings play a ${strokeMode.toLowerCase()}.`}</Text></View>
+          : <>{['Forehand', 'Backhand'].map(label => <Button key={label} disabled={!playable} onPress={() => task(async () => result(await sessionRef.current.action(EVENTS.PLAYER_SWING, { type: 'swing', label, hand, power })))}>{label}</Button>)}</>}
       </View>}
       <Button quiet onPress={() => setOptionsOpen(!optionsOpen)}>{optionsOpen ? 'Close options' : 'Options'}</Button>
       {optionsOpen ? <View style={styles.card}>
         <View style={styles.row}><Button quiet onPress={() => flowRef.current?.select('touch')}>Touch controls</Button><Button quiet onPress={() => flowRef.current?.select('motion')}>Motion controls</Button></View>
-        <Button quiet onPress={() => motionRef.current?.recenter()}>Center paddle / aim</Button>
+        <Button quiet onPress={() => setHand(hand === 'Right' ? 'Left' : 'Right')}>{hand} handed</Button>
+        <Stepper label="Sensitivity" value={sensitivity} change={setSensitivity} min={.5} max={2}/>
+        {seat.sport === 'tennis' && mode === 'motion' ? <View style={styles.row}>{['auto','Forehand','Backhand'].map(value => <Button quiet key={value} onPress={() => setStrokeMode(value)}>{value === 'auto' ? 'Automatic strokes' : `Simple ${value.toLowerCase()}`}{strokeMode === value ? ' ✓' : ''}</Button>)}</View> : null}
+        <Button quiet disabled={mode !== 'motion'} onPress={() => motionRef.current?.recenter()}>Center motion</Button>
         {seat.sport === 'bowling' && mode === 'touch' ? <><Stepper label="Power" value={power} change={setPower} min={.2}/><Stepper label="Curve" value={spin} change={setSpin}/></> : null}
-        {seat.sport === 'table-tennis' && seat.slot === 0 ? <><Button quiet disabled={!playable} onPress={() => task(() => command('practice-start'))}>Practice</Button><Button quiet disabled={!playable} onPress={() => task(() => command('new-match'))}>Play the bot</Button></> : null}
+        {seat.sport === 'table-tennis' && seat.slot === 0 ? <>{seat.players?.length < 2 ? <Button quiet disabled={!playable} onPress={() => task(() => command('practice-start'))}>Practice</Button> : null}<Button quiet disabled={!playable} onPress={() => task(() => command('new-match'))}>{seat.players?.length > 1 ? 'New two-player match' : 'Play the bot'}</Button></> : null}
         {seat.slot === 0 ? <><Button quiet disabled={!seat.gameId} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_PAUSE, { gameId: seat.gameId, paused: !seat.paused })))}>{seat.paused ? 'Resume game' : 'Pause game'}</Button>
         <Button quiet disabled={!seat.gameId} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_RETURN_TO_LOBBY, { gameId: seat.gameId })))}>Return to lobby</Button>
         {seat.phase !== 'game' ? ['bowling', 'table-tennis', 'tennis'].filter(sport => sport !== seat.sport).map(sport => <Button quiet key={sport} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_SWITCH_SPORT, { sport, gameId: seat.gameId })))}>Switch to {title(sport)}</Button>) : null}

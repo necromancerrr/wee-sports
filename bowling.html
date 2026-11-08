@@ -9,9 +9,14 @@
           <h1>Scorecard</h1>
           <span id="frame-label" class="bowling-pill">10 frames</span>
         </header>
-        <div class="bowling-scores" tabindex="0" role="region" aria-label="Ten-frame bowling scorecard. Scroll horizontally on smaller screens."><table aria-label="Bowling scorecard"><thead><tr id="score-head"><th scope="col">Player</th></tr></thead><tbody id="score-body"></tbody></table></div>
-        <div class="bowling-hud__footer"><p id="roll-status" role="status">Preparing the lane…</p><p class="scorecard-help">X strike · / spare · … bonus pending</p></div>
+        <ol id="score-totals" class="bowling-standings" aria-label="Current scores"></ol>
+        <div class="bowling-hud__footer"><p id="roll-status" role="status">Preparing the lane…</p><button id="open-scorecard" type="button" aria-haspopup="dialog">Full scorecard</button></div>
       </aside>
+      <dialog id="scorecard-dialog" class="bowling-scorecard-dialog" aria-labelledby="scorecard-title">
+        <header><h2 id="scorecard-title">Ten-frame scorecard</h2><button id="close-scorecard" type="button">Close</button></header>
+        <div class="bowling-scores" tabindex="0" role="region" aria-label="Ten-frame bowling scorecard. Scroll horizontally on smaller screens."><table aria-label="Bowling scorecard"><thead><tr id="score-head"><th scope="col">Player</th></tr></thead><tbody id="score-body"></tbody></table></div>
+        <p class="scorecard-help">X strike · / spare · … bonus pending</p>
+      </dialog>
       <section id="roll-callout" class="bowling-callout" role="status" aria-live="polite" hidden><span id="callout-player"></span><strong id="callout-title"></strong><p id="callout-detail"></p></section>
       <section id="results" class="bowling-results game-result-card" role="status" aria-live="polite" hidden>
         <div class="game-result-emblem" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5h12v7c0 5-2.5 8-6 8s-6-3-6-8V5Zm0 2H5v4c0 4 3 6 6 6m11-10h5v4c0 4-3 6-6 6M16 20v6m-5 2h10"/></svg></div>

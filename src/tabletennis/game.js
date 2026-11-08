@@ -10,6 +10,11 @@ const approach = (a, b, maxDistance) => {
 };
 const newStroke = () => ({phase: 'ready', offset: 0, speed: 0, power: 0, started: 0,
   until: 0, rearmed: true, lowFor: 0, intent: null});
+const INPUT_GRACE = .5;
+const newPlayer = () => ({input: {reach: {x: 0, y: 0}, orientation: [0, 0, 0, 1], angularVelocity: v3()},
+  inputAt: -Infinity, remote: false, remoteStale: false, settling: false, settleUntil: 0,
+  strokeDetector: createStrokeIntentDetector(), pendingStroke: null, stroke: newStroke(),
+  localStrokeRequested: false, aimTarget: null});
 
 /** Predict bounded reach, including one future table bounce. This moves the
  * paddle before contact; it never redirects a ball already in flight. */
@@ -26,7 +31,7 @@ export function predictInterception(ball, z) {
       y = top + bounceSpeed * remaining - 4.905 * remaining * remaining;
     }
   }
-  return v3(clamp(ball.position.x + ball.velocity.x * t, -.85, .85), clamp(y, .9, 1.4), z);
+  return v3(clamp(ball.position.x + ball.velocity.x * t, -.85, .85), clamp(y, .81, 1.4), z);
 }
 
 /** Short returns need reach over the table. A phone is not a position tracker;
@@ -133,6 +138,17 @@ export class TableTennisGame {
     this.onEvent = onEvent;
     this.physics.onEvent = event => this.handleCollision(event);
     this.physics.resolvePaddleContact = contact => this.resolveContact(contact);
+    this.players = [newPlayer(), newPlayer()];
+    // Keep the public near-player fields used by the renderer and diagnostics.
+    // Both human players now have independent samples, strokes and aim.
+    for (const [property, field] of Object.entries({input: 'input', inputAt: 'inputAt', remote: 'remote',
+      remoteStale: 'remoteStale', settling: 'settling', settleUntil: 'settleUntil', strokeDetector: 'strokeDetector',
+      pendingStroke: 'pendingStroke', playerStroke: 'stroke', localStrokeRequested: 'localStrokeRequested', aimTarget: 'aimTarget'})) {
+      this.players[0][field] = this[property];
+      Object.defineProperty(this, property, {get: () => this.players[0][field], set: value => {this.players[0][field] = value;}});
+    }
+    Object.defineProperty(this, 'botStroke', {get: () => this.players[1].stroke, set: value => {this.players[1].stroke = value;}});
+    this.players[1].aimTarget = shotIntent(this.players[1].input, 2).target;
   }
 
   random() {
@@ -140,11 +156,13 @@ export class TableTennisGame {
     return this.seed / 4294967296;
   }
 
-  clearStrokeInput() {
-    this.strokeDetector.reset();
-    this.pendingStroke = null;
-    this.localStrokeRequested = false;
-    this.playerStroke = newStroke();
+  clearStrokeInput(player = null) {
+    for (const controller of player ? [this.players[player - 1]] : this.players) {
+      controller.strokeDetector.reset();
+      controller.pendingStroke = null;
+      controller.localStrokeRequested = false;
+      controller.stroke = newStroke();
+    }
   }
 
   configure(settings) {
@@ -155,7 +173,9 @@ export class TableTennisGame {
     return true;
   }
 
-  setInput(input, {remote = false} = {}) {
+  setInput(input, {remote = false, player = 1} = {}) {
+    if (![1, 2].includes(player) || player === 2 && this.mode !== 'versus') return false;
+    const controller = this.players[player - 1];
     if (!input || !Array.isArray(input.orientation) || input.orientation.length !== 4 ||
       !input.orientation.every(finite) || input.orientation.some(n => Math.abs(n) > 1.01) ||
       !input.angularVelocity || !['x', 'y', 'z'].every(k => finite(input.angularVelocity[k]) && Math.abs(input.angularVelocity[k]) <= 50) ||
@@ -164,50 +184,54 @@ export class TableTennisGame {
     if (norm < .9 || norm > 1.1) return false;
     const now = this.now();
     if (!finite(now)) return false;
-    if (remote && (now - this.inputAt > .25 || input.calibrationRevision !== this.input.calibrationRevision)) {
-      this.settling = true;
-      this.settleUntil = this.time + .15;
-      this.clearStrokeInput();
+    if (remote && (now - controller.inputAt > INPUT_GRACE || input.calibrationRevision !== controller.input.calibrationRevision)) {
+      controller.settling = true;
+      controller.settleUntil = this.time + .15;
+      this.clearStrokeInput(player);
     }
-    this.input = {...input, orientation: input.orientation.map(n => n / norm), reach: input.reach || {x: 0, y: 0}};
-    this.inputAt = now;
-    this.remote = remote;
-    this.remoteStale = false;
+    controller.input = {...input, orientation: input.orientation.map(n => n / norm), reach: input.reach || {x: 0, y: 0}};
+    controller.inputAt = now;
+    controller.remote = remote;
+    controller.remoteStale = false;
     // Recognition runs once per received sample, independently of the TV's
     // animation frames. A short swing followed by rest cannot disappear.
-    const gesture = this.strokeDetector.push(this.input, now);
-    const active = this.strokeDetector.active;
+    const gesture = controller.strokeDetector.push(controller.input, now);
+    const active = controller.strokeDetector.active;
     // Preserve the peak even if the entire burst and quiet rearm occur before
     // the next render frame. The request stays one-shot and keeps its aim.
-    if (active && this.pendingStroke?.id === active.id) {
-      this.pendingStroke.strength = Math.max(this.pendingStroke.strength, active.strength);
+    if (active && controller.pendingStroke?.id === active.id) {
+      controller.pendingStroke.strength = Math.max(controller.pendingStroke.strength, active.strength);
     }
-    if (active && this.playerStroke.gestureId === active.id && ['queued', 'forward'].includes(this.playerStroke.phase)) {
-      this.playerStroke.power = Math.max(this.playerStroke.power, Math.min(active.strength, 9));
+    if (active && controller.stroke.gestureId === active.id && ['queued', 'forward'].includes(controller.stroke.phase)) {
+      controller.stroke.power = Math.max(controller.stroke.power, Math.min(active.strength, 9));
     }
-    if (gesture && !this.paused && !this.settling && this.physics.ball.active &&
-      this.physics.ball.velocity.z > .1 && !this.serveMotion && this.playerStroke.phase === 'ready') {
-      this.pendingStroke = {...gesture, receivedAt: now,
-        intent: shotIntent({reach: gesture.aim, angularVelocity: gesture.spin})};
+    if (gesture && !this.paused && !controller.settling && this.physics.ball.active &&
+      this.physics.ball.velocity.z * (player === 1 ? 1 : -1) > .1 && !this.serveMotion && controller.stroke.phase === 'ready') {
+      controller.pendingStroke = {...gesture, receivedAt: now,
+        intent: shotIntent({reach: gesture.aim, angularVelocity: gesture.spin}, player)};
     }
     return true;
   }
 
-  recenter() {
+  recenter(player = 1) {
+    if (![1, 2].includes(player)) return false;
+    const controller = this.players[player - 1];
     if (this.physics.ball.active) return false;
-    this.input = {reach: {x: 0, y: 0}, orientation: [0, 0, 0, 1], angularVelocity: v3()};
-    this.strokeUntil = 0;
-    this.clearStrokeInput();
-    this.inputAt = this.now();
-    this.settling = true;
-    this.settleUntil = this.time + .15;
+    controller.input = {reach: {x: 0, y: 0}, orientation: [0, 0, 0, 1], angularVelocity: v3()};
+    controller.strokeUntil = 0;
+    this.clearStrokeInput(player);
+    controller.inputAt = this.now();
+    controller.settling = true;
+    controller.settleUntil = this.time + .15;
     return true;
   }
 
-  stroke() {
+  stroke(player = 1) {
+    if (![1, 2].includes(player) || player === 2 && this.mode !== 'versus') return false;
+    const controller = this.players[player - 1];
     if (this.paused) return false;
-    if (this.mode === 'bot' && !this.physics.ball.active && this.rules.phase !== 'complete') return this.serve();
-    this.localStrokeRequested = true;
+    if (this.mode !== 'practice' && !this.physics.ball.active && this.rules.phase !== 'complete') return this.serve();
+    controller.localStrokeRequested = true;
     return true;
   }
 
@@ -226,8 +250,8 @@ export class TableTennisGame {
     this.onEvent({type: 'state'});
   }
 
-  startMatch() {
-    this.mode = 'bot';
+  startMatch({players = this.mode === 'versus' ? 2 : 1} = {}) {
+    this.mode = players === 2 ? 'versus' : 'bot';
     this.rules = new TableTennisRules();
     this.physics.ball.active = false;
     this.serveMotion = null;
@@ -254,13 +278,13 @@ export class TableTennisGame {
   /** A repeatable assisted toss and player-requested kinematic strike.
    * First contact uses the same moving paddle collider as every rally hit. */
   serve() {
-    if (this.paused || this.mode !== 'bot' || this.physics.ball.active || this.rules.phase === 'complete') return false;
+    if (this.paused || this.mode === 'practice' || this.physics.ball.active || this.rules.phase === 'complete') return false;
     this.rules.beginPoint();
     this.lastBounceSide = null;
     this.clearStrokeInput(); this.botStroke = newStroke();
     const player = this.rules.server;
     const sign = player === 1 ? 1 : -1;
-    const aim = player === 1 ? clamp(this.input.reach.x, -.7, .7) : 0;
+    const aim = player === 1 || this.mode === 'versus' ? clamp(this.players[player - 1].input.reach.x, -.7, .7) : 0;
     const paddle = this.physics.paddles[player - 1];
     this.physics.launch(v3(aim * .3, 1.02, sign * 1.1), v3(0, -.1, 0));
     paddle.position = v3(aim * .3, 1.02, sign * 1.2);
@@ -275,79 +299,91 @@ export class TableTennisGame {
   update(seconds) {
     if (!finite(seconds) || seconds <= 0) return;
     this.wallTime += seconds;
+    const humans = this.mode === 'versus' ? this.players : [this.players[0]];
     if (this.paused) {
-      this.clearStrokeInput(); this.botStroke = newStroke();
-      this.settling = true; this.settleUntil = this.time + .15;
+      this.clearStrokeInput();
+      for (const controller of humans) {controller.settling = true; controller.settleUntil = this.time + .15;}
       return;
     }
-    const stale = this.remote && this.now() - this.inputAt > .25;
-    this.remoteStale = stale;
-    if (stale) this.clearStrokeInput();
-    if (this.pendingStroke && this.now() - this.pendingStroke.receivedAt > .5) this.pendingStroke = null;
-    if (this.playerStroke.receivedAt !== undefined && this.now() - this.playerStroke.receivedAt > .65) this.playerStroke = newStroke();
+    for (const [index, controller] of humans.entries()) {
+      controller.remoteStale = controller.remote && this.now() - controller.inputAt > INPUT_GRACE;
+      if (controller.remoteStale) this.clearStrokeInput(index + 1);
+      if (controller.pendingStroke && this.now() - controller.pendingStroke.receivedAt > .5) controller.pendingStroke = null;
+      if (controller.stroke.receivedAt !== undefined && this.now() - controller.stroke.receivedAt > .65) controller.stroke = newStroke();
+    }
+    const stale = humans.some(controller => controller.remoteStale);
     this.physics.advance(seconds, dt => {
       this.time += dt;
-      if (this.mode === 'practice' && !this.physics.ball.active && this.time >= this.nextFeed && !stale && !this.settling) this.feed();
-      if (this.mode === 'bot' && !this.physics.ball.active && this.rules.phase === 'ready' &&
-        this.time >= this.nextFeed && !stale && !this.settling) this.serve();
+      const settling = humans.some(controller => controller.settling);
+      if (this.mode === 'practice' && !this.physics.ball.active && this.time >= this.nextFeed && !stale && !settling) this.feed();
+      if (this.mode !== 'practice' && !this.physics.ball.active && this.rules.phase === 'ready' &&
+        this.time >= this.nextFeed && !stale && !settling) this.serve();
       this.updatePaddles(dt, stale);
-      return !stale && !this.settling;
+      return !stale && !humans.some(controller => controller.settling);
     });
   }
 
-  updatePaddles(dt, stale) {
-    const ball = this.physics.ball;
+  updateHumanPaddle(player, dt, stale) {
+    const controller = this.players[player - 1], paddle = this.physics.paddles[player - 1];
+    const ball = this.physics.ball, sign = player === 1 ? 1 : -1;
     const friendly = this.settings.assistance === 'friendly';
-    const assist = friendly ? .97 : .65;
-    const p1 = this.physics.paddles[0], p2 = this.physics.paddles[1];
-    const plane = friendly ? receivePlane(ball, 1, this.lastBounceSide === 1) : 1.1;
-    const baseZ = plane + .1;
-    const intercept = ball.active ? predictInterception(ball, plane) : v3(0, 1.02, 1.1);
-    const reach = this.input.reach;
-    if (stale) this.playerStroke = newStroke();
-    const wasReady = this.playerStroke.phase === 'ready';
-    const request = this.pendingStroke;
-    const active = this.strokeDetector.active;
+    const assist = friendly ? 1 : .65;
+    const plane = friendly ? receivePlane(ball, player, this.lastBounceSide === player) : sign * 1.1;
+    const baseZ = plane + sign * .1;
+    const intercept = ball.active ? predictInterception(ball, plane) : v3(0, 1.02, sign * 1.1);
+    const reach = controller.input.reach;
+    if (stale) controller.stroke = newStroke();
+    const wasReady = controller.stroke.phase === 'ready';
+    const request = controller.pendingStroke;
+    const active = controller.strokeDetector.active;
     const strength = request ? Math.max(request.strength, active?.id === request.id ? active.strength : 0)
-      : active && active.id === this.playerStroke.gestureId ? active.strength : 0;
-    advanceStroke(this.playerStroke, {rate: stale ? 0 : strength, dt, time: this.time,
-      trigger: this.localStrokeRequested || Boolean(request), friendly, allowRateTrigger: false,
-      nearBall: ball.active && ball.velocity.z > .1 && this.lastBounceSide === 1 &&
-        (baseZ - ball.position.z) / (ball.velocity.z + 1.3) <= .14});
-    if (wasReady && this.playerStroke.phase !== 'ready') {
-      this.playerStroke.intent = request?.intent || shotIntent(this.input);
-      this.playerStroke.receivedAt = request?.receivedAt ?? this.now();
-      this.playerStroke.gestureId = request?.id;
+      : active && active.id === controller.stroke.gestureId ? active.strength : 0;
+    advanceStroke(controller.stroke, {rate: stale ? 0 : strength, dt, time: this.time,
+      trigger: !stale && (controller.localStrokeRequested || Boolean(request)), friendly, allowRateTrigger: false,
+      nearBall: ball.active && ball.velocity.z * sign > .1 && this.lastBounceSide === player &&
+        (baseZ - ball.position.z) * sign / (ball.velocity.z * sign + 1.3) <= .14});
+    if (wasReady && controller.stroke.phase !== 'ready') {
+      controller.stroke.intent = request?.intent || shotIntent(controller.input, player);
+      controller.stroke.receivedAt = request?.receivedAt ?? this.now();
+      controller.stroke.gestureId = request?.id;
     }
-    this.pendingStroke = null;
-    this.aimTarget = {...(this.playerStroke.intent && ['queued', 'forward'].includes(this.playerStroke.phase)
-      ? this.playerStroke.intent.target : shotIntent(this.input).target)};
-    this.localStrokeRequested = false;
-    // Friendly separates where the paddle receives from where the shot aims.
-    // Aiming right must not pull the receiving paddle off an incoming ball.
+    controller.pendingStroke = null;
+    controller.aimTarget = {...(controller.stroke.intent && ['queued', 'forward'].includes(controller.stroke.phase)
+      ? controller.stroke.intent.target : shotIntent(controller.input, player).target)};
+    controller.localStrokeRequested = false;
+    // Receiving follows the incoming ball; pointing chooses the outgoing target.
+    // The paddle must reach the low post-bounce ball as well as deep returns.
     const target = v3(clamp(intercept.x * assist + (friendly ? 0 : reach.x * .4), -.9, .9),
-      clamp(intercept.y + (friendly ? 0 : reach.y * .18), .9, 1.42), baseZ - this.playerStroke.offset);
-    if (!stale) p1.position = approach(p1.position, target, dt * 3.0);
-    if (this.settling && this.time >= this.settleUntil && length(sub(target, p1.position)) < .025) this.settling = false;
-    p1.enabled = !stale && !this.settling && (friendly ? this.playerStroke.phase === 'forward' : this.playerStroke.phase !== 'recovery') &&
-      (!friendly || this.lastBounceSide === 1);
-    const face = stabilizedNormal(ball, 1, this.playerStroke.velocity || 0,
-      friendly ? [0, 0, 0, 1] : this.input.orientation, friendly, this.settings.sensitivity);
-    p1.normal = unit(mix(p1.normal, face, 1 - Math.exp(-dt / .025)));
-    const botPlane = receivePlane(ball, 2, this.lastBounceSide === 2);
-    const botBaseZ = botPlane - .1;
-    const botIntercept = ball.active ? predictInterception(ball, botPlane) : v3(0, 1.02, -1.1);
-    const botReceiving = ball.active && ball.velocity.z < -.1 && this.time >= this.botReactAt;
-    const botNear = botReceiving && this.lastBounceSide === 2 &&
-      (ball.position.z - botBaseZ) / (-ball.velocity.z + 1.3) <= .14;
-    advanceStroke(this.botStroke, {rate: botNear ? 4 : 0, dt, time: this.time, nearBall: botNear, friendly: true});
-    // A cooperative opponent has finite reach/speed and hits with this same collider.
-    if (botReceiving) p2.position = approach(p2.position,
-      v3(clamp(botIntercept.x, -.77, .77), botIntercept.y, botBaseZ + this.botStroke.offset), dt * 1.55);
-    else if (!ball.active) p2.position = approach(p2.position, v3(0, 1.02, -1.2), dt * 1.55);
-    p2.enabled = this.botStroke.phase === 'forward' && this.lastBounceSide === 2;
-    p2.normal = stabilizedNormal(ball, 2, this.botStroke.velocity || 0,
-      [0, -p2.position.x * .03, 0, Math.sqrt(1 - (p2.position.x * .03) ** 2)], true);
+      clamp(intercept.y + (friendly ? 0 : reach.y * .18), .81, 1.42), baseZ - sign * controller.stroke.offset);
+    if (!stale) paddle.position = approach(paddle.position, target, dt * (friendly ? 4.5 : 3));
+    if (controller.settling && this.time >= controller.settleUntil && length(sub(target, paddle.position)) < .025) controller.settling = false;
+    paddle.enabled = !stale && !controller.settling && (friendly ? controller.stroke.phase === 'forward' : controller.stroke.phase !== 'recovery') &&
+      (!friendly || this.lastBounceSide === player);
+    const face = stabilizedNormal(ball, player, controller.stroke.velocity || 0,
+      friendly ? [0, 0, 0, 1] : controller.input.orientation, friendly, this.settings.sensitivity);
+    paddle.normal = unit(mix(paddle.normal, face, 1 - Math.exp(-dt / .025)));
+  }
+
+  updatePaddles(dt, stale) {
+    this.updateHumanPaddle(1, dt, stale);
+    const ball = this.physics.ball, p2 = this.physics.paddles[1];
+    if (this.mode === 'versus') this.updateHumanPaddle(2, dt, stale);
+    else {
+      const botPlane = receivePlane(ball, 2, this.lastBounceSide === 2);
+      const botBaseZ = botPlane - .1;
+      const botIntercept = ball.active ? predictInterception(ball, botPlane) : v3(0, 1.02, -1.1);
+      const botReceiving = ball.active && ball.velocity.z < -.1 && this.time >= this.botReactAt;
+      const botNear = botReceiving && this.lastBounceSide === 2 &&
+        (ball.position.z - botBaseZ) / (-ball.velocity.z + 1.3) <= .14;
+      advanceStroke(this.botStroke, {rate: botNear ? 4 : 0, dt, time: this.time, nearBall: botNear, friendly: true});
+      // A cooperative opponent has finite reach/speed and hits with this same collider.
+      if (botReceiving) p2.position = approach(p2.position,
+        v3(clamp(botIntercept.x, -.77, .77), botIntercept.y, botBaseZ + this.botStroke.offset), dt * 1.55);
+      else if (!ball.active) p2.position = approach(p2.position, v3(0, 1.02, -1.2), dt * 1.55);
+      p2.enabled = this.botStroke.phase === 'forward' && this.lastBounceSide === 2;
+      p2.normal = stabilizedNormal(ball, 2, this.botStroke.velocity || 0,
+        [0, -p2.position.x * .03, 0, Math.sqrt(1 - (p2.position.x * .03) ** 2)], true);
+    }
     if (this.serveMotion) {
       const motion = this.serveMotion;
       const paddle = this.physics.paddles[motion.player - 1];
@@ -357,7 +393,7 @@ export class TableTennisGame {
       else {
         paddle.position = v3(motion.aim * .3, 1.02, sign * (1.2 - elapsed * 1.9));
         paddle.normal = unit(v3(motion.aim * .1, -.3, -sign));
-        paddle.enabled = motion.player === 2 || !stale;
+        paddle.enabled = !stale;
       }
     }
   }
@@ -368,7 +404,8 @@ export class TableTennisGame {
     // Friendly contacts exist only during a deliberate stroke. Auto-positioning
     // alone cannot hit a ball using a different, unexpected response model.
     if (stroke.phase !== 'forward') return null;
-    const intent = contact.player === 1 ? stroke.intent || shotIntent(this.input)
+    const intent = contact.player === 1 || this.mode === 'versus'
+      ? stroke.intent || shotIntent(this.players[contact.player - 1].input, contact.player)
       : shotIntent({reach: {x: 0}, angularVelocity: v3()}, 2);
     return planFriendlyReturn(contact.position, intent, stroke.power);
   }
@@ -378,16 +415,16 @@ export class TableTennisGame {
     if (event.kind === 'hit') {
       if (event.player === 1) this.botReactAt = this.time + .10;
       this.lastContact = {player: event.player, position: {...event.position},
-        target: event.assisted ? {...(event.player === 1 ? this.aimTarget : shotIntent({reach: {x: 0}}, 2).target)} : null,
+        target: event.assisted ? {...(event.player === 1 || this.mode === 'versus' ? this.players[event.player - 1].aimTarget : shotIntent({reach: {x: 0}}, 2).target)} : null,
         speed: length(event.velocity || this.physics.ball.velocity), assisted: event.assisted, id: event.id};
       if (this.serveMotion?.player === event.player) this.serveMotion = null;
       const stroke = event.player === 1 ? this.playerStroke : this.botStroke;
       stroke.phase = 'recovery'; stroke.offset = Math.max(stroke.offset, .12);
       this.physics.paddles[event.player - 1].enabled = false;
       this.onEvent({type: 'hit', player: event.player, id: event.id});
-      this.lastReason = event.player === 1 ? 'Contact' : 'Bot returned';
+      this.lastReason = event.player === 1 ? 'Contact' : this.mode === 'versus' ? 'Player 2 returned' : 'Bot returned';
     }
-    if (this.mode === 'bot') {
+    if (this.mode !== 'practice') {
       const result = this.rules.event(event.kind, event);
       if (result) {
         this.physics.ball.active = false;
@@ -429,7 +466,7 @@ export class TableTennisGame {
     const state = this.rules.snapshot();
     return {...state, phase: this.mode === 'practice' ? this.physics.ball.active ? 'rally' : 'ready' : state.phase,
       practice: this.mode === 'practice', returns: this.practiceReturns, reason: this.lastReason,
-      stale: this.remoteStale, settings: {...this.settings}};
+      stale: this.remoteStale || this.mode === 'versus' && this.players[1].remoteStale, mode: this.mode, players: this.mode === 'versus' ? 2 : 1, settings: {...this.settings}};
   }
 
   checkpoint() {
@@ -442,7 +479,7 @@ export class TableTennisGame {
 
   restore(payload) {
     if (!payload || payload.version !== 1 || payload.boundary !== 'point' ||
-      !['practice', 'bot'].includes(payload.mode) || !Number.isInteger(payload.seed) || payload.seed < 0 || payload.seed > 0xffffffff ||
+      !['practice', 'bot', 'versus'].includes(payload.mode) || !Number.isInteger(payload.seed) || payload.seed < 0 || payload.seed > 0xffffffff ||
       !Number.isInteger(payload.practiceReturns) || payload.practiceReturns < 0 || payload.practiceReturns > 1000000 ||
       !payload.settings || !['friendly', 'standard'].includes(payload.settings.assistance) ||
       !finite(payload.settings.sensitivity)) return false;
@@ -454,7 +491,7 @@ export class TableTennisGame {
     this.practiceReturns = payload.practiceReturns;
     this.physics.ball.active = false;
     this.serveMotion = null;
-    this.recenter();
+    this.recenter(); this.recenter(2);
     this.nextFeed = this.time + 1.4;
     this.lastReason = 'Restored at the last completed point';
     this.onEvent({type: 'state'});

@@ -71,7 +71,7 @@ test('bowling result validation accepts ties and legacy completion, rejects inco
   assert.equal(isBowlingState({ ...complete, winners: [1], winnerScore: 300 }), true);
   for (const change of [{ winners: [] }, { winners: [1] }, { winnerScore: 100 },
     { winners: [1, 1], winnerScore: 100 }, { winners: [0], winnerScore: 100 },
-    { winners: [5], winnerScore: 100 }, { winners: ['1'], winnerScore: 100 },
+    { winners: [9], winnerScore: 100 }, { winners: ['1'], winnerScore: 100 },
     { winners: [1.5], winnerScore: 100 }, { winners: null, winnerScore: 100 },
     { winners: [1], winnerScore: -1 }, { winners: [1], winnerScore: 301 },
     { winners: [1], winnerScore: 1.5 }, { winners: [1], winnerScore: NaN },

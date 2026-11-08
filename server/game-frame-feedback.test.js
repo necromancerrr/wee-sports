@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.stubGlobal('React', { createElement: () => null });
   vi.stubGlobal('window', { location: { origin: 'https://wee.test' },
     addEventListener(_event, callback) { listener = callback; }, removeEventListener() { listener = null; } });
+  vi.stubGlobal('document', Object.assign(new EventTarget(), {hidden: false}));
 });
 afterEach(() => { cleanups.forEach(cleanup => cleanup?.()); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -323,5 +324,40 @@ test('same-game epoch changes invalidate asynchronous tennis delivery', async ()
   expect(current()).toBe(false);
   f.contentWindow.postMessage.mockClear();
   finish({ok:true}); await pending;
+  expect(f.contentWindow.postMessage).not.toHaveBeenCalled();
+});
+
+test('controller setup relay tolerates a visible sensor gap and immediately revokes on background', async () => {
+  const f = mount({controller: true});
+  await f.receive({type: 'wee:controller-setup', setup: 'motion', requestId: 1});
+  h.request.mockClear();
+  const transient = f.receive({type: 'wee:controller-setup', setup: null, requestId: 2});
+  await vi.advanceTimersByTimeAsync(400);
+  expect(h.request).not.toHaveBeenCalled();
+  await f.receive({type: 'wee:controller-setup', setup: 'motion', requestId: 3});
+  await transient;
+  expect(h.request).toHaveBeenCalledExactlyOnceWith(EVENTS.PLAYER_SETUP, {setup: 'motion'});
+  await f.receive({type: 'wee:controller-setup', setup: null, requestId: 4, reason: 'background'});
+  expect(h.request).toHaveBeenLastCalledWith(EVENTS.PLAYER_SETUP, {setup: null});
+  expect(f.contentWindow.postMessage).toHaveBeenLastCalledWith({type: 'wee:setup-ack', requestId: 4, result: {ok: true}}, window.location.origin);
+});
+
+test('document background flushes a pending setup revocation while reload cancels old acknowledgements', async () => {
+  const f = mount({controller: true});
+  await f.receive({type: 'wee:controller-setup', setup: 'motion', requestId: 1});
+  const pending = f.receive({type: 'wee:controller-setup', setup: null, requestId: 2});
+  document.hidden = true;
+  document.dispatchEvent(new Event('visibilitychange'));
+  await pending;
+  expect(h.request).toHaveBeenLastCalledWith(EVENTS.PLAYER_SETUP, {setup: null});
+  document.hidden = false;
+  await f.receive({type: 'wee:controller-setup', setup: 'motion', requestId: 3});
+  const stale = f.receive({type: 'wee:controller-setup', setup: null, requestId: 4});
+  f.rerender({sport: 'table-tennis'});
+  f.contentWindow.postMessage.mockClear();
+  h.request.mockClear();
+  await stale;
+  await vi.advanceTimersByTimeAsync(1600);
+  expect(h.request).not.toHaveBeenCalled();
   expect(f.contentWindow.postMessage).not.toHaveBeenCalled();
 });

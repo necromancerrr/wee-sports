@@ -1594,3 +1594,8 @@
 .game-save-status { position: absolute; z-index: 2; bottom: .5rem; left: 1rem; margin: 0; font-size: .75rem; padding: .3rem .65rem; border-radius: .5rem; background: var(--surface); color: var(--text-muted); pointer-events: none; }
 .sport-switcher { margin-block: 1rem; }
 .sport-switcher select { margin-inline-start: .5rem; padding: .5rem; border-radius: .5rem; }
+
+/* Keep normal scrolling, but prevent a pull-to-refresh from dropping a seat. */
+html:has(.phone-session), body:has(.phone-session) { overscroll-behavior-y: none; }
+.phone-reconnect-notice { display: grid; gap: 4px; margin: 10px 0; padding: 12px 16px; border-radius: 14px; background: var(--warn-soft); color: var(--warn-ink); font-size: .875rem; }
+.phone-reconnect-notice span { font-size: .95em; }

@@ -86,7 +86,7 @@ test('bowling contact feedback is restricted to the current rolling seat and mat
   state('ready');
   assert.equal(store.hitTarget('tv', { ...hit, id: 'after-roll' }).error, 'not-playing');
   assert.equal(isGameHit({ ...hit, player: 4 }, 'bowling'), true);
-  assert.equal(isGameHit({ ...hit, player: 5 }, 'bowling'), false);
+  assert.equal(isGameHit({ ...hit, player: 9 }, 'bowling'), false);
   assert.equal(store.lobby(host.code).gameState.phase, 'ready');
 });
 

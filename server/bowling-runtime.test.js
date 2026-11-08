@@ -75,6 +75,24 @@ test('live aim accepts only fresh authenticated current-turn state and never cha
   expect(runtime.world.setAim).toHaveBeenCalledTimes(2);
 });
 
+test('eight-player standings remain complete and move the turn marker without opening the full scorecard', async () => {
+  runtime.match = new BowlingMatch(Array.from({length: 8}, (_, index) => ({player: index + 1, name: `Player ${index + 1}`})));
+  await import('../src/bowlingMain.ts');
+  state({players: Array.from({length: 8}, (_, slot) => ({slot, name: `Player ${slot + 1}`}))});
+  const standings = () => document.getElementById('score-totals').children;
+  expect(standings()).toHaveLength(8);
+  expect(standings().map(row => row.dataset.active)).toEqual(['true', ...Array(7).fill('false')]);
+  for (let i = 0; i < 7; i++) runtime.match.record([]);
+  runtime.world.onState(runtime.world.getState());
+  expect(standings().map(row => row.dataset.active)).toEqual([...Array(7).fill('false'), 'true']);
+  expect(standings()[7].children[0].textContent).toBe('P8 · Player 8');
+  expect(document.getElementById('score-body').children).toHaveLength(8);
+  const dialog = document.getElementById('scorecard-dialog');
+  dialog.showModal = vi.fn();
+  document.getElementById('open-scorecard').onclick();
+  expect(dialog.showModal).toHaveBeenCalledOnce();
+});
+
 test('a completed delivery reveals an unlocked centre guide for the next turn', async () => {
   await import('../src/bowlingMain.ts'); state({});
   receive({type: 'wee:game-aim', event: {gameId: 'bowl-one', player: 1, seq: 1, aim: -.6, locked: true}});

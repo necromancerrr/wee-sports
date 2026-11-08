@@ -39,6 +39,18 @@ test('native sensor denial selects touch and auto-readies without another setup 
   flow.stop();
 });
 
+test('tennis uses motion readiness instead of silently forcing touch mode', async () => {
+  const {flow,session,calls,motions} = await fixture();
+  session.seat.sport = 'tennis';
+  flow.update(session.seat,'online'); await tick();
+  assert.equal(motions.length,1);
+  assert.equal(calls.length,0);
+  motions[0].status({state:'ready'}); await tick();
+  assert.equal(session.inputSetup,'motion');
+  assert.equal(calls.at(-1).event,'player:ready');
+  flow.stop();
+});
+
 test('old sensor callbacks cannot ready after background; foreground warms automatically', async () => {
   const {flow,session,calls,motions} = await fixture();
   flow.update(session.seat,'online'); await tick();

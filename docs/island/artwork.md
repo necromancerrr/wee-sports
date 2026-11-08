@@ -68,8 +68,7 @@ Coordinates are normalized against the entire wider selector image:
 | Bowling | `(0.690, 0.486)` |
 | Table Tennis | `(0.594, 0.424)` |
 
-The Table Tennis pavilion is behind the bridge and left of Bowling. Its two
-illustrated tables do not change the current one-player support. Golf and the
+The Table Tennis pavilion is behind the bridge and left of Bowling. The game supports one or two players. Golf and the
 reserved billiards area remain unavailable.
 
 ## Typography

@@ -7,7 +7,7 @@ import { BowlingIcon, GolfIcon, RacketIcon, TableTennisIcon, SportIcon } from '.
  * the protocol remains the authority for which games can open a room.
  */
 const CATALOG = [
-  { id: 'table-tennis', blurb: 'Find your rhythm with practice feeds, then challenge the bot.',
+  { id: 'table-tennis', blurb: 'Rally with a friend using two phones, or practise and challenge the bot.',
     Icon: TableTennisIcon, tint: ['#dff7f8', '#9edadd'] },
   {
     id: 'tennis',

@@ -73,10 +73,10 @@ export class BowlingMatch {
   private deliveries: number[][] = [];
 
   constructor(players: BowlingPlayer[]) {
-    if (players.length < 1 || players.length > 4 ||
+    if (players.length < 1 || players.length > 8 ||
         new Set(players.map(p => p.player)).size !== players.length ||
-        players.some(p => !Number.isInteger(p.player) || p.player < 1 || p.player > 4)) {
-      throw new Error('Bowling needs one to four unique players.');
+        players.some(p => !Number.isInteger(p.player) || p.player < 1 || p.player > 8)) {
+      throw new Error('Bowling needs one to eight unique players.');
     }
     this.participants = players.map(p => ({...p}));
     this.frames = players.map(() => Array.from({length: 10}, () => []));
@@ -92,7 +92,7 @@ export class BowlingMatch {
     const data = value as BowlingMatchCheckpoint;
     if (!data || data.version !== 1 || !Array.isArray(data.players) ||
         data.players.some(player => !player || typeof player.name !== 'string' || !player.name.trim() || player.name.length > 80) ||
-        !Array.isArray(data.deliveries) || data.deliveries.length > 84) throw new Error('Invalid bowling checkpoint.');
+        !Array.isArray(data.deliveries) || data.deliveries.length > 168) throw new Error('Invalid bowling checkpoint.');
     const match = new BowlingMatch(data.players);
     for (const remaining of data.deliveries) {
       if (!Array.isArray(remaining) || remaining.some(id => !Number.isInteger(id))) throw new Error('Invalid saved delivery.');

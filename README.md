@@ -14,16 +14,20 @@ tap. The island fills wider displays with extra ocean, without cropping the
 resort. `/home` follows the same device roles; QR join links still go straight
 to the controller. Resizing a computer window does not turn it into a phone.
 
+For a party, set **Players in this game** on the TV before friends scan: up to
+eight for Bowling, or two for Tennis and Table Tennis. Each person taps **Play**
+once; the TV waits until the selected group has joined and is ready.
+
 See the [island implementation and checks](docs/island/README.md) for the
 reference artwork, responsive behavior and validation evidence.
 
 ## Games and controls
 
-- **Bowling:** one to four players, ten-frame scoring and solo practice. Aim on
+- **Bowling:** one to eight players, ten-frame scoring and solo practice. Aim on
   the phone and watch the live TV indicator; beginning a forward delivery freezes
   aim automatically. Button controls provide aim, power, curve and a deliberate roll.
-- **Table Tennis:** one player, repeatable practice feeds or a scored bot game
-  to 12 with a two-point lead. Use compact motion or the touch paddle. The
+- **Table Tennis:** one or two players. Solo starts a scored bot game; two phones
+  play head to head. Games finish at 12 with a two-point lead; practice feeds are optional. Use compact motion or the touch paddle. The
   standalone diagnostic view also supports pointer/arrow movement, click/Space
   to stroke, and P to pause. In Friendly mode, aim selects a landing area and
   power changes pace. Direction locks at stroke onset; the ball follows its
@@ -55,6 +59,7 @@ Tennis keyboard controls:
   never promise exact mid-flight recovery.
 
 See [consistent shots and TV feedback](docs/game-quality.md),
+[the party and controller repair](docs/party-controller-repair.md),
 [the table-tennis motion and physics repair](docs/table-tennis-research.md),
 [the simple-controller design and research](docs/system-plan/controller-simplicity.md),
 the [trial runbook](docs/system-plan/README.md) and

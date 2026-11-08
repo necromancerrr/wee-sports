@@ -59,9 +59,19 @@ export function useReconnect(role, code) {
       if (token.current && socket.connected && !stopped) socket.emit(EVENTS.SESSION_AWAY, { code });
       disconnected();
     };
-    const pageShow = () => { if (token.current) needsResume.current = true; resume(); };
+    // pageshow also fires for an ordinary initial load. Only reclaim a seat
+    // after a real departure/disconnect; repeated resumes rotate generations.
+    const pageShow = () => {
+      if (!token.current || stopped) return;
+      if (!socket.connected) socket.connect();
+      resume();
+    };
+    const online = () => {if (!socket.connected) socket.connect(); resume();};
+    const visible = () => {if (!document.hidden) online();};
     window.addEventListener('pagehide', away);
     window.addEventListener('pageshow', pageShow);
+    window.addEventListener('online', online);
+    document.addEventListener('visibilitychange', visible);
     socket.on('connect', resume); socket.on('disconnect', disconnected);
     socket.on(EVENTS.LOBBY_UPDATE, update); socket.on(EVENTS.ROOM_CLOSED, closed); socket.on(EVENTS.SESSION_REPLACED, replaced);
     const timer = setInterval(resume, 2000);
@@ -70,6 +80,8 @@ export function useReconnect(role, code) {
       live = false; clearInterval(timer);
       window.removeEventListener('pagehide', away);
       window.removeEventListener('pageshow', pageShow);
+      window.removeEventListener('online', online);
+      document.removeEventListener('visibilitychange', visible);
       // StrictMode remounts cancel this; actual navigation reserves the seat.
       if (token.current && !stopped) pendingDepartures.set(departureKey, setTimeout(() => {
         pendingDepartures.delete(departureKey);

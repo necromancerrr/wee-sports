@@ -5,6 +5,7 @@ import {dirname} from 'node:path';
 import {mkdirSync, chmodSync} from 'node:fs';
 import {BowlingMatch} from '../../src/bowling/match.ts';
 import {TableTennisGame} from '../../src/tabletennis/game.js';
+import {playerCapacity} from '../../shared/protocol.js';
 import {DEFAULT_PREFERENCES, boundedJson, checkpoint, fail, identifier, keys, preferences, text} from './validation.js';
 
 const scrypt = promisify(rawScrypt);
@@ -126,7 +127,7 @@ export class ProfileStore {
   /** Trusted room service supplies profile IDs after authenticating each member. */
   createMatch({matchId, sport, hostMemberId, participants, config = {rulesVersion: 1, physicsVersion: 1, checkpointVersion: 1}}) {
     identifier(matchId); identifier(hostMemberId);
-    if (!['tennis', 'bowling', 'table-tennis'].includes(sport) || !Array.isArray(participants) || participants.length < 1 || participants.length > 4) fail('invalid-match');
+    if (!playerCapacity(sport) || !Array.isArray(participants) || participants.length < 1 || participants.length > playerCapacity(sport)) fail('invalid-match');
     const seen = new Set();
     const members = participants.map(member => {
       keys(member, ['memberId', 'profileId', 'name']); identifier(member.memberId);
@@ -236,7 +237,7 @@ export class ProfileStore {
             match.pinsStanding.length !== state.pins.length || state.pins.some(pin => !pin.standing || !match.pinsStanding.includes(pin.id))) fail('recovery-unavailable', 409);
       } else if (row.sport === 'table-tennis') {
         const game = new TableTennisGame();
-        if (!game.restore(state) || game.rules.snapshot().phase === 'complete') fail('recovery-unavailable', 409);
+        if (state.mode === 'versus' || !game.restore(state) || game.rules.snapshot().phase === 'complete') fail('recovery-unavailable', 409);
       } else fail('recovery-unavailable', 409);
     } catch { fail('recovery-unavailable', 409); }
     return {sport: row.sport, state, participantProfileId: row.profile_id, participantName: row.name,

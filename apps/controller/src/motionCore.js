@@ -1,30 +1,37 @@
 import {
   createAutomaticMotionSetup, createPaddleIntentController,
-  createTimeConstantFilter, normalizeNativeGyroscope, toLegacyMotionSample,
+  normalizeNativeGyroscope, toLegacyMotionSample,
 } from '../../../shared/motion.js';
 import { bowlingTiltAim, createBowlingDeliveryGate } from '../../../src/controller/motionGestures.js';
 import { nativeBowlingSupportVector, nativeDeviceMotionFields } from './nativeSample.js';
+import { createBowlingAimFilter } from '../../../src/controller/bowlingAim.js';
+import { createSwingStream } from '../../../src/controller/swingStream.js';
+import { createSimpleSwingStream } from '../../../src/controller/motionGestures.js';
+import { tennisPower } from '../../../src/controller/tennisPower.js';
 
 /** Native collection only; units, calibration, filters and sport recognition are shared. */
 export class MotionController {
-  constructor({ session, sensors, onStatus = () => {}, onRelease = () => {}, hand = 'Right', sensitivity = 1, now = () => performance.now() }) {
+  constructor({ session, sensors, onStatus = () => {}, onRelease = () => {}, onSwing = () => {}, hand = 'Right', sensitivity = 1, strokeMode = 'auto', now = () => performance.now() }) {
     this.Gyroscope = sensors.Gyroscope;
     this.DeviceMotion = sensors.DeviceMotion;
     this.session = session;
     this.onStatus = onStatus;
     this.onRelease = onRelease;
+    this.onSwing = onSwing;
     this.hand = hand;
     this.sensitivity = sensitivity;
+    this.strokeMode = strokeMode;
     this.now = now;
     this.sequence = 0;
     this.attempt = 0;
     this.revision = 0;
     this.aim = 0;
     this.active = false;
-    this.filter = createTimeConstantFilter();
+    this.filter = createBowlingAimFilter();
     this.paddle = createPaddleIntentController({ hand, sensitivity });
     this.automatic = createAutomaticMotionSetup();
     this.delivery = createBowlingDeliveryGate();
+    this.resetSwing();
   }
 
   async calibrate() {
@@ -46,10 +53,21 @@ export class MotionController {
     this.lastTime = null;
     this.largestGap = 0;
     this.Gyroscope.setUpdateInterval(1000 / 60);
-    const gravityAvailable = await this.DeviceMotion.isAvailableAsync();
+    let gravityAvailable = await this.DeviceMotion.isAvailableAsync().catch(() => false);
     if (!this.active || this.attempt !== attempt) return;
+    // Gyroscope on iOS has no permission requester. DeviceMotion owns the
+    // Motion & Fitness permission needed for gravity/acceleration and aim.
+    if (gravityAvailable && this.DeviceMotion.requestPermissionsAsync) {
+      const permission = await this.DeviceMotion.requestPermissionsAsync().catch(() => ({granted:false}));
+      if (!this.active || this.attempt !== attempt) return;
+      gravityAvailable = permission.granted;
+    }
+    if (!gravityAvailable && this.session.seat?.sport === 'bowling') {
+      this.stop();
+      throw new Error('Motion aiming is unavailable. Use touch controls.');
+    }
     if (gravityAvailable) {
-      this.DeviceMotion.setUpdateInterval(1000 / 30);
+      this.DeviceMotion.setUpdateInterval(1000 / 60);
       this.deviceSubscription = this.DeviceMotion.addListener(reading => {
         this.device = reading;
         this.deviceReceived = this.now();
@@ -59,9 +77,11 @@ export class MotionController {
     this.noDataTimer = setInterval(() => {
       if (!this.active) return;
       const silence = this.now() - (this.lastTime ?? this.started);
-      if (silence > 2000) this.onStatus({state:'no-readings'});
+      const missingAim = this.session.seat?.sport === 'bowling' &&
+        this.now() - (this.deviceReceived ?? this.started) > 2000;
+      if (silence > 2000 || missingAim) this.onStatus({state:'no-readings'});
       else if (!this.automatic.read(this.now() / 1000).ready) {
-        this.delivery.suspend(); this.paddle.reset();
+        this.delivery.suspend(); this.paddle.reset(); this.resetSwing();
         this.onStatus({state:'warming'});
       }
     }, 250);
@@ -88,13 +108,19 @@ export class MotionController {
     const status = this.automatic.push(sample, {safeBoundary,recenter:safeBoundary});
     this.calibration = status.calibration;
     if (!status.ready) {
-      this.delivery.suspend(); this.paddle.reset();
+      this.delivery.suspend(); this.paddle.reset(); this.resetSwing();
       if (time - this.lastUi > 100) {this.lastUi = time; this.onStatus({state:'warming'});}
       return;
     }
     if (status.justReady) this.onStatus({state:'ready'});
     const corrected = status.sample;
     if (this.session.inputSetup !== 'motion') return;
+    if (!this.session.playing()) {
+      if (this.wasPlaying) this.resetInput();
+      this.wasPlaying = false;
+      return;
+    }
+    this.wasPlaying = true;
     if (this.session.seat?.sport === 'bowling') {
       const legacy = toLegacyMotionSample(corrected);
       if (this.delivery.lockedAim === null) {
@@ -105,8 +131,15 @@ export class MotionController {
       const active = this.session.playing() && seat.gameState?.phase === 'ready' &&
         seat.gameState?.currentPlayer === seat.slot + 1 && this.session.bowlingReleasedTurn !== turnKey;
       const release = this.delivery.push(legacy, {active,turnKey,aim:this.aim});
-      this.session.latest('aim', {aim:this.delivery.lockedAim ?? this.aim,locked:this.delivery.lockedAim !== null});
+      if (active) this.session.latest('aim', {aim:this.delivery.lockedAim ?? this.aim,locked:this.delivery.lockedAim !== null});
       if (release) {this.session.bowlingReleasedTurn = turnKey; this.onRelease(release);}
+    } else if (this.session.seat?.sport === 'tennis') {
+      this.swing.push(toLegacyMotionSample(corrected));
+      for (const stroke of this.swing.analyze()) {
+        if (stroke.label === 'Unknown' || !(stroke.complete || stroke.early || stroke.fast)) continue;
+        this.onSwing({type:'swing', label:stroke.label, hand:this.hand,
+          power:Math.min(1, tennisPower(stroke.peakRotation, null, stroke.label) * this.sensitivity)});
+      }
     } else if (this.session.seat?.sport === 'table-tennis') {
       const intent = this.paddle.push(corrected);
       if (intent) {
@@ -121,7 +154,15 @@ export class MotionController {
     }
   }
 
-  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.aim = 0; this.filter.reset(0); }
+  resetSwing() { this.swing = this.strokeMode === 'auto'
+    ? createSwingStream(this.hand, {fast:true, suppressReturns:true}) : createSimpleSwingStream(this.strokeMode); }
+  updatePreferences({hand = this.hand, sensitivity = this.sensitivity, strokeMode = this.strokeMode}) {
+    if (hand === this.hand && sensitivity === this.sensitivity && strokeMode === this.strokeMode) return;
+    this.hand = hand; this.sensitivity = sensitivity; this.strokeMode = strokeMode;
+    this.paddle = createPaddleIntentController({hand, sensitivity});
+    this.resetInput();
+  }
+  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); }
   allowNewDelivery() { this.delivery = createBowlingDeliveryGate(); }
   recenter() { this.resetInput(); this.automatic.reset(); }
   stop() {
@@ -132,7 +173,10 @@ export class MotionController {
     this.gyroSubscription?.remove(); this.gyroSubscription = null;
     clearInterval(this.noDataTimer);
     this.device = null;
+    this.deviceReceived = null;
+    this.wasPlaying = false;
     this.automatic.reset();
     this.paddle.reset();
+    this.resetSwing();
   }
 }
