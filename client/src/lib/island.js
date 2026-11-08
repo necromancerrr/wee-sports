@@ -2,26 +2,26 @@
  * availability belong to the sport catalog and shared registry, not the map. */
 export const MAIN_ISLAND = {
   id: 'resort',
-  assetVersion: 1,
-  image: {src: '/island/homepage.webp', width: 1672, height: 941},
-  landing: {src: '/island/landing.webp', width: 1672, height: 941},
+  assetVersion: 2,
+  image: {src: '/island/homepage.webp?v=2', ocean: '/island/homepage-ocean.webp', width: 1672, height: 941, water: 'bay'},
+  landing: {src: '/island/landing.webp?v=2', ocean: '/island/landing-ocean.webp', width: 1672, height: 941, water: 'shore'},
   venues: [
-    {sportId: 'tennis', label: {x: .265, y: .515}, anchor: {x: .268, y: .673}},
-    {sportId: 'bowling', label: {x: .79, y: .32}, anchor: {x: .79, y: .413}},
-    {sportId: 'golf', label: {x: .238, y: .19}, anchor: {x: .24, y: .315}},
-    {sportId: 'table-tennis', label: {x: .61, y: .22}, anchor: {x: .64, y: .375}},
+    {sportId: 'tennis', label: {x: .255, y: .52}, anchor: {x: .34, y: .64}},
+    {sportId: 'bowling', label: {x: .75, y: .38}, anchor: {x: .69, y: .486}},
+    {sportId: 'golf', label: {x: .325, y: .26}, anchor: {x: .35, y: .398}},
+    {sportId: 'table-tennis', label: {x: .56, y: .28}, anchor: {x: .594, y: .424}},
   ],
   neighbors: [],
   // Future art reservation, deliberately absent from the sport catalog and
   // host actions. Pool means billiards, not a swimming attraction.
   reservedSpaces: [{id: 'east-billiards', use: 'billiards-lounge',
-    bounds: {x: .86, y: .47, width: .12, height: .19}}],
+    bounds: {x: .73, y: .50, width: .07, height: .10}}],
 };
 
 export const ISLAND_REGIONS = {[MAIN_ISLAND.id]: MAIN_ISLAND};
 
-/** Contain the complete image. Scenery, connector endpoints and controls all
- * use this rectangle, including letterboxed and portrait layouts. */
+/** Preserve the whole island at every aspect ratio. A separate ocean plate
+ * fills the surrounding viewport, so the island never needs a cover crop. */
 export function fitIsland(viewportWidth, viewportHeight, image = MAIN_ISLAND.image) {
   if (![viewportWidth, viewportHeight, image.width, image.height].every(Number.isFinite) ||
     viewportWidth <= 0 || viewportHeight <= 0 || image.width <= 0 || image.height <= 0) {
@@ -35,6 +35,19 @@ export function fitIsland(viewportWidth, viewportHeight, image = MAIN_ISLAND.ima
 
 export function islandPoint(point, rect) {
   return {x: rect.x + point.x * rect.width, y: rect.y + point.y * rect.height};
+}
+
+/** Keep controls below the header and within the viewport at larger text sizes.
+ * Targets still point at the actual venue; only the label can move. */
+export function islandLabel(point, rect, viewport, size = {width: 220, height: 64}) {
+  const target = islandPoint(point, rect);
+  const margin = 20;
+  const left = margin + size.width / 2;
+  const right = Math.max(left, viewport.width - margin - size.width / 2);
+  const top = Math.max(100, viewport.height * .025 + 72) + size.height / 2;
+  const bottom = Math.max(top, viewport.height - 80 - size.height / 2);
+  return {x: Math.max(left, Math.min(right, target.x)) - rect.x,
+    y: Math.max(top, Math.min(bottom, target.y)) - rect.y};
 }
 
 /** Keep an accessible Games list for every catalog entry. This split also

@@ -3,6 +3,7 @@ import {Link, useNavigate} from 'react-router-dom';
 import {EVENTS, PROTOCOL_VERSION} from '@wee/shared/protocol.js';
 import {createControllerCapabilities} from '../../../shared/controllerCapabilities.js';
 import {IslandScenery} from '../components/IslandScenery.jsx';
+import {IslandVenues} from '../components/IslandVenues.jsx';
 import {IslandMenu} from '../components/IslandMenu.jsx';
 import {MAIN_ISLAND, presentIslandSports} from '../lib/island.js';
 import {useIslandMotion} from '../lib/useIslandMotion.js';
@@ -88,35 +89,18 @@ export default function Home() {
     : failure ? failure.message
       : connection === 'online' ? '' : connection === 'connecting' ? 'Connecting…' : 'Offline. Reconnecting to the game server…';
 
-  return <main className="island-screen island-home" data-motion={enabled}>
+  return <main className="island-screen island-home" data-display-role="tv" data-motion={enabled}>
     <IslandScenery image={MAIN_ISLAND.image}>
-      {rect => <>
-        <svg className="island-connectors" width={rect.width} height={rect.height} aria-hidden="true">
-          {PRESENTATION.venues.map(venue => {
-            const selected = highlighted === venue.sportId;
-            return <g key={venue.sportId} data-highlighted={selected}>
-              <line x1={venue.label.x * rect.width} y1={venue.label.y * rect.height}
-                x2={venue.anchor.x * rect.width} y2={venue.anchor.y * rect.height} />
-              {selected && <circle className="island-target-halo" cx={venue.anchor.x * rect.width} cy={venue.anchor.y * rect.height} r="13" />}
-              <circle cx={venue.anchor.x * rect.width} cy={venue.anchor.y * rect.height} r="5" />
-            </g>;
-          })}
-        </svg>
-        <nav className="island-map-venues" aria-label="Sports on the island">
-          {PRESENTATION.venues.map(venue => <div className="island-venue-anchor" key={venue.sportId}
-            style={{left: `${venue.label.x * 100}%`, top: `${venue.label.y * 100}%`}}>
-            {sportControl(venue.sport)}
-          </div>)}
-        </nav>
-      </>}
+      {(rect, viewport) => <IslandVenues rect={rect} viewport={viewport} venues={PRESENTATION.venues}
+        highlighted={highlighted} renderControl={sportControl} />}
     </IslandScenery>
     <header className="island-header">
       <Link className="island-wordmark" to="/">Wee Sports</Link>
       <h1 ref={title} tabIndex={-1}>Choose a sport</h1>
       <div className="island-header__menu"><IslandMenu /></div>
     </header>
-    <section className="island-mobile-games" aria-label="Games">
-      {ORDERED_SPORTS.map(sport => <div key={sport.id}>{sportControl(sport, 'mobile')}</div>)}
+    <section className="island-compact-games" aria-label="Games">
+      {ORDERED_SPORTS.map(sport => <div key={sport.id}>{sportControl(sport, 'compact')}</div>)}
     </section>
     <div className="island-status" role="status" aria-live="polite">{status}</div>
     <footer className="island-footer">

@@ -75,7 +75,7 @@ export function IslandMenu() {
         <div className="island-menu__preferences">
           <div className="island-menu__preference"><span>Appearance</span><ThemeToggle /></div>
           <div className="island-menu__preference">
-            <div><span>Motion</span><p id={`${dialogId}-motion`}>{motion.reducedMotion ? 'Reduced motion follows your device settings.' : 'Gentle screen and button transitions.'}</p></div>
+            <div><span>Motion</span><p id={`${dialogId}-motion`}>{motion.reducedMotion ? 'Reduced motion follows your device settings.' : 'Gentle water movement and screen transitions.'}</p></div>
             <button type="button" className="island-menu__switch" role="switch" aria-label="Motion"
               aria-checked={motion.preference && !motion.reducedMotion} aria-describedby={`${dialogId}-motion`}
               disabled={motion.reducedMotion} onClick={() => motion.setEnabled(!motion.preference)}>

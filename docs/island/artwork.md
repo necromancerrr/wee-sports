@@ -1,67 +1,82 @@
 # Island artwork
 
-The runtime scenery is a pair of clean illustrated plates, with application
-text and controls rendered separately as HTML/SVG. Both plates are 1672 × 941
-pixels. They are not 3D models or native 4K renders.
+The TV scenery uses separate island and ocean plates, with live HTML/SVG labels.
+All source images are 1672 × 941 pixels. These are illustrations, not 3D models
+or native 4K renders. Phones do not download or display the island artwork.
 
 ## Source and provenance
 
 The owner supplied `wee-sports-island-handoff.zip` and
-`WEESPORTS-ISLAND-HANDOFF.md` for this implementation. The untouched approved
-concepts are retained as comparison targets:
+`WEESPORTS-ISLAND-HANDOFF.md`. The untouched approved concepts are retained:
 
 - [Approved selector](reference/approved-modern-homepage.png)
 - [Approved landing](reference/approved-modern-landing.png)
 
-The handoff identifies these concepts as images previously created with the
-built-in image-generation tool. They are visual concepts, not screenshots of
-an earlier implemented application. The unapproved expansion draft in the
-package was inspected but was not used as the source image for these edits.
+The handoff identifies these as concepts previously made with the built-in image
+generation tool. On 7 November 2026 the tool removed their baked interface and
+added a matching Table Tennis pavilion. Those first clean versions remain at
+[source/homepage.png](source/homepage.png) and
+[source/landing.png](source/landing.png).
 
-On 7 November 2026, the built-in image-generation tool edited the approved
-selector directly. It removed baked text, controls, connectors and cyan
-selection outlines, repaired the exposed scenery, and replaced the small
-center-right cabin with an open white-and-timber Table Tennis pavilion. The
-approved landing was then edited using its original camera composition, with
-the cleaned selector as a secondary reference for the matching pavilion.
+Following the owner's request for more ocean and an uncropped TV view, the tool
+extended both compositions on 7–8 November 2026. The actual generated images
+use a wider view; they did not retain an exact pixel-aligned central rectangle
+as requested in the prompt. All venue targets were therefore re-authored and
+visually checked against the outputs:
 
-The resulting original PNGs are retained under `source/`:
+- [Wider selector](source/homepage-wide.png)
+- [Wider landing](source/landing-wide.png)
+- [Selector ocean extension](source/homepage-ocean.png)
+- [Landing ocean extension](source/landing-ocean.png)
 
-- [Clean selector](source/homepage.png)
-- [Clean landing](source/landing.png)
+The last two edits remove all land and boats, leaving matching sky and ocean.
+They sit behind the contained island view and fill horizontal space on wide
+displays. Only these decorative ocean extensions can stretch horizontally.
+The island, coastline, venues and boats preserve their aspect ratio. CSS masks
+blend the image margins; no bitmap crop or recoloring is applied at runtime.
+The main image URLs include version 2 to avoid pairing new venue targets with
+the previous image in a browser's cache.
 
-`public/island/homepage.webp` and `public/island/landing.webp` are high-quality
-WebP encodings of those PNGs, at their original dimensions. No crop, stretching,
-sharpening, recoloring, or resolution upscale is applied during encoding. The
-browser preserves the image aspect ratio and uses the same image rectangle for
-venue anchors. There are no animation masks or extracted moving objects in
-this asset version; the scenery remains static.
+The supplied unapproved expansion draft was not used as the art direction.
+No portrait island ships: phones use the controller hub. Exact prompts and
+references are recorded in [generation-prompts.json](generation-prompts.json).
 
-## Re-encode
+## Runtime assets and encoding
 
-With ImageMagick and WebP support available, run from the repository root:
+The four WebP files total 1,085,144 bytes (about 1.09 MB); each TV view loads
+its own island and ocean pair. Encoding preserves the source dimensions.
 
 ```sh
-convert docs/island/source/homepage.png -strip -define webp:method=6 -quality 92 public/island/homepage.webp
-convert docs/island/source/landing.png -strip -define webp:method=6 -quality 92 public/island/landing.webp
+convert docs/island/source/homepage-wide.png -strip -define webp:method=6 -quality 92 public/island/homepage.webp
+convert docs/island/source/landing-wide.png -strip -define webp:method=6 -quality 92 public/island/landing.webp
+convert docs/island/source/homepage-ocean.png -strip -define webp:method=6 -quality 88 public/island/homepage-ocean.webp
+convert docs/island/source/landing-ocean.png -strip -define webp:method=6 -quality 88 public/island/landing-ocean.webp
 ```
 
-Inspect the result at native size before accepting future art or compression
-changes. Generation prompts are preserved in [generation-prompts.json](generation-prompts.json).
+Small SVG highlights are restricted to authored open-water masks; a few dashed
+streaks follow the waterfall. CSS provides the animation. Buildings and shore
+geometry do not warp. Image and connectors share the same small pointer offset.
 
-## Selector anchors
+## Selector targets
 
-Coordinates are normalized against the full clean selector image. They locate
-visible venues, independent of a particular viewport:
+Coordinates are normalized against the entire wider selector image:
 
-| Venue | Suggested connector target |
+| Venue | Connector target |
 | --- | --- |
-| Golf | `(0.240, 0.315)` |
-| Tennis | `(0.268, 0.673)` |
-| Bowling | `(0.790, 0.413)` |
-| Table Tennis | `(0.640, 0.375)` |
+| Golf | `(0.350, 0.398)` |
+| Tennis | `(0.340, 0.640)` |
+| Bowling | `(0.690, 0.486)` |
+| Table Tennis | `(0.594, 0.424)` |
 
-Table Tennis is a small garden pavilion behind the bridge, left of Bowling.
-Its two illustrated tables do not imply multiplayer support. The current
-platform's Table Tennis mode remains one player. Golf and the reserved future
-billiards area are not made playable by the artwork.
+The Table Tennis pavilion is behind the bridge and left of Bowling. Its two
+illustrated tables do not change the current one-player support. Golf and the
+reserved billiards area remain unavailable.
+
+## Typography
+
+The entry screens use the locally served Nunito variable Latin font,
+`public/fonts/nunito-latin-variable.woff2` (39,128 bytes), from
+`@fontsource-variable/nunito@5.3.0/files/nunito-latin-wght-normal.woff2`.
+The source was downloaded from jsDelivr's npm mirror. The SIL Open Font License
+is bundled as `public/fonts/OFL-nunito.txt`, obtained from
+`google/fonts/main/ofl/nunito/OFL.txt`. Existing game typography is unchanged.

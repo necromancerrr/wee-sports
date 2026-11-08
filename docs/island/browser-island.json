@@ -1,13 +1,13 @@
 {
-  "recordedAt": "2026-11-07T23:27:20.214Z",
-  "base": "http://127.0.0.1:5197",
+  "recordedAt": "2026-11-08T00:06:18.113Z",
+  "base": "http://127.0.0.1:5198",
   "runtime": "v24.22.1",
   "browser": "156.0.8078.79",
   "checks": [
     "Landing Play supports keyboard navigation and opens the island without room creation, sensors or fullscreen",
     "Production /home opens and refreshes directly",
     "Golf remains informational and does not request a room",
-    "All open sports remain readable and reachable at desktop, large TV, ultrawide, tablet and portrait sizes",
+    "The island remains uncropped and ocean spans the width through 32:9; desktop controls also adapt to narrow windows",
     "A 32px browser default-font preference enlarges labels and remains usable on desktop and portrait",
     "The Games list exposes every playable sport and restores focus after Escape",
     "Menu supports keyboard focus, help, persisted theme/motion preferences and system reduced motion without darkening the art",
@@ -27,24 +27,24 @@
       "targets": [
         {
           "name": "Tennis",
-          "x": 334.3046875,
-          "y": 440.21875,
-          "width": 217.546875,
-          "height": 88.78125
+          "x": 347.921875,
+          "y": 455.5078125,
+          "width": 156.875,
+          "height": 67.609375
         },
         {
           "name": "Bowling",
-          "x": 1211.421875,
-          "y": 256.71875,
-          "width": 218.90625,
-          "height": 88.78125
+          "x": 1175.115478515625,
+          "y": 324.16033935546875,
+          "width": 158.515625,
+          "height": 67.609375
         },
         {
           "name": "Table Tennis",
-          "x": 882.984375,
-          "y": 162.625,
-          "width": 273.84375,
-          "height": 88.78125
+          "x": 837.1172485351562,
+          "y": 230.1905059814453,
+          "width": 199.40631103515625,
+          "height": 67.60939025878906
         }
       ]
     },
@@ -56,24 +56,24 @@
       "targets": [
         {
           "name": "Tennis",
-          "x": 853.609375,
-          "y": 1045.8984375,
-          "width": 328.90625,
-          "height": 132.984375
+          "x": 850.390625,
+          "y": 1067.8515625,
+          "width": 258.59375,
+          "height": 110.671875
         },
         {
           "name": "Bowling",
-          "x": 2867.46875,
-          "y": 624.6953125,
-          "width": 331.03125,
-          "height": 132.984375
+          "x": 2748.7890625,
+          "y": 765.4609375,
+          "width": 261.390625,
+          "height": 110.671875
         },
         {
           "name": "Table Tennis",
-          "x": 2134.828125,
-          "y": 408.6953125,
-          "width": 414.65625,
-          "height": 132.984375
+          "x": 1985.6875,
+          "y": 549.4609375,
+          "width": 329.15625,
+          "height": 110.671875
         }
       ]
     },
@@ -85,24 +85,53 @@
       "targets": [
         {
           "name": "Tennis",
-          "x": 704.4375,
-          "y": 505.5390625,
-          "width": 249.15625,
-          "height": 101.296875
+          "x": 719.9296875,
+          "y": 522.9375,
+          "width": 179.796875,
+          "height": 77.3125
         },
         {
           "name": "Bowling",
-          "x": 1711.140625,
-          "y": 294.9453125,
-          "width": 250.6875,
-          "height": 101.296875
+          "x": 1668.890625,
+          "y": 371.734375,
+          "width": 181.6875,
+          "height": 77.3125
         },
         {
           "name": "Table Tennis",
-          "x": 1334.1796875,
-          "y": 186.9453125,
-          "width": 313.765625,
-          "height": 101.296875
+          "x": 1280.8125,
+          "y": 263.734375,
+          "width": 228.625,
+          "height": 77.3125
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 3840,
+        "height": 1080
+      },
+      "targets": [
+        {
+          "name": "Tennis",
+          "x": 1359.9296875,
+          "y": 522.9375,
+          "width": 179.796875,
+          "height": 77.3125
+        },
+        {
+          "name": "Bowling",
+          "x": 2308.890625,
+          "y": 371.734375,
+          "width": 181.6875,
+          "height": 77.3125
+        },
+        {
+          "name": "Table Tennis",
+          "x": 1920.8125,
+          "y": 263.734375,
+          "width": 228.625,
+          "height": 77.3125
         }
       ]
     },
@@ -114,24 +143,24 @@
       "targets": [
         {
           "name": "Tennis",
-          "x": 203.9609375,
-          "y": 359.625,
-          "width": 134.796875,
-          "height": 66
+          "x": 199.53125,
+          "y": 368.8671875,
+          "width": 123.15625,
+          "height": 53.296875
         },
         {
           "name": "Bowling",
-          "x": 741.1484375,
-          "y": 247.25,
-          "width": 135.609375,
-          "height": 66
+          "x": 705.7578125,
+          "y": 288.1796875,
+          "width": 124.484375,
+          "height": 53.296875
         },
         {
           "name": "Table Tennis",
-          "x": 540,
-          "y": 189.625,
-          "width": 169.25,
-          "height": 66
+          "x": 495.1953125,
+          "y": 230.5546875,
+          "width": 156.484375,
+          "height": 53.296875
         }
       ]
     },
@@ -144,23 +173,23 @@
         {
           "name": "Tennis",
           "x": 16,
-          "y": 341.828125,
+          "y": 345.875,
           "width": 358,
-          "height": 71.59375
+          "height": 69.59375
         },
         {
           "name": "Bowling",
           "x": 16,
-          "y": 423.421875,
+          "y": 425.46875,
           "width": 358,
-          "height": 71.59375
+          "height": 69.59375
         },
         {
           "name": "Table Tennis",
           "x": 16,
-          "y": 505.015625,
+          "y": 505.0625,
           "width": 358,
-          "height": 71.59375
+          "height": 69.59375
         }
       ]
     }

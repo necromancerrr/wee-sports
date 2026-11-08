@@ -1,92 +1,96 @@
-# Island landing and sport selector
+# TV island and phone controller entry
 
-The opening screen at `/` has the approved distant island composition, the
-Wee Sports wordmark and a small Play control. Play opens `/home`; it does not
-create a room, request phone motion or enter browser fullscreen. The selector
-uses the closer resort view with four venue labels. Tennis, Bowling and Table
-Tennis reuse authenticated room creation, host-token storage and room routes.
-Golf is informational. Table Tennis remains one player. The future billiards
-area is a presentation reservation, not an advertised playable game.
+At `/` and `/home`, computers and TVs show the island; phones and tablets show
+a simple Controller screen. Device identity determines the role, independently
+of viewport width. A narrow Windows window remains a host, a rotated phone
+remains a remote, and desktop-mode iPads are recognized by their touch support.
+Known Android TV, Fire TV, webOS and Tizen browsers take precedence over mobile
+detection. Explicit `/join?code=…`, `/host/:code` and `/profile` routes retain
+their existing session behavior.
 
-The small Menu contains manual code joining, Profile & history, How to play,
-Appearance and Motion. Direct `/join?code=…`, `/host/:code` and `/profile` links
-continue to work and refresh in production. Returning from a closed lobby or
-profile opens `/home`. Returning to a live lobby remains a separate action.
-The gameplay, physics, rules, controller setup, same-room switching, transport
-and save/recovery implementations were retained from the latest branch.
+## Phone
 
-## Artwork and layout
+**Scan TV code** opens a camera dialog only after a tap. A native QR detector is
+used when available; jsQR loads on demand as the portable fallback. Decoding
+accepts four-character room codes or HTTP(S) `/join?code=…` links and strips
+unrelated parameters. It preserves the TV's origin for secure tunnel links.
+A phone's normal camera can still open the TV QR directly into the controller.
 
-The [artwork record](artwork.md) preserves the approved concepts, clean edited
-PNGs, exact generation prompts and WebP encoding settings. Runtime art totals
-about 804 KB across both views. It has no baked text or controls. Matching
-Table Tennis pavilions were added to the two approved views without moving the
-existing major venues. The supplied unapproved expansion draft was not used as
-the replacement visual direction.
+Closing the dialog, navigating away, hiding the page, or completing a scan stops
+the camera tracks and decoding loop. A stream granted after closing is also
+stopped. Camera denial/unavailability opens manual code entry. There are no
+camera or motion requests, room creation or island-art downloads on entry.
 
-`client/src/lib/island.js` contains region identity, image dimensions, normalized
-labels/anchors, neighboring-region slots and the reserved future billiards
-area. Display names, player counts and support come from the existing sport
-catalog and shared registry. Every playable catalog entry appears in Games,
-even if its future venue has not yet been illustrated.
+**Profile & history** provides optional preferences and saved-game information.
+Its return link opens the controller hub. Starting a saved solo game is offered
+on the TV/computer profile only. Guest play and the existing one-tap Play/motion
+permission flow are unchanged. Camera scanning and phone motion need HTTPS;
+`npm run dev` supplies the existing secure phone tunnel.
 
-The image, SVG connectors and labels use one contained rectangle. Full scenery
-remains visible on ultrawide screens; matching coastal color fills the side
-space. Portrait screens keep the island and show readable game controls below
-it. Games also provides a linear keyboard/screen-reader route on desktop.
-There is no required dragging or hidden clickable scenery. Modal utilities
-use native dialog focus behavior and restore focus on close.
+## TV and computer
 
-Motion is limited to the brief scenery arrival and small control hover/focus
-transitions. There is no image warping, animated video, continuous render loop
-or invented 3D camera. The stored Motion preference, reduced-motion setting
-and page visibility govern decoration. Leaving the island releases its
-observers/listeners. Dark mode changes control surfaces while preserving the
-sunlit artwork.
+Landing Play opens the selector without creating a room. Tennis, Bowling and
+Table Tennis reuse authenticated room creation and host-token storage. Golf
+remains informational, Table Tennis remains one player, and the reserved future
+billiards area is not advertised as playable. Menu contains manual joining,
+profiles, help, appearance and Motion.
 
-The source images are 1672 × 941, not native 4K renders. Large-TV layout checks
-do not establish additional image detail or physical-device performance.
+The updated artwork leaves more ocean around the resort. The whole island keeps
+its aspect ratio and fits inside the available scene rectangle. A matching
+ocean-only plate extends behind it to both screen edges, including ultrawide
+displays. Soft masks blend only the sky and water margins. Venue labels, targets
+and water highlights share the island's coordinates; enlarging text can move a
+label inward without moving its venue target. Narrow computer windows retain
+a compact Games list. This layout is not used as the phone homepage.
+
+Labels are smaller, with thinner borders and a shared rounded typeface. Nunito
+is served locally for the island, menu and remote hub. It is licensed under the
+bundled SIL Open Font License. The [artwork record](artwork.md) contains sources,
+prompts, compression settings and coordinates.
+
+Small SVG water highlights and waterfall streaks animate through CSS. Fine
+pointer movement adds up to four pixels of depth while moving art and venue
+markers together. Motion off, system reduced motion and page hiding stop these
+effects. Unmounting releases observers and listeners. Dark mode changes control
+surfaces while keeping the sunlit artwork.
 
 ## Validation
 
-The repair was built and reviewed on November 7, 2026. Build output, compiler
-caches and disposable browser databases were kept outside tracked `build/`
-and `dist/` directories. Build verification includes both island WebP assets,
-all six HTML entry points and the required player/racket models.
+Verified on 8 November 2026 with build output, compiler caches and disposable
+databases outside tracked `build/` and `dist/`:
 
-- 534 root tests in 60 files passed, including new catalog/coordinate and
-  production route/MIME coverage.
-- TypeScript and the six-page production build passed.
-- [13 focused island browser checks](browser-island.json) cover real room creation, duplicate activation,
-  rejected requests/retry, offline/no replay, direct routes, manual joining,
-  optional profile access, keyboard focus, themes, motion and viewport sizing.
-  Real 32px browser font preferences were checked on desktop and portrait,
-  including pointer access to Menu and the enlarged Games dialog.
-- [12 existing platform browser flow checks](browser-platform.json) exercise guest play, bowling
-  delivery/save, pause/reconnect, same-room sport switching, profiles and saved
-  solo-game continuation through the new entry route.
+- 538 root tests in 61 files passed, including device roles, QR link parsing,
+  catalog coordinates and production routes.
+- TypeScript and the six-page production build passed. Build verification
+  checks all four scenery assets, the local font and the required game models.
+- [13 island browser checks](browser-island.json) cover desktop/TV/32:9 sizing,
+  enlarged text, real room creation, duplicate activation, failures/retry,
+  offline behavior, menus, profiles, themes and motion preferences.
+- [10 phone browser checks](browser-remote-home.json) cover iPhone/Android/iPad
+  routing, rotation, profile return, direct/manual joining, real QR-image
+  decoding, denied/pending permission and camera cleanup.
+- [Platform browser checks](browser-platform.json) cover guest play, bowling
+  delivery/save, pause/reconnect, sport switching, profiles and TV recovery.
 
-Reviewed screenshots: [landing](screenshots/island-landing-1672.webp),
-[island](screenshots/island-home-1672.webp),
-[ultrawide](screenshots/island-home-2560.webp),
-[portrait](screenshots/island-home-390.webp),
-[larger text](screenshots/island-text-enlarged-390.webp) and
-[larger-text menu](screenshots/island-menu-enlarged-390.webp).
+Reviewed previews: [TV landing](screenshots/island-landing-1672.webp),
+[selector](screenshots/island-home-1672.webp),
+[wide ocean](screenshots/island-home-2560.webp),
+[phone controller](screenshots/phone-controller-home.webp),
+[phone dark mode](screenshots/phone-controller-dark.webp), and
+[narrow computer with larger text](screenshots/island-text-enlarged-390.webp).
 
-These checks use generated inputs and software WebGL;
-they do not measure physical-phone feel or end-to-end motion latency.
-There were no React warnings or uncaught page errors. The environment blocked
-the existing Google Fonts request; island typography uses local system fonts
-and the other screens used their existing fallback fonts during verification.
+Camera inputs and device identities are simulated in Chromium. Physical Safari
+and Android camera focus/permission behavior still need device checks. Existing
+gameplay checks use software WebGL and do not measure phone-to-TV motion latency.
+The illustrations remain 1672 × 941 sources, not native 4K artwork.
 
-To repeat with Playwright and Chromium available, start a disposable production
-server and point `WEE_SMOKE_URL` at it:
+To repeat against a disposable production server with Playwright and Chromium:
 
 ```sh
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-island-smoke.cjs
+WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-remote-home-smoke.cjs
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-platform-smoke.cjs
 ```
 
 Use `WEE_SMOKE_REPORT` for a new JSON report path and
-`WEE_SMOKE_SCREENSHOTS` for an island screenshot directory. Existing report
-paths are not overwritten by the harness.
+`WEE_SMOKE_SCREENSHOTS` for screenshots. Reports are not overwritten by a run.

@@ -4,6 +4,7 @@ import {claimGuestHistory, profileRequest} from '../lib/profile.js';
 import {request, socket, useConnection} from '../lib/socket.js';
 import {saveToken} from '../lib/reconnect.js';
 import {createControllerCapabilities} from '../../../shared/controllerCapabilities.js';
+import {displayRole} from '../lib/displayRole.js';
 import './Profile.css';
 
 const MESSAGES = {
@@ -23,6 +24,7 @@ const message = error => MESSAGES[error.message] || 'Your profile could not be s
 const sportName = sport => ({tennis: 'Tennis', bowling: 'Bowling', 'table-tennis': 'Table Tennis'})[sport] || sport;
 
 export default function Profile() {
+  const remote = displayRole(navigator) === 'remote';
   const navigate = useNavigate();
   const connection = useConnection();
   const [profile, setProfile] = useState(null);
@@ -83,6 +85,7 @@ export default function Profile() {
     finally { setBusy(false); }
   }
   async function restore(matchId) {
+    if (remote) return;
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await request('host:restore', {matchId, capabilities: createControllerCapabilities()});
@@ -96,7 +99,7 @@ export default function Profile() {
   const completed = history.filter(game => game.status === 'complete');
   const bowlingScores = completed.filter(game => game.sport === 'bowling').map(game => game.score);
   return <main className="profile-page page">
-    <header className="profile-heading"><Link className="btn btn--ghost" to="/home">Back to games</Link><h1>Your profile</h1></header>
+    <header className="profile-heading"><Link className="btn btn--ghost" to="/home">{remote ? 'Back to controller' : 'Back to games'}</Link><h1>Your profile</h1></header>
     <p>Keep your preferences and match history across your controllers. Playing as a guest always stays available.</p>
     {error && <p className="alert" role="alert">{error}</p>}
     {notice && <p className="profile-notice" role="status">{notice}</p>}
@@ -129,7 +132,7 @@ export default function Profile() {
         <p>On your TV or laptop, continue a saved game. Scan the new code with a phone signed into this profile and tap Play. The interrupted roll or point starts again.</p>
         <ul className="profile-history">{recoverable.map(game => <li key={game.matchId}>
           <strong>{sportName(game.sport)}</strong><span>{game.playerName} · saved {new Date(game.savedAt).toLocaleString()}</span>
-          <button type="button" className="btn btn--primary" disabled={busy || connection !== 'online'} onClick={() => restore(game.matchId)}>{busy ? 'Opening…' : 'Continue on this screen'}</button>
+          {!remote && <button type="button" className="btn btn--primary" disabled={busy || connection !== 'online'} onClick={() => restore(game.matchId)}>{busy ? 'Opening…' : 'Continue on this screen'}</button>}
         </li>)}</ul>
       </section>}
       <section className="profile-card">

@@ -90,10 +90,16 @@ async function noOverflow(page) {
     pass('Golf remains informational and does not request a room');
 
     for (const viewport of [{width: 1672, height: 941}, {width: 3840, height: 2160},
-      {width: 2560, height: 1080}, {width: 1024, height: 768}, {width: 390, height: 844}]) {
+      {width: 2560, height: 1080}, {width: 3840, height: 1080}, {width: 1024, height: 768}, {width: 390, height: 844}]) {
       await page.setViewportSize(viewport);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await noOverflow(page);
+      const scenery = await page.getByTestId('island-background').boundingBox();
+      const view = await page.locator('.island-scenery').boundingBox();
+      assert.ok(scenery.x >= view.x - 5 && scenery.x + scenery.width <= view.x + view.width + 5, 'whole island fits horizontally');
+      assert.ok(scenery.y >= view.y - 5 && scenery.y + scenery.height <= view.y + view.height + 5, 'whole island fits vertically');
+      const ocean = await page.locator('.island-scenery__ocean').boundingBox();
+      assert.ok(ocean.x <= 0 && ocean.x + ocean.width >= viewport.width, 'ocean reaches both display edges');
       const bounds = [];
       for (const name of sports) {
         const button = await enabledSport(page, name);
@@ -114,7 +120,7 @@ async function noOverflow(page) {
       layouts.push({viewport, targets: bounds});
       if ([1672, 2560, 390].includes(viewport.width)) await screenshot(page, `island-home-${viewport.width}`);
     }
-    pass('All open sports remain readable and reachable at desktop, large TV, ultrawide, tablet and portrait sizes');
+    pass('The island remains uncropped and ocean spans the width through 32:9; desktop controls also adapt to narrow windows');
     await page.setViewportSize({width: 1672, height: 941});
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const baselineFont = await page.getByRole('button', {name: 'Play: Tennis', exact: true})

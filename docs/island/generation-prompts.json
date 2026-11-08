@@ -15,5 +15,39 @@
     ],
     "output": "source/landing.png",
     "prompt": "Edit FIRST attached image (the approved farther-back landing composition) into a clean no-UI runtime scenery plate. FIRST image controls the camera, composition, geography, framing and every untouched detail. Preserve its exact16:9 wide distant resort view, generous blue sky above, island horizontally across middle, foreground turquoise water and beach/flower corners, two tennis courts lower-left, golf green upper-left of island, waterfall+bridge center, Bowling curved pavilion right, grassy hill and lighthouse. Remove ONLY the big baked 'Wee Sports' wordmark and the small white Play pill, reconstructing continuous blue sky and calm detailed turquoise water under them with no seams or blur. No words, letters, logos, buttons, boxes, dots, connectors or selection outlines anywhere. SECOND image is the newly cleaned closer view of the SAME island and is provided ONLY to match its added Table Tennis pavilion: replace the corresponding little cabin on the center-right terrace behind the bridge and left of Bowling (in FIRST image around x=.64 y=.50) with the SAME modest open-front white-and-pale-timber pavilion containing two recognizable blue ping-pong tables with short nets. Match the garden-pavilion roof, timber columns, small proportions and paths of that second image, but rendered at the FIRST image's farther distance. Do not copy second image's camera or enlarge island. Keep everything else, including sailboats, pristine beaches, glass, pale timber, trees, sky and water, extremely faithful to FIRST image. Detailed polished stylized3D lighting and materials, warm bright daylight, same texture quality, crisp scenery. Output largest faithful landscape16:9 available. Background only."
+  },
+  "expandedOcean": {
+    "generatedAt": "2026-11-08",
+    "note": "Requested a larger centered canvas; generated plates are 1672 × 941 with a wider camera composition, so venue targets were re-authored against the actual output. Separate ocean plates fill wider displays. No portrait phone island ships.",
+    "edits": {
+      "homepage": {
+        "references": [
+          "source/homepage.png"
+        ],
+        "output": "source/homepage-wide.png",
+        "prompt": "Expand the canvas of this exact Wee Sports selector image on ALL FOUR sides, mostly adding quiet blue ocean left and right and matching sky above and water below. The owner wants wider displays filled naturally with more ocean, not a cropped island and not colored side bars. Keep the ENTIRE original image composition, buildings, island geography, camera, coastline, boats, lighting, and material style unchanged inside the exact central rectangle: x=25% to75%, y=25% to75% of the final canvas. This means double the original canvas width AND height while retaining the original pixels/composition in the center. Seamlessly outpaint the surroundings. Preserve the original horizon level translated into that center rectangle, extending it naturally left/right. No extra island, no new buildings or new venue; outer margins primarily blue sky and turquoise sea with subtle wave texture. No text, interface, logos, borders or frames. Do not redesign or zoom into the existing island. Output the highest available resolution, ideally3344x1882, aspect16:9, with the original1672x941 image intact in its middle. This is a clean background plate; no labels. Detailed crisp stylized3D art matching the original, not blurry water."
+      },
+      "homepageOcean": {
+        "references": [
+          "source/homepage-wide.png"
+        ],
+        "output": "source/homepage-ocean.png",
+        "prompt": "Create a seamless ocean-and-sky background extension for this exact image. REMOVE the entire island, ALL land, buildings, trees, boats, rocks, foreground plants, and any distant land. Fill those removed regions with continuous naturally textured blue/turquoise ocean. Keep the reference's exact horizon height, sky colors, lighting, water colors, brush/render quality and perspective. Do not change sky/horizon position. The result must be ONLY blue sky/clouds and uninterrupted ocean with subtle waves from left edge to right edge, no objects, no boats, no land or beaches anywhere. It will sit behind the original image on ultrawide TV displays and extend its sea naturally at the sides; accurate colors and horizon continuity are essential. 16:9 landscape, crisp stylized 3D resort art."
+      },
+      "landing": {
+        "references": [
+          "source/landing.png"
+        ],
+        "output": "source/landing-wide.png",
+        "prompt": "Expand the canvas of this exact Wee Sports landing image on ALL FOUR sides, mostly adding quiet blue ocean left and right and matching sky above and water below. The owner wants wider displays filled naturally with more ocean, not a cropped island and not colored side bars. Keep the ENTIRE original image composition, buildings, island geography, camera, coastline, boats, lighting, and material style unchanged inside the exact central rectangle: x=25% to75%, y=25% to75% of the final canvas. This means double the original canvas width AND height while retaining the original pixels/composition in the center. Seamlessly outpaint the surroundings. Preserve the original horizon level translated into that center rectangle, extending it naturally left/right. No extra island, no new buildings or new venue; outer margins primarily blue sky and turquoise sea with subtle wave texture. No text, interface, logos, borders or frames. Do not redesign or zoom into the existing island. Output the highest available resolution, ideally3344x1882, aspect16:9, with the original1672x941 image intact in its middle. This is a clean background plate; no labels. Detailed crisp stylized3D art matching the original, not blurry water."
+      },
+      "landingOcean": {
+        "references": [
+          "source/landing-wide.png"
+        ],
+        "output": "source/landing-ocean.png",
+        "prompt": "Create a seamless ocean-and-sky background extension for this exact image. REMOVE the entire island, ALL land, buildings, trees, boats, rocks, foreground plants, and any distant land. Fill those removed regions with continuous naturally textured blue/turquoise ocean. Keep the reference's exact horizon height, sky colors, lighting, water colors, brush/render quality and perspective. Do not change sky/horizon position. The result must be ONLY blue sky/clouds and uninterrupted ocean with subtle waves from left edge to right edge, no objects, no boats, no land or beaches anywhere. It will sit behind the original image on ultrawide TV displays and extend its sea naturally at the sides; accurate colors and horizon continuity are essential. 16:9 landscape, crisp stylized 3D resort art."
+      }
+    }
   }
 }

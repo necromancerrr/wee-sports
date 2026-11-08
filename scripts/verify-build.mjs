@@ -24,13 +24,17 @@ console.log('Verified all six built pages');
 
 // Scenery is loaded by URL at runtime, so bundling alone cannot catch its loss.
 for (const region of Object.values(ISLAND_REGIONS)) {
-  for (const image of [region.image, region.landing]) {
-    const path = resolve(buildDir, image.src.replace(/^\/+/, ''));
+  for (const src of [region.image.src, region.image.ocean, region.landing.src, region.landing.ocean]) {
+    const path = resolve(buildDir, src.split('?')[0].replace(/^\/+/, ''));
     const bytes = readFileSync(path);
     if (bytes.length < 20 || bytes.toString('ascii', 0, 4) !== 'RIFF' ||
       bytes.toString('ascii', 8, 12) !== 'WEBP' || bytes.readUInt32LE(4) + 8 !== bytes.length) {
       throw new Error(`Missing or invalid built island artwork: ${path}`);
     }
-    console.log(`Verified ${image.src} (${bytes.length} bytes)`);
+    console.log(`Verified ${src} (${bytes.length} bytes)`);
   }
 }
+
+const font = readFileSync(resolve(buildDir, 'fonts/nunito-latin-variable.woff2'));
+if (font.toString('ascii', 0, 4) !== 'wOF2') throw new Error('Missing local island/controller font');
+console.log('Verified local island/controller font');
