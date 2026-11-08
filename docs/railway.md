@@ -40,9 +40,10 @@ tooling for the simplest verified image; image-size optimization is optional.
 Application code remains root-owned and readable by the runtime user, including
 when the source checkout uses restrictive directory/file modes. Only the private
 database directory needs to be writable by `node`.
-The optional BuildKit `proxy_ca` secret is only for development environments
-with an inspecting proxy, is mounted during installation, and is not retained
-in the image. Ordinary Railway builds need no such secret.
+The production Dockerfile uses standard certificate roots and strict TLS.
+It contains no secret mounts: Railway's Dockerfile validator rejects those,
+even when marked optional. Any inspecting-proxy certificate setup belongs in
+the local development environment, not this deployment Dockerfile.
 
 Use dashboard settings for this preparation; no `railway.json` or `railway.toml`
 was added. Current official Railway pages were inaccessible from the audit
