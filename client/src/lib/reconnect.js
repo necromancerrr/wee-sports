@@ -10,7 +10,7 @@ export function loadToken(role, code) {
 }
 export function saveToken(role, code, token) {
   memory.set(key(role, code), token);
-  if (role === 'host') {hostRoom = code; try {storage()?.setItem(lastHostKey, code);} catch {}}
+  if (role === 'host') {hostRoom = code; try {storage()?.setItem(lastHostKey, code);} catch { /* Memory retains this room when storage is blocked. */ }}
   try { const target = storage(); target?.setItem(key(role, code), token); return Boolean(target); }
   catch { return false; }
 }
@@ -20,12 +20,12 @@ export function clearToken(role, code) {
   try { storage()?.removeItem(key(role, code)); } catch { /* Storage can be unavailable. */ }
   if (latestHost) {
     hostRoom = null;
-    try {storage()?.removeItem(lastHostKey);} catch {}
+    try {storage()?.removeItem(lastHostKey);} catch { /* Storage can be unavailable. */ }
   }
 }
 
 export function lastHostRoom() {
   let code = hostRoom;
-  try {code = storage()?.getItem(lastHostKey) ?? code;} catch {}
+  try {code = storage()?.getItem(lastHostKey) ?? code;} catch { /* Fall back to the in-memory room. */ }
   return /^[A-Z0-9]{4}$/.test(code || '') && loadToken('host', code) ? code : null;
 }

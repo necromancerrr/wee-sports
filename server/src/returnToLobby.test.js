@@ -162,7 +162,7 @@ test('real sockets: both return events broadcast to their room, survive TV recon
     await send(phone, EVENTS.PLAYER_JOIN, { v, code: room.code, name: `Player ${i + 1}` });
     await send(phone, EVENTS.PLAYER_SETUP, { setup: 'motion' });
   }
-  async function start(host = tv) {
+  async function start() {
     await send(p1, EVENTS.PLAYER_READY, { ready: true }); await send(p2, EVENTS.PLAYER_READY, { ready: true });
     await send(p1, EVENTS.PLAYER_START, {});
     now += 5000; store.finishCountdown(room.code);

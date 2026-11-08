@@ -98,7 +98,6 @@ let settingsOpen = false;
 let playNotice = '';
 let setupError = '';
 let feedbackUntil = 0;
-let lastTiltReading = null;
 let liveAim = 0;
 const aimMotion = createBowlingAimController();
 const aimStream = createBowlingAimStream(event => post({ type: 'wee:player-aim', event }));
@@ -399,7 +398,6 @@ function stop(message = 'Motion paused. Tap Resume motion when you are ready.', 
   if (user) { motionWanted = false; userPaused = true; }
   const wasRecording = recording;
   recording = false;
-  lastTiltReading = null;
   stream = null; // Never flush an unfinished gesture when stopping or disconnecting.
   tennisAim.reset();
   cancelArmedRoll();
@@ -634,7 +632,6 @@ function motion(event) {
         x: sample.rotationAlpha * degrees, y: sample.rotationBeta * degrees, z: sample.rotationGamma * degrees,
       }}, {sensitivity: motionSensitivity});
       if (tilt !== null) {
-        lastTiltReading = now;
         liveAim = tilt;
         element('aim').value = String(Math.round(liveAim * 100) / 100);
         element('aim').oninput();

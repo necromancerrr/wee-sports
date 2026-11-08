@@ -3,8 +3,8 @@
 export const MAIN_ISLAND = {
   id: 'resort',
   assetVersion: 2,
-  image: {src: '/island/homepage.webp?v=2', ocean: '/island/homepage-ocean.webp', width: 1672, height: 941, water: 'bay'},
-  landing: {src: '/island/landing.webp?v=2', ocean: '/island/landing-ocean.webp', width: 1672, height: 941, water: 'shore'},
+  image: {src: '/island/homepage.webp?v=2', ocean: '/island/homepage-ocean.webp', width: 1672, height: 941, horizon: .31, water: 'bay'},
+  landing: {src: '/island/landing.webp?v=2', ocean: '/island/landing-ocean.webp', width: 1672, height: 941, horizon: .456, water: 'shore'},
   venues: [
     {sportId: 'tennis', label: {x: .255, y: .52}, anchor: {x: .34, y: .64}},
     {sportId: 'bowling', label: {x: .75, y: .38}, anchor: {x: .69, y: .486}},
@@ -31,6 +31,22 @@ export function fitIsland(viewportWidth, viewportHeight, image = MAIN_ISLAND.ima
   const width = image.width * scale;
   const height = image.height * scale;
   return {x: (viewportWidth - width) / 2, y: (viewportHeight - height) / 2, width, height, scale};
+}
+
+/** Extend the separate sky/sea plate to both screen edges without moving its
+ * horizon away from the island. Only the scenery stretches; the island and
+ * venue anchors retain their original aspect ratio. offset is the art strip's
+ * position inside a scrolling compact home, or zero for a full-screen scene. */
+export function fitIslandBackdrop(screenHeight, rect, horizon, offset = 0) {
+  if (![screenHeight, rect.y, rect.height, horizon, offset].every(Number.isFinite) ||
+    screenHeight <= 0 || rect.height <= 0 || horizon <= 0 || horizon >= 1) {
+    return {y: 0, height: 0};
+  }
+  const horizonY = offset + rect.y + rect.height * horizon;
+  const bleed = 2; // Keep fractional CSS pixels from exposing an edge during resize.
+  const height = Math.max(rect.height, (horizonY + bleed) / horizon,
+    (screenHeight - horizonY + bleed) / (1 - horizon));
+  return {y: horizonY - height * horizon - offset, height};
 }
 
 export function islandPoint(point, rect) {

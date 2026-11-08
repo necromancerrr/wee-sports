@@ -155,11 +155,13 @@ export default function HostStub() {
     return (
       <main className="stub host-lobby">
         <p className="eyebrow">TV lobby</p>
-        <h1>Lobby closed</h1>
+        <h1>{ended === 'recovery-owner-required' ? 'Sign in to reconnect' : 'Lobby closed'}</h1>
         <p className="stub__muted">
-          {ended === 'replaced' ? 'This lobby was opened in another tab. Continue there or reload to take control.' : 'This game has ended or the reconnect window expired. Start a new lobby from the homepage.'}
+          {ended === 'recovery-owner-required' ? 'Sign in to the profile that saved this game, then return here to reconnect.'
+            : ended === 'replaced' ? 'This lobby was opened in another tab. Continue there or reload to take control.' : 'This game has ended or the reconnect window expired. Start a new lobby from the homepage.'}
         </p>
         <div className="stub__actions">
+          {ended === 'recovery-owner-required' ? <Link className="btn btn--primary" to="/profile" state={{returnTo: `/host/${code}`}}>Sign in</Link> : null}
           <Link className="btn btn--primary" to="/home">
             Back to sports
           </Link>

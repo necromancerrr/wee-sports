@@ -221,6 +221,10 @@ authentication handshake. Preferences and history are available without making
 accounts a prerequisite for play. Signing in claims saved guest results only on
 their original server. Raw sensor recordings and device calibration
 are not uploaded to profiles.
+Profile requests have a ten-second deadline, including response-body loading.
+If a request times out, reopen the profile before trying a change again; the
+server may already have accepted it. Guest-result claiming stops at the first
+temporary failure and retains unsubmitted ownership proofs for a later sign-in.
 Scan the QR from the same running TV/server you use in the browser to reach
 the same rooms and profile data. Expo's Metro QR only loads the app; it does
 not choose a separate game server or create a separate profile service.

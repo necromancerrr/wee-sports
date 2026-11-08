@@ -1,19 +1,28 @@
-import {useEffect, useRef, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 import {createIslandMotion} from '../lib/islandMotion.js';
 
 /** An optional full-resolution paint layer; the original image stays beneath. */
 export function IslandMotion({source, variant, ocean = false, enabled}) {
   const canvas = useRef(null);
   const [ready, setReady] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const surface = canvas.current;
+    surface.dataset.ready = 'false';
     setReady(false);
     if (!enabled) return;
-    const surface = canvas.current;
     const image = new Image();
     let stopped = false, renderer, observer, frame, start, previous = -Infinity;
     let sized = false, painted = false;
+    const show = value => {
+      painted = value;
+      // ResizeObserver and context-loss callbacks must hide an unavailable
+      // frame immediately, without waiting for a React state commit.
+      surface.dataset.ready = String(value);
+      setReady(value);
+    };
     const stop = () => {
       stopped = true;
+      surface.dataset.ready = 'false';
       cancelAnimationFrame(frame);
       observer?.disconnect();
       renderer?.dispose();
@@ -21,7 +30,7 @@ export function IslandMotion({source, variant, ocean = false, enabled}) {
     };
     const contextLost = event => {
       event.preventDefault();
-      setReady(false);
+      show(false);
       stop();
     };
     surface.addEventListener('webglcontextlost', contextLost);
@@ -30,8 +39,13 @@ export function IslandMotion({source, variant, ocean = false, enabled}) {
       renderer = createIslandMotion(surface, image, {variant, ocean});
       if (!renderer) return;
       const resize = () => {
-        sized = renderer.resize(surface.clientWidth, surface.clientHeight);
-        if (!sized) {painted = false; setReady(false);}
+        if (stopped) return;
+        const now = performance.now();
+        if (start === undefined) start = now;
+        sized = renderer.resize(surface.clientWidth, surface.clientHeight, (now - start) / 1000);
+        if (!sized) {show(false); return;}
+        previous = now;
+        if (!painted) show(true);
       };
       observer = new ResizeObserver(resize);
       observer.observe(surface);
@@ -42,9 +56,9 @@ export function IslandMotion({source, variant, ocean = false, enabled}) {
         // Decorative motion is intentionally 30 fps. Image resolution is never
         // reduced to chase a frame-rate target, and React does not run per frame.
         if (sized && now - previous >= 1000 / 30 - 1) {
-          if (!renderer.draw((now - start) / 1000)) {setReady(false); stop(); return;}
+          if (!renderer.draw((now - start) / 1000)) {show(false); stop(); return;}
           previous = now;
-          if (!painted) {painted = true; setReady(true);}
+          if (!painted) show(true);
         }
         frame = requestAnimationFrame(paint);
       };

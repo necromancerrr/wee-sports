@@ -1,10 +1,24 @@
 # Build system
 
-Use Node 24 and install dependencies with:
+Use Node 24 and npm 11 (`.nvmrc` and the package engines describe the supported
+runtime). The server uses Node's native SQLite and direct TypeScript imports;
+older Node versions are not supported. Install dependencies with:
 
 ```sh
 npm ci
 ```
+
+The root install owns the browser, server, and `shared` workspace dependencies.
+Do not install separately under `client` or `server`: those manifests expose
+development/test commands against the root installation. The optional Expo app
+has its own pinned `apps/controller/package-lock.json` and uses
+`npm --prefix apps/controller ci`. npm is the supported package manager for both
+boundaries; the obsolete Bun lockfile has been removed.
+
+Root `npm ci` runs `prepare` → `compile`, so build tooling is required during
+installation. Build with development dependencies, then prune them only after
+the build. Production startup is `npm start` (`node server/main.js --production`)
+and performs no install or build.
 
 Build the three games, lobby/profile shell and both browser controllers with:
 
@@ -17,8 +31,10 @@ island artwork. The landing screen is `/`; `/home` opens the sport selector.
 The optional [Expo project](../apps/controller/README.md) has its own lockfile
 and build instructions; it is not required for either browser controller.
 
-Some legacy output files under `build/` and `dist/` are tracked. To validate
-without altering them, use an external cache/output directory:
+Generated `build/` and `dist/` files are no longer tracked. Canonical models stay
+in `public/assets/`; Vite copies them into the production output. TypeScript
+checks emit no JavaScript and cache under `node_modules/.cache/wee-sports/`.
+For a separate validation build, use an external cache/output directory:
 
 ```sh
 mkdir -p /tmp/wee-sports-checks

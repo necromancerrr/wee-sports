@@ -3,11 +3,7 @@ import {SelectedSportIcon} from '../components/SelectedSportIcon.jsx';
 import {GuestResultClaim} from '../components/GuestResultClaim.jsx';
 import {createControllerCapabilities} from '../../../shared/controllerCapabilities.js';
 import {SportSwitcher} from '../components/SportSwitcher.jsx';
-/**
- * Placeholder phone join. Functional only: the phone display owner restyles
- * and owns this page. It covers Use Case 4 (scan, name, join) and Use Case 6
- * (leave), with every failure said in plain words.
- */
+/** Browser phone entry, reconnecting seat and active controller shell. */
 
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -214,7 +210,9 @@ export default function JoinStub() {
       {ended ? <p className="alert" role="alert">{ended === 'replaced'
         ? 'This controller is active in another tab. Continue there or reload this page.'
         : ended === 'expired' ? 'Your reconnect window expired. Join again if the lobby is still open.'
+        : ended === 'recovery-owner-required' ? 'Sign in to the profile that saved this game, then return here to reconnect.'
         : 'This game has ended. Check the TV for a new lobby.'}</p> : null}
+      {ended === 'recovery-owner-required' ? <Link className="btn btn--primary" to="/profile" state={{returnTo: `/join?code=${code}`}}>Sign in</Link> : null}
       <p className="stub__muted">Your phone is the controller. Watch the TV and swing.</p>
 
       {error ? (

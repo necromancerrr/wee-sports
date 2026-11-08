@@ -14,22 +14,26 @@ async function touchContext(browser) {
     });
     return context;
 }
-async function joinPhone(page, code, name) {
+async function joinPhone(page, code, name = 'Player') {
     await page.goto(base + '/join?code=' + code);
-    if (name) {
-        await page.locator('.phone-join__name summary').click();
-        await page.getByLabel('Your name (optional)', { exact: true }).fill(name);
-    }
+    await page.getByLabel('Your playing name', { exact: true }).fill(name);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await page.getByRole('button', { name: 'Start game', exact: true }).click();
     await page.getByRole('button', {name:'Start now', exact:true}).click();
 }
-async function returnToLobby(host) {
-    await host.getByLabel('TV display controls').click();
-    await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
-    await host.getByRole('button', { name: 'End match and return', exact: true }).click();
-}
 
+async function returnToLobby(host, {newGame = false} = {}) {
+    await host.getByLabel('TV display controls').click();
+    await host.getByRole('button', {name: 'Return to lobby', exact: true}).click();
+    await host.getByRole('button', {name: 'Save and return', exact: true}).click();
+    await host.locator('.host-lobby').getByRole('button', {name: 'Close lobby', exact: true}).waitFor();
+    if (newGame) {
+        // Changing sport explicitly resolves the unfinished match first.
+        await host.getByRole('heading', {name: 'Your game is still here', exact: true}).waitFor();
+        await host.getByRole('button', {name: 'New game', exact: true}).click();
+        await host.getByRole('heading', {name: 'Your game is still here', exact: true}).waitFor({state: 'hidden'});
+    }
+}
 // Read the server's acknowledged persistence state, independent of TV copy.
 // Guest sessions have the same durable checkpoint status as profile sessions.
 function observeHostProgress(page) {
@@ -116,7 +120,7 @@ async function waitForRoll(controller, host) {
         await bc.locator('#aim').fill('0.5');
         await bc.locator('#aim').dispatchEvent('input');
         await bf.waitForFunction(() => window.__aims.some(e => e.aim === .5), null, { timeout: 8000 });
-        pass('Bowling one-tap guest Play without a name, automatic touch readiness and authenticated live aim');
+        pass('Bowling guest Play with a playing name, automatic touch readiness and authenticated live aim');
         const initialSave = await progress.saved(code);
         await bc.getByRole('button', { name: 'Roll', exact: true }).click();
         await bc.getByText('Watch the lane', { exact: true }).waitFor({ timeout: 5000 });
@@ -125,6 +129,7 @@ async function waitForRoll(controller, host) {
         assert.equal(await host.getByText('Progress saved.', { exact: true }).count(), 0);
         const before = await bg.locator('body').innerText();
         assert.match(before, /Ball 2|Frame 2/);
+        const settledFrame = await bg.locator('#frame-label').innerText();
         pass('Bowling deliberate touch release settles once and saves a boundary');
         await host.getByLabel('TV display controls').click();
         await host.getByRole('button', { name: 'Pause game · P', exact: true }).click();
@@ -133,13 +138,16 @@ async function waitForRoll(controller, host) {
         pass('Shared pause and resume');
         progress.reset();
         await host.reload();
-        await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 10000 });
+        await host.getByRole('heading', {name: 'Your game is still here', exact: true}).waitFor({timeout: 10000});
+        await phone.getByText('Choose Continue game or New game on the TV.', {exact: true}).waitFor();
+        assert.equal(await host.locator('iframe[title="Bowling game"]').count(), 0);
+        await host.getByRole('button', {name: 'Continue game', exact: true}).click();
+        await host.locator('iframe[title="Bowling game"]').waitFor({timeout: 15000});
         await progress.saved(code);
         await bg.locator('body').getByText(/Frame 1 \/ 10 · Ball 2|Frame 2 \/ 10/).waitFor({ timeout: 15000 });
-        pass('TV reload restores the same settled bowling boundary');
-        await host.getByLabel('TV display controls').click();
-        await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
-        await host.getByRole('button', { name: 'End match and return', exact: true }).click();
+        assert.equal(await bg.locator('#frame-label').innerText(), settledFrame);
+        pass('TV reload offers Continue game and restores the same settled bowling boundary after confirmation');
+        await returnToLobby(host, {newGame: true});
         await host.locator('.host-lobby').getByRole('heading', { name: 'Bowling', exact: true }).waitFor();
         if (!await phone.locator('.phone-session__options').evaluate(node=>node.open)) await phone.locator('.phone-session__options > summary').click();
         if (!await phone.getByLabel('Next sport',{exact:true}).isVisible()) await phone.getByText('Change sport',{exact:true}).click();
@@ -165,9 +173,7 @@ async function waitForRoll(controller, host) {
         pass('Table Tennis automatic touch setup, compact stroke and optional scored bot mode');
         if (process.env.WEE_SMOKE_SCREENSHOT)
             await host.screenshot({ path: process.env.WEE_SMOKE_SCREENSHOT });
-        await host.getByLabel('TV display controls').click();
-        await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
-        await host.getByRole('button', { name: 'End match and return', exact: true }).click();
+        await returnToLobby(host, {newGame: true});
         if (!await phone.locator('.phone-session__options').evaluate(node=>node.open)) await phone.locator('.phone-session__options > summary').click();
         if (!await phone.getByLabel('Next sport',{exact:true}).isVisible()) await phone.getByText('Change sport',{exact:true}).click();
         await phone.getByLabel('Next sport', { exact: true }).selectOption('tennis');
@@ -235,9 +241,7 @@ async function waitForRoll(controller, host) {
         });
         assert.equal(saved.source.sport, 'bowling');
         assert.equal(saved.source.saved, true);
-        await host.getByLabel('TV display controls').click();
-        await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
-        await host.getByRole('button', { name: 'End match and return', exact: true }).click();
+        await returnToLobby(host);
         await host.getByRole('button', { name: 'Close lobby', exact: true }).click();
         await host.goto(base + '/profile');
         await host.getByRole('heading', { name: 'Continue a solo game', exact: true }).waitFor();
@@ -246,9 +250,12 @@ async function waitForRoll(controller, host) {
         const restoredCode = await host.getByTestId('lobby-code').innerText();
         assert.notEqual(restoredCode, savedCode);
         await joinPhone(resumePhone, restoredCode, 'Changed Name');
-        await host.getByText('Saved Solo', { exact: true }).waitFor();
         await host.getByRole('heading', { name: 'Bowling', exact: true }).waitFor({ timeout: 15000 });
         const restoredGame = host.frameLocator('iframe[title="Bowling game"]');
+        // Starting has moved the roster from the lobby into the real game HUD.
+        await restoredGame.locator('.bowling-standings__name').waitFor();
+        assert.equal(await restoredGame.locator('.bowling-standings__name').innerText(), 'P1 · Saved Solo');
+        assert.match(await resumePhone.locator('.phone-session__name').innerText(), /Saved Solo · Connected/);
         await restoredGame.locator('body').getByText(/Frame 1 \/ 10 · Ball 2|Frame 2 \/ 10/).waitFor({ timeout: 10000 });
         await progress.saved(restoredCode);
         const afterRestore = await host.evaluate(async () => {
@@ -260,9 +267,7 @@ async function waitForRoll(controller, host) {
         assert.deepEqual(afterRestore.checkpoints.find(([id]) => id === saved.source.matchId)[1], saved.checkpoint, 'source checkpoint remains unchanged');
         assert.deepEqual(afterRestore.checkpoints.find(([id]) => id === continued.matchId)[1].checkpoint.state, saved.checkpoint.checkpoint.state, 'continued game restores complete saved state');
         pass('Profile Continue opens a fresh solo room, authenticates its owner and restores the exact saved bowling state');
-        await host.getByLabel('TV display controls').click();
-        await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
-        await host.getByRole('button', { name: 'End match and return', exact: true }).click();
+        await returnToLobby(host);
         await host.getByRole('button', { name: 'Close lobby', exact: true }).click();
         assert.deepEqual(failures, []);
         pass('No uncaught page errors');

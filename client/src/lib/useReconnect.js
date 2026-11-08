@@ -44,6 +44,11 @@ export function useReconnect(role, code) {
       else if (['no-room', 'bad-session'].includes(result.error)) {
         clearToken(role, code); token.current = null; needsResume.current = false;
         setReconnecting(false); setSnapshot(null); setEnded(result.error === 'no-room' ? 'ended' : 'expired');
+      } else if (result.error === 'recovery-owner-required') {
+        // The seat proof remains valid; signing back into its owner can reclaim
+        // it. Stop background retries until the player returns from sign-in.
+        token.current = null; needsResume.current = false;
+        setReconnecting(false); setSnapshot(null); setEnded(result.error);
       }
     }
     const update = next => {

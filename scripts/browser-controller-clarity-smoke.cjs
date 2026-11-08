@@ -69,7 +69,9 @@ async function primaryTarget(locator) {
       assert.ok(await host.locator('.host-lobby__mark').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).animationName === 'none')));
       await host.setViewportSize({width: 1280, height: 800});
       await phone.goto(`${base}/join?code=${code}`);
-      await phone.getByRole('button', {name: 'Scan TV code', exact: true}).waitFor();
+      assert.equal(await phone.getByRole('button', {name: 'Scan TV code', exact: true}).count(), 0,
+        'a recognized room shows the name form without a second scan prompt');
+      await phone.getByLabel('Your playing name', {exact: true}).fill('Player');
       await phone.getByRole('button', {name: 'Play', exact: true}).click();
       await phone.getByRole('button', {name: 'Start game', exact: true}).click();
     await phone.getByRole('button', {name:'Start now', exact:true}).click();

@@ -134,7 +134,10 @@ test('real sockets deliver actual game results, publish applied settings and iso
   app.http.listen(0, '127.0.0.1'); await once(app.http, 'listening');
   const clients = [];
   t.after(async () => { clients.forEach(client => client.disconnect()); await app.close(); });
-  const send = (client, event, payload) => client.timeout(3500).emitWithAck(event, payload);
+  const send = async (client, event, payload) => {
+    try {return await client.timeout(3500).emitWithAck(event, payload);}
+    catch (error) {throw new Error(`${event}${payload?.id ? ` (${payload.id})` : ''}: ${error.message}`, {cause:error});}
+  };
   async function connect() {
     const client = io(`http://127.0.0.1:${app.http.address().port}`, { transports: ['websocket'], reconnection: false });
     clients.push(client); await once(client, 'connect'); return client;

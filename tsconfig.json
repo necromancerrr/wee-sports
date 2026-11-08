@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "build",
+    "tsBuildInfoFile": "./node_modules/.cache/wee-sports/tsconfig.tsbuildinfo",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "types": ["node"],
     "skipLibCheck": true,

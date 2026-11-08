@@ -10,6 +10,7 @@ export function keys(value, allowed) {
   if (!object(value) || Object.keys(value).some(key => !allowed.includes(key))) fail('invalid-fields');
 }
 export function text(value, max = 40) {
+  // eslint-disable-next-line no-control-regex -- Profile text must exclude ASCII control characters.
   if (typeof value !== 'string' || !value.trim() || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) fail('invalid-text');
   return value.trim();
 }

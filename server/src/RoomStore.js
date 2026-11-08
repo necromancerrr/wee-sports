@@ -155,7 +155,7 @@ export class RoomStore {
 
     const slot = this.#freeSlot(room);
     if (slot === null) return { ok: false, error: ERRORS.ROOM_FULL };
-    // More friends can join until the leader starts or a full roster is ready.
+    // More friends can join until the leader confirms the start.
     if (!BEFORE_PLAY.has(room.phase)) return { ok: false, error: ERRORS.IN_PROGRESS };
 
     const negotiation = negotiateControllerCapabilities(payload.capabilities);
@@ -172,9 +172,9 @@ export class RoomStore {
   }
 
   /**
-   * Ready or not ready, during the ready check and the countdown. When the
-   * full roster readies up the countdown starts by itself; anyone un-readying
-   * during it cancels it. The result says which happened.
+   * Ready or not ready, during the ready check and the countdown. The leader
+   * starts once everyone is ready; anyone un-readying during the countdown
+   * cancels it. The result says whether the countdown was cancelled.
    */
   setReady(playerId, payload) {
     playerId = this.#sockets.get(playerId);
@@ -485,6 +485,7 @@ export class RoomStore {
     const snapshot = { gameId: room.gameId, sport: room.sport };
     if (room.sport === 'table-tennis') {
       snapshot.settings = {assistance: payload.settings.assistance, sensitivity: payload.settings.sensitivity};
+      if (payload.settings.botStyle !== undefined) snapshot.settings.botStyle = payload.settings.botStyle;
       snapshot.practice = {active: payload.practice.active};
       snapshot.humanOpponent = [...room.players.values()].some(player => player.slot === 1);
       if (snapshot.humanOpponent && snapshot.practice.active) return {ok: false, error: 'solo-only'};
@@ -609,6 +610,8 @@ export class RoomStore {
     }
     if (!member.capabilities?.legacy && (event?.gameId !== room.gameId || event?.generation !== room.inputGeneration || event?.hostEpoch !== room.hostEpoch)) return {ok:false,error:'wrong-generation'};
     if (!isSwing(event)) return { ok: false, error: 'bad-swing' };
+    if ((event.generation !== undefined || event.hostEpoch !== undefined) &&
+        (event.generation !== room.inputGeneration || event.hostEpoch !== room.hostEpoch)) return {ok:false,error:'wrong-generation'};
     if (room.pausedAt !== null) return { ok: false, error: ERRORS.PAUSED };
     if (room.phase !== PHASES.GAME || event.gameId !== room.gameId || room.gameState?.phase === 'complete') {
       return { ok: false, error: 'not-playing' };
@@ -619,7 +622,7 @@ export class RoomStore {
     }
     if (!room.pendingStrokes.has(event.id)) room.pendingStrokes.set(event.id, { player: player.slot + 1, at: now });
     if (room.pendingStrokes.size > 128) room.pendingStrokes.delete(room.pendingStrokes.keys().next().value);
-    return { ok: true, code: room.code, inputGeneration: room.inputGeneration, hostSocketId: this.#members.get(room.hostId)?.socketId,
+    return { ok: true, code: room.code, hostEpoch: room.hostEpoch, inputGeneration: room.inputGeneration, hostSocketId: this.#members.get(room.hostId)?.socketId,
       event: { type: 'swing', id: event.id, label: event.label, hand: event.hand,
         ...(event.power === undefined ? {} : { power: event.power }),
         ...(event.aim === undefined ? {} : {aim:event.aim}), ...(event.depth === undefined ? {} : {depth:event.depth}),
@@ -720,7 +723,11 @@ export class RoomStore {
     if (!isRoll(event)) return { ok: false, error: 'bad-roll' };
     if (room.pausedAt !== null) return { ok: false, error: ERRORS.PAUSED };
     if (room.phase !== PHASES.GAME) return { ok: false, error: 'not-playing' };
-    if (event.generation !== undefined && (event.generation !== room.inputGeneration || event.hostEpoch !== room.hostEpoch)) return {ok: false, error: 'wrong-generation'};
+    // Older controllers may omit the game ID, but an explicitly stale game must
+    // never be stamped with the current match and accepted as a new release.
+    if (event.gameId !== undefined && event.gameId !== room.gameId) return {ok:false,error:'not-playing'};
+    if ((event.generation !== undefined || event.hostEpoch !== undefined) &&
+        (event.generation !== room.inputGeneration || event.hostEpoch !== room.hostEpoch)) return {ok: false, error: 'wrong-generation'};
     if (room.seenRolls.has(event.id)) return { ok: false, error: 'duplicate-roll' };
     // A reset and a release must never cross in flight. The game command owns
     // the lane until its acknowledgement (or timeout) releases this lock.

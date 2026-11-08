@@ -77,6 +77,7 @@ async function createGame(browser, permission, sport = 'Bowling', errors = [], s
   await host.getByRole('button', {name: `Play: ${sport}`, exact: true}).click();
   const code = await host.getByTestId('lobby-code').innerText();
   await phone.goto(`${base}/join?code=${code}`);
+  await phone.getByLabel('Your playing name', {exact: true}).fill('Player');
   await phone.getByRole('button', {name: 'Play', exact: true}).click();
   if (hold) {
     await phone.getByRole('button', {name: 'Start game', exact: true}).waitFor();
@@ -90,10 +91,16 @@ async function createGame(browser, permission, sport = 'Bowling', errors = [], s
   assert.ok(frame, 'controller iframe has loaded');
   return {hostContext, phoneContext, host, phone, frame, code};
 }
-async function returnToLobby(host) {
+async function returnToLobby(host, {newGame = false} = {}) {
   await host.getByLabel('TV display controls').click();
   await host.getByRole('button', {name: 'Return to lobby', exact: true}).click();
-  await host.getByRole('button', {name: 'End match and return', exact: true}).click();
+  await host.getByRole('button', {name: 'Save and return', exact: true}).click();
+  await host.locator('.host-lobby').getByRole('button', {name: 'Close lobby', exact: true}).waitFor();
+  if (newGame) {
+    await host.getByRole('heading', {name: 'Your game is still here', exact: true}).waitFor();
+    await host.getByRole('button', {name: 'New game', exact: true}).click();
+    await host.getByRole('heading', {name: 'Your game is still here', exact: true}).waitFor({state: 'hidden'});
+  }
 }
 
 (async () => {
@@ -102,7 +109,7 @@ async function returnToLobby(host) {
   const errors = [], checks = [];
   const pass = text => {checks.push(text); console.log('PASS:', text);};
   try {
-    const {host, phone, frame, code} = await createGame(browser, 'granted', 'Bowling', errors);
+    const {host, phone, frame} = await createGame(browser, 'granted', 'Bowling', errors);
     const calls = await phone.evaluate(() => window.__permissionCalls);
     assert.deepEqual(calls.map(call => call.name), ['motion', 'orientation']);
     assert.ok(calls.every(call => call.active), 'permission requests run inside the Play gesture');
@@ -186,7 +193,7 @@ async function returnToLobby(host) {
     assert.ok((await rolls(phone))[1].spin < 0, 'opposite wrist twist curves left');
     pass('Sensor gaps discard partial deliveries; a fresh opposite wrist turn produces the opposite curve');
     await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 60000});
-    await returnToLobby(host);
+    await returnToLobby(host, {newGame: true});
     if (!await phone.locator('.phone-session__options').evaluate(node=>node.open)) await phone.locator('.phone-session__options > summary').click();
     if (!await phone.getByLabel('Next sport',{exact:true}).isVisible()) await phone.getByText('Change sport',{exact:true}).click();
     await phone.getByLabel('Next sport', {exact: true}).selectOption('table-tennis');

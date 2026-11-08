@@ -41,7 +41,13 @@ async function capture(page, key, label, regions) {
   await page.waitForFunction(label => Boolean(window.__islandMotionCheck.samples[label]), label);
 }
 async function stopped(page, key) {
-  await page.waitForTimeout(150); // Let the preference/visibility event cancel the current RAF.
+  // Media events can follow an in-flight software-rendered frame. Observe the
+  // actual stopped state before checking for any later draws; fixed sleeps
+  // can count that last active frame as a shutdown failure.
+  await page.waitForFunction(key => {
+    const canvas = document.querySelector(`canvas[data-motion-layer="${key}"]`);
+    return !canvas || canvas.dataset.ready === 'false';
+  }, key);
   const before = await page.evaluate(key => window.__islandMotionCheck.draws[key] || 0, key);
   await page.waitForTimeout(400);
   assert.equal(await page.evaluate(key => window.__islandMotionCheck.draws[key] || 0, key), before);

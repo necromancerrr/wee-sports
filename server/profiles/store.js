@@ -7,6 +7,7 @@ import {BowlingMatch} from '../../src/bowling/match.ts';
 import {TableTennisGame} from '../../src/tabletennis/game.js';
 import {playerCapacity} from '../../shared/protocol.js';
 import {DEFAULT_PREFERENCES, boundedJson, checkpoint, fail, identifier, keys, preferences, text} from './validation.js';
+import {PROFILE_SCHEMA_VERSION, checkProfileIntegrity, checkProfileSchema} from './schema.js';
 
 const scrypt = promisify(rawScrypt);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -24,8 +25,13 @@ export class ProfileStore {
     this.now = now;
     if (filename !== ':memory:') mkdirSync(dirname(filename), {recursive: true, mode: 0o700});
     this.db = new DatabaseSync(filename);
-    if (filename !== ':memory:') chmodSync(filename, 0o600);
-    this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+    try {
+      checkProfileSchema(this.db, {allowEmpty: true});
+      checkProfileIntegrity(this.db);
+      if (filename !== ':memory:') chmodSync(filename, 0o600);
+      this.db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
+      this.transaction(() => {
+        this.db.exec(`
       CREATE TABLE IF NOT EXISTS profiles (
         id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, display_name TEXT NOT NULL,
         salt TEXT NOT NULL, password_hash TEXT NOT NULL, avatar TEXT NOT NULL DEFAULT 'ball',
@@ -59,6 +65,13 @@ export class ProfileStore {
         PRIMARY KEY(match_id, member_id), FOREIGN KEY(match_id,member_id) REFERENCES participants(match_id,member_id)
       );
       CREATE INDEX IF NOT EXISTS participants_profile ON participants(profile_id);`);
+        checkProfileSchema(this.db);
+        this.db.exec(`PRAGMA user_version=${PROFILE_SCHEMA_VERSION}`);
+      });
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
 
   close() { this.db.close(); }
@@ -77,13 +90,15 @@ export class ProfileStore {
     const passwordHash = (await scrypt(input.password, salt, 32, passwordOptions)).toString('hex');
     const id = randomUUID();
     try {
-      this.db.prepare('INSERT INTO profiles(id,username,display_name,salt,password_hash,preferences,created_at) VALUES(?,?,?,?,?,?,?)')
-        .run(id, username, displayName, salt, passwordHash, JSON.stringify(DEFAULT_PREFERENCES), this.now());
+      return this.transaction(() => {
+        this.db.prepare('INSERT INTO profiles(id,username,display_name,salt,password_hash,preferences,created_at) VALUES(?,?,?,?,?,?,?)')
+          .run(id, username, displayName, salt, passwordHash, JSON.stringify(DEFAULT_PREFERENCES), this.now());
+        return this.issueSession(id);
+      });
     } catch (error) {
       if (error.code === 'ERR_SQLITE_ERROR' && /UNIQUE constraint/.test(error.message)) fail('username-taken', 409);
       throw error;
     }
-    return this.issueSession(id);
   }
 
   async login(input) {
@@ -119,8 +134,9 @@ export class ProfileStore {
     const avatar = input.avatar === undefined ? current.avatar : input.avatar;
     if (!['ball', 'pin', 'racket', 'star'].includes(avatar)) fail('invalid-avatar');
     const prefs = input.preferences === undefined ? current.preferences : preferences(input.preferences);
-    this.db.prepare('UPDATE profiles SET display_name=?,avatar=?,preferences=?,revision=revision+1 WHERE id=? AND revision=?')
+    const result = this.db.prepare('UPDATE profiles SET display_name=?,avatar=?,preferences=?,revision=revision+1 WHERE id=? AND revision=?')
       .run(displayName, avatar, JSON.stringify(prefs), id, current.revision);
+    if (result.changes !== 1) fail('revision-conflict', 409);
     return this.getProfile(id);
   }
 

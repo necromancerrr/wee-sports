@@ -5,7 +5,7 @@ const {io} = require('socket.io-client');
 const assert = require('node:assert/strict');
 const {writeFileSync} = require('node:fs');
 const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5201';
-const viewport = {width: Number(process.env.WEE_SMOKE_WIDTH) || 1280, height: Number(process.env.WEE_SMOKE_HEIGHT) || 800};
+const hostViewport = {width: Number(process.env.WEE_SMOKE_WIDTH) || 1280, height: Number(process.env.WEE_SMOKE_HEIGHT) || 800};
 const sockets = [];
 const request = (socket, event, payload) => new Promise((resolve, reject) => socket.timeout(5000).emit(event, payload, (error, value) => error ? reject(error) : resolve(value)));
 async function client() {
@@ -17,7 +17,7 @@ async function client() {
  const browser=await chromium.launch({executablePath:process.env.WEE_SMOKE_CHROMIUM || '/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  const checks=[],errors=[]; const pass=text=>{checks.push(text);console.log('PASS:',text);};
  try {
-  const host=await browser.newPage({viewport});
+  const host=await browser.newPage({viewport:hostViewport});
   host.on('pageerror',error=>errors.push(error.message));
   await host.addInitScript(()=>{window.__party=[];window.addEventListener('message',e=>{
     if(e.origin!==location.origin)return;
@@ -44,7 +44,7 @@ async function client() {
   await bowling.locator('.bowling-standings__name').filter({hasText:'Friend 8'}).waitFor();
   assert.equal(await bowling.locator('.bowling-standings__name').count(),8);
   const hud=await bowling.locator('.bowling-hud').boundingBox();
-  assert.ok(hud.x+hud.width<viewport.width*.35,'score strip leaves the central lane visible');
+  assert.ok(hud.x+hud.width<hostViewport.width*.35,'score strip leaves the central lane visible');
   await bowling.locator('#open-scorecard').click();await bowling.getByRole('dialog').waitFor();
   assert.equal(await bowling.locator('#score-body tr').count(),8);
   await bowling.locator('#close-scorecard').click();
@@ -96,7 +96,7 @@ async function client() {
   assert.equal(await host.getByText(/Waiting for .* reconnect|finish controller setup/).count(),0);
   pass('Ordinary scroll, blur and duplicate pageshow do not pause the room');
   assert.deepEqual(errors,[]);pass('No uncaught browser errors');
-  const report={recordedAt:new Date().toISOString(),base,viewport,checks,errors,limitations:['Generated browser/button input and software WebGL at the recorded viewport; not physical phone comfort, hardware frame-rate or end-to-end latency measurements.']};
+  const report={recordedAt:new Date().toISOString(),base,viewport:hostViewport,checks,errors,limitations:['Generated browser/button input and software WebGL at the recorded viewport; not physical phone comfort, hardware frame-rate or end-to-end latency measurements.']};
   if(process.env.WEE_SMOKE_REPORT)writeFileSync(process.env.WEE_SMOKE_REPORT,JSON.stringify(report,null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify(report));
  }catch(error){

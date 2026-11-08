@@ -16,10 +16,15 @@ export function createGuestClaimVault({read, write}) {
     claimFor(origin, submit) {
       return run(async () => {
         const retained = [];
-        for (const entry of await load()) {
+        const entries = await load();
+        for (let index = 0; index < entries.length; index++) {
+          const entry = entries[index];
           if (entry.origin !== origin) {retained.push(entry); continue;}
           try {await submit(entry.claim);}
-          catch (error) {if (error.status !== 403) retained.push(entry);}
+          catch (error) {
+            if (error.status === 403) continue;
+            retained.push(...entries.slice(index)); break;
+          }
         }
         await write(retained);
       });

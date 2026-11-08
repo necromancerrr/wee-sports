@@ -7,10 +7,10 @@ accounts and the native controller are optional.
 
 ## Development
 
-Use Node 24 and the existing checkout. Install root dependencies with the saved
-cloud environment install script when available. In another development machine,
-follow [the build manual](../../manuals/BUILD.md). Root npm installation also
-resolves the local `@wee/shared` workspace for standalone Node server tests:
+Use Node 24, npm 11 and the existing checkout, following
+[the build manual](../../manuals/BUILD.md). Root npm installation runs the
+TypeScript prepare hook and resolves the local `@wee/shared` workspace for the
+browser and server. Separate `client` or `server` installs are unnecessary:
 
 ```sh
 npm ci
@@ -28,12 +28,13 @@ motion-to-display timing without the owner's hardware.
 
 ## Checks
 
-Some legacy output files under `build/` and `dist/` are tracked despite the ignore
-rules. Use separate cache/output paths to avoid changing them during validation:
+Generated output under `build/` and `dist/` is ignored. Use separate cache/output
+paths to keep validation builds separate from development:
 
 ```sh
 mkdir -p /tmp/wee-sports-checks
 npm run compile -- --tsBuildInfoFile /tmp/wee-sports-checks/tsconfig.tsbuildinfo
+npm run lint
 npm test -- --maxWorkers=4
 npm --prefix server test
 WEE_BUILD_DIR=/tmp/wee-sports-checks/dist npm run build
@@ -82,11 +83,13 @@ Run browser checks separately from CPU-heavy physics suites on shared machines.
 ## Owner trial: bowling
 
 1. Create a Bowling room on the display and scan its QR with the normal phone
-   camera, and join as a guest. No account or native app is required.
-2. Tap Play to join and allow motion if asked. The first phone chooses Start game
-   when everyone has joined; a full eight-player room starts automatically. No name, grip checklist, Ready button or
-   per-roll Arm button is required. Confirm left/center/right aim on the display;
-   the line freezes when the forward swing begins.
+   camera, enter a playing name and join as a guest. No account or native app is required.
+2. Tap **Play** to join and allow motion if asked. Setup and readiness complete
+   automatically. The first phone chooses **Start game** when everyone has
+   joined, then confirms **Start now**; a full eight-player room also waits for
+   this confirmation. Tutorials skip automatically. No grip checklist, Ready
+   button or per-roll Arm button is required. Confirm left/center/right aim on
+   the display; the line freezes when the forward swing begins.
 3. Try several backswing-only preparations: none should release. Compare gentle,
    medium and stronger forward deliveries. Aim should freeze during delivery.
 4. Finish ten frames, including normal second balls. Record missed or false
@@ -100,9 +103,11 @@ oracles complement a real game; neither substitutes for the other.
 
 ## Owner trial: table tennis
 
-1. From the same room, return to the lobby and choose Table Tennis. Check that
+1. With one or two players in the room, return to the lobby and choose Table
+   Tennis. For a larger Bowling party, extra players must leave first. Check that
    the player name and seat remain; fresh motion samples set up the paddle
-   automatically without another permission prompt or direction check.
+   automatically without another permission prompt or direction check. The first
+   phone chooses **Start game** and confirms **Start now**.
 2. Solo starts a scored bot match. Choose Practice for repeated feeds, then try
    compact flat returns and upward/downward brushing. In Friendly mode an idle
    paddle must not hit the ball; make a deliberate short swing after the bounce.
@@ -111,8 +116,10 @@ oracles complement a real game; neither substitutes for the other.
    without waiting for a completed tennis swing animation.
 4. Pause and recenter between points. Neither action should cause an invisible
    high-speed strike. Test a short interruption and confirm stale input is frozen.
-5. Join a second phone to play head to head. A fresh full two-player room starts
-   when both controllers are ready. Both paddles must respond to their own phone. Finish a game at 12 with
+5. In the lobby, join a second phone to play head to head. Once both controllers
+   are ready, the first phone chooses **Start game** and confirms **Start now**;
+   filling the room never starts it automatically. Both paddles must respond to
+   their own phone. Finish a game at 12 with
    a two-point lead, rematch, and switch back to bowling. Verify deuce,
    alternating service at deuce, and serve lets through the automated rule cases.
 
@@ -135,17 +142,25 @@ before relying on a process restart.
 
 To continue a saved solo Bowling or Table Tennis game, sign into the owning
 profile on the display and choose **Continue on this screen** under Profile &
-history. Join the new code from a phone signed into the same profile, finish
-tap Play. Sensor setup and readiness complete automatically. The original saved source remains read-only;
+history. Join the new code from a phone signed into the same profile, enter a
+playing name and tap **Play**. Sensor setup and readiness complete automatically;
+choose **Start game** and confirm **Start now** when offered. The original saved source remains read-only;
 progress continues under a new game identity. A source can have only one active
 continuation and disappears from available sources after continuation. Party
-archive recovery and existing Tennis score recovery are not implemented.
+archive recovery and durable Tennis recovery after a server restart are not
+implemented. Tennis can continue from its last completed point while the same
+room and roster remain in the running server. See the
+[Railway runbook](../railway.md) for persistence and backup procedures and the
+[readiness report](../production-readiness.md) for current verification.
 
 ## Native controller
 
 The optional project lives in [apps/controller](../../apps/controller/). Its own
 README covers the pinned SDK, development build, QR/manual pairing, permissions,
-and native validation. Use the same host, phone, network route, game settings and
+and native validation. Install it with `npm run expo:install`; its independent
+npm lockfile is preserved. Web and Expo both require a playing name and an
+explicit leader start confirmation, and both skip tutorials automatically.
+Use the same host, phone, network route, game settings and
 assists when comparing native and browser behavior. A successful bundle or type
 check does not prove device sensor axes, permission handling, or haptic output.
 

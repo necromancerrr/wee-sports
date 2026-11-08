@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import {fetchJson} from '../../../src/network/fetchJson.js';
 
 export async function readPrivate(key) {
   const raw = await SecureStore.getItemAsync(`wee.${key}`);
@@ -12,12 +13,14 @@ export async function writePrivate(key, value) {
   });
 }
 
-export async function profileRequest(origin, path = '', { method = 'GET', body, token } = {}) {
-  const response = await fetch(`${origin}/api/profile${path}`, {
-    method, headers: { 'Content-Type': 'application/json', 'X-Wee-Client': 'native', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+export async function profileRequest(origin, path = '', { method = 'GET', body, token, signal } = {}) {
+  const {response, data: result} = await fetchJson(`${origin}/api/profile${path}`, {
+    method, signal, headers: { 'Content-Type': 'application/json', 'X-Wee-Client': 'native', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
+  }).catch(error => {
+    if (error.message === 'profile-timeout') throw new Error('The profile request took too long. Check your connection and reopen your profile before trying again.');
+    throw error;
   });
-  const result = await response.json();
   if (!response.ok) { const error = new Error(result.message || result.error || 'Profile request failed'); error.status = response.status; throw error; }
   return result;
 }

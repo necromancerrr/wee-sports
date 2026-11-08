@@ -36,7 +36,11 @@ async function server(profileStore, code) {
     async connect(token, extraHeaders = {}) {
       const socket = io(`http://127.0.0.1:${app.http.address().port}`, {transports: ['websocket'], reconnection: false,
         auth: token ? {profileToken: token} : {}, extraHeaders});
-      clients.push(socket); await once(socket, 'connect'); return socket;
+      clients.push(socket);
+      await new Promise((resolveConnect, reject) => {
+        socket.once('connect', resolveConnect); socket.once('connect_error', reject);
+      });
+      return socket;
     },
     finishCountdown(code) {now += 5000; assert.equal(store.finishCountdown(code)?.code, code);},
     async close() {if (closed) return; closed = true; for (const client of clients) client.disconnect(); await app.close();},
@@ -182,7 +186,11 @@ test('guest games and in-memory recovery remain playable when durable checkpoint
   await send(phone, EVENTS.PLAYER_READY, {ready: true}); await send(phone, EVENTS.PLAYER_START, {}); instance.finishCountdown(room.code);
   const view = instance.store.lobby(room.code), state = tableState();
   const original = f.profileStore.saveCheckpoint;
-  f.profileStore.saveCheckpoint = () => {throw new Error('simulated disk write failure');};
+  f.profileStore.saveCheckpoint = () => {
+    const error = new Error('simulated private disk write failure');
+    error.code = 'ERR_SQLITE_ERROR';
+    throw error;
+  };
   const result = await send(host, EVENTS.HOST_CHECKPOINT, checkpointEvent(view, state));
   assert.equal(result.ok, true); assert.equal(result.saved, false); assert.equal(result.error, 'profile-storage-unavailable');
   assert.equal(instance.store.lobby(room.code).recovery.saved, false);
@@ -233,9 +241,9 @@ test('browser account cookies authorize recovery only from the trusted game orig
   const f = await fixture(t); seed(f.profileStore, f.owner);
   const instance = await f.start();
   const cookie = `wee_profile=${f.owner.token}`;
-  const foreign = await instance.connect(null, {Cookie: cookie, Origin: 'https://untrusted.example'});
+  await assert.rejects(instance.connect(null, {Cookie: cookie, Origin: 'https://untrusted.example'}));
+  assert.equal(instance.store.roomCount, 0, 'a foreign browser cannot reach room or recovery events');
   const trusted = await instance.connect(null, {Cookie: cookie, Origin: instance.origin});
   const payload = {matchId: 'source-match', capabilities};
-  assert.equal((await send(foreign, EVENTS.HOST_RESTORE, payload)).error, 'not-signed-in');
   assert.equal((await send(trusted, EVENTS.HOST_RESTORE, payload)).ok, true);
 });

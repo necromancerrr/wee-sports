@@ -1,5 +1,5 @@
-import {useEffect, useState} from 'react';
-import {Link, useNavigate} from 'react-router-dom';
+import {useEffect, useRef, useState} from 'react';
+import {Link, useLocation, useNavigate} from 'react-router-dom';
 import {claimGuestHistory, profileRequest} from '../lib/profile.js';
 import {request, socket, useConnection} from '../lib/socket.js';
 import {saveToken} from '../lib/reconnect.js';
@@ -16,6 +16,7 @@ const MESSAGES = {
   'revision-conflict': 'Your profile changed in another session. Reload before saving again.',
   'too-many-attempts': 'Too many attempts. Please try again in 15 minutes.',
   'wrong-origin': 'Open your profile on the same site as your game.',
+  'profile-timeout': 'The profile request took too long. Check your connection and reload before trying again.',
   'recovery-in-use': 'This saved game is already opening in another lobby. Close that lobby first, or wait five minutes if setup was interrupted.',
   'recovery-already-continued': 'This saved game has already continued. Reload your profile to find the latest saved boundary.',
   'recovery-claim-mismatch': 'This recovery session expired or moved to another lobby. Reload your profile to continue from an available boundary.',
@@ -26,6 +27,8 @@ const sportName = sport => ({tennis: 'Tennis', bowling: 'Bowling', 'table-tennis
 export default function Profile() {
   const remote = displayRole(navigator) === 'remote';
   const navigate = useNavigate();
+  const returnTo = useLocation().state?.returnTo;
+  const returnToRoom = typeof returnTo === 'string' && /^(?:\/host\/[A-Z0-9]{4}|\/join\?code=[A-Z0-9]{4})$/.test(returnTo);
   const connection = useConnection();
   const [profile, setProfile] = useState(null);
   const [history, setHistory] = useState([]);
@@ -37,69 +40,80 @@ export default function Profile() {
   const [notice, setNotice] = useState('');
   const [form, setForm] = useState({username: '', password: '', displayName: ''});
   const [editing, setEditing] = useState(null);
+  const pageRequest = useRef(null);
   const accept = value => { setProfile(value); setEditing({...value, preferences: {...value.preferences}}); };
-  async function loadHistory() {
-    await claimGuestHistory();
-    const data = await profileRequest('/history');
+  async function loadHistory(signal) {
+    await claimGuestHistory({signal});
+    if (signal.aborted) return;
+    const data = await profileRequest('/history', {signal});
+    if (signal.aborted) return;
     setHistory(data.history);
-    setRecoverable((await profileRequest('/recovery')).matches);
+    const recovery = await profileRequest('/recovery', {signal});
+    if (!signal.aborted) setRecoverable(recovery.matches);
   }
   useEffect(() => {
-    let active = true;
-    profileRequest().then(async data => {
-      if (!active) return;
+    const controller = new AbortController();
+    pageRequest.current = controller;
+    const {signal} = controller;
+    profileRequest('', {signal}).then(async data => {
+      if (signal.aborted) return;
       accept(data.profile);
-      await claimGuestHistory();
-      const result = await profileRequest('/history');
-      if (active) setHistory(result.history);
-      const recovery = await profileRequest('/recovery');
-      if (active) setRecoverable(recovery.matches);
-    }).catch(reason => { if (active && reason.status !== 401) setError(message(reason)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      await loadHistory(signal);
+    }).catch(reason => { if (!signal.aborted && reason.status !== 401) setError(message(reason)); })
+      .finally(() => { if (!signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
   async function authenticate(event) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    const signal = pageRequest.current.signal;
     try {
-      const data = await profileRequest(registering ? '/register' : '/login', {method: 'POST',
+      const data = await profileRequest(registering ? '/register' : '/login', {method: 'POST', signal,
         body: registering ? form : {username: form.username, password: form.password}});
+      if (signal.aborted) return;
       accept(data.profile); setForm({...form, password: ''});
       socket.disconnect(); socket.connect();
-      await loadHistory();
-    } catch (reason) { setError(message(reason)); }
-    finally { setBusy(false); }
+      await loadHistory(signal);
+    } catch (reason) { if (!signal.aborted) setError(message(reason)); }
+    finally { if (!signal.aborted) setBusy(false); }
   }
   async function save(event) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    const signal = pageRequest.current.signal;
     try {
-      const data = await profileRequest('', {method: 'PATCH', body: {revision: profile.revision,
+      const data = await profileRequest('', {method: 'PATCH', signal, body: {revision: profile.revision,
         displayName: editing.displayName, avatar: editing.avatar, preferences: editing.preferences}});
+      if (signal.aborted) return;
       accept(data.profile); setNotice('Preferences saved.');
-    } catch (reason) { setError(message(reason)); }
-    finally { setBusy(false); }
+    } catch (reason) { if (!signal.aborted) setError(message(reason)); }
+    finally { if (!signal.aborted) setBusy(false); }
   }
   async function logout() {
     setBusy(true); setError('');
-    try { await profileRequest('/logout', {method: 'POST'}); socket.disconnect(); socket.connect(); setProfile(null); setEditing(null); setHistory([]); setRecoverable([]); setNotice('Signed out. You can keep playing as a guest.'); }
-    catch (reason) { setError(message(reason)); }
-    finally { setBusy(false); }
+    const signal = pageRequest.current.signal;
+    try {
+      await profileRequest('/logout', {method: 'POST', signal});
+      if (signal.aborted) return;
+      socket.disconnect(); socket.connect(); setProfile(null); setEditing(null); setHistory([]); setRecoverable([]); setNotice('Signed out. You can keep playing as a guest.');
+    } catch (reason) { if (!signal.aborted) setError(message(reason)); }
+    finally { if (!signal.aborted) setBusy(false); }
   }
   async function restore(matchId) {
     if (remote) return;
     setBusy(true); setError(''); setNotice('');
+    const signal = pageRequest.current.signal;
     try {
       const result = await request('host:restore', {matchId, capabilities: createControllerCapabilities()});
       if (!result?.ok) throw new Error(result?.error || 'recovery-unavailable');
       saveToken('host', result.code, result.token);
-      navigate(`/host/${result.code}`);
-    } catch (reason) { setError(reason.message === 'recovery-unavailable' ? 'This saved boundary cannot be restored. Start a new game to keep playing.' : message(reason)); }
-    finally { setBusy(false); }
+      if (!signal.aborted) navigate(`/host/${result.code}`);
+    } catch (reason) { if (!signal.aborted) setError(reason.message === 'recovery-unavailable' ? 'This saved boundary cannot be restored. Start a new game to keep playing.' : message(reason)); }
+    finally { if (!signal.aborted) setBusy(false); }
   }
   const changePreference = (key, value) => setEditing(current => ({...current, preferences: {...current.preferences, [key]: value}}));
   const completed = history.filter(game => game.status === 'complete');
   const bowlingScores = completed.filter(game => game.sport === 'bowling').map(game => game.score);
   return <main className="profile-page page">
-    <header className="profile-heading"><Link className="btn btn--ghost" to="/home">{remote ? 'Back to controller' : 'Back to games'}</Link><h1>Your profile</h1></header>
+    <header className="profile-heading"><Link className="btn btn--ghost" to={returnToRoom ? returnTo : '/home'}>{returnToRoom ? 'Back to room' : remote ? 'Back to controller' : 'Back to games'}</Link><h1>Your profile</h1></header>
     <p>Keep your preferences and match history across your controllers. Playing as a guest always stays available.</p>
     {error && <p className="alert" role="alert">{error}</p>}
     {notice && <p className="profile-notice" role="status">{notice}</p>}

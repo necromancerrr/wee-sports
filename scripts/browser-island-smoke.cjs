@@ -308,6 +308,12 @@ async function noOverflow(page) {
   } catch (error) {
     for (const context of browser.contexts()) for (const page of context.pages()) {
       console.error('PAGE_STATE', page.url(), await page.locator('body').innerText().catch(() => 'unavailable'));
+      console.error('MOTION_STATE', await page.evaluate(() => ({
+        systemReduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        hidden: document.hidden, preference: localStorage.getItem('wee:island-motion'),
+        enabled: document.querySelector('.island-screen')?.dataset.motion,
+        switchDisabled: document.querySelector('[role="switch"][aria-label="Motion"]')?.disabled,
+      })).catch(() => 'unavailable'));
     }
     throw error;
   } finally {await browser.close();}

@@ -4,7 +4,7 @@ const aligned = () => ({x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0});
 
 /** Anticipation and recovery happen only outside the physical contact window.
  * The live paddle face never departs from the simulation's collision ellipse. */
-export function paddlePresentation({phase = 'ready', kind = 'drive', hand = 'Right', direction, player = 1, elapsed = 0,
+export function paddlePresentation({phase = 'ready', kind = 'drive', hand = 'Right', direction, elapsed = 0,
   enabled = false, reducedMotion = false} = {}) {
   if (enabled || reducedMotion || phase === 'forward') return aligned();
   const handSign = hand === 'Left' ? -1 : 1;

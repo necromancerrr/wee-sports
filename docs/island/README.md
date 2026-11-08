@@ -37,8 +37,11 @@ profiles, help, appearance and Motion.
 
 The updated artwork leaves more ocean around the resort. The whole island keeps
 its aspect ratio and fits inside the available scene rectangle. A matching
-ocean-only plate extends behind it to both screen edges, including ultrawide
-displays. Soft masks blend only the sky and water margins. Venue labels, targets
+sky/ocean plate extends behind it to all four screen edges, including tall and
+ultrawide displays. Its horizon stays aligned with the island. Narrow windows
+crop the backdrop horizontally to keep clouds in proportion; the island itself
+remains uncropped. Compact home extends that backdrop behind the header and
+Games list too. Soft masks blend only the sky and water margins. Venue labels, targets
 and water highlights share the island's coordinates; enlarging text can move a
 label inward without moving its venue target. Narrow computer windows retain
 a compact Games list. This layout is not used as the phone homepage.
@@ -58,9 +61,40 @@ there is no cursor-driven scene drift or whole-ocean texture wobble. Motion off,
 reduced motion, and page hiding stop rendering. Unmounting releases renderers,
 observers, and listeners. Dark mode changes controls while keeping sunlit art.
 
+Canvas resizing repaints synchronously before exposing its new buffer; transparent
+clears reveal the original still instead of black. Zero-sized or unsupported
+buffers also retain the still, and returning to a supported size resumes motion.
+Returning to the tab no longer fades the whole island. The water, clouds, boats
+and waterfall retain their environmental animation.
+
+The motion preference uses a shared cached snapshot. Native media events,
+visibility, storage and local toggles publish changes to every subscriber. This
+avoids a reproduced quick-toggle race where live media-query reads during render
+consumed a pending browser transition, leaving the menu and scenery out of sync.
+
 ## Validation
 
-Verified on 8 November 2026 with build output, compiler caches and disposable
+The responsive follow-up passed TypeScript/ESLint and **733 root tests in 86
+files**, including ten renderer/lifecycle cases, seven motion-preference cases
+and backdrop/horizon geometry.
+The new resize browser check passed **36 same-page size combinations** across
+landing and selector, at DPR 1 and 2. It checks resized-buffer visibility,
+advancing animation, whole-island proportions, all-edge backdrop coverage,
+textured water below the original artwork, keyboard controls and hidden-page /
+reduced-motion recovery. Screenshots were reviewed at tall, half-size and wide
+windows. The final island, animation, phone-entry and resize suites passed all
+36 check groups with no browser errors. `verification-summary.json` maps their
+final results. Evidence is in `/workspace/.cloud-setup/wee-sports/resize/`; these are
+disposable local artifacts, not production assets. Native macOS window dragging
+and physical-TV performance remain device checks.
+
+The existing menu smoke exposed the motion-preference race twice before the
+cache fix; its original assertions now pass. The animation smoke now waits for
+the actual stopped canvas state before asserting zero subsequent draws, instead
+of assuming a media event arrives within 150 ms during software rendering.
+The original failures and focused reproductions remain in the evidence folder.
+
+Earlier island integration was verified on 8 November 2026 with build output, compiler caches and disposable
 databases outside tracked `build/` and `dist/`:
 
 - 538 root tests in 61 files passed, including device roles, QR link parsing,
@@ -93,6 +127,7 @@ To repeat against a disposable production server with Playwright and Chromium:
 ```sh
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-island-smoke.cjs
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-island-animation-smoke.cjs
+WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-island-resize-smoke.cjs
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-remote-home-smoke.cjs
 WEE_SMOKE_URL=http://127.0.0.1:5173 node scripts/browser-platform-smoke.cjs
 ```

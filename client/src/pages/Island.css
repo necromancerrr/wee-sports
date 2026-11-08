@@ -27,16 +27,17 @@
 .island-screen button, .island-screen a { font-family: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .island-screen :focus-visible { outline: 3px solid #006d91; outline-offset: 5px; }
 .island-screen h1[tabindex]:focus { outline: none; }
-.island-scenery { position: absolute; inset: 0; overflow: hidden; }
-.island-scenery__ocean { position: absolute; left: -8px; width: calc(100% + 16px); user-select: none; pointer-events: none; mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); }
-.island-scenery__ocean > img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.island-scenery { position: absolute; inset: 0; }
+.island-scenery__ocean { position: absolute; left: -8px; width: calc(100% + 16px); overflow: hidden; user-select: none; pointer-events: none; }
+.island-scenery__ocean > img { display: block; position: relative; left: 50%; transform: translateX(-50%); min-width: 100%; height: 100%; object-fit: fill; }
 .island-scenery__plane { position: absolute; }
-.island-scenery__artwork { position: absolute; inset: 0; pointer-events: none; mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent), linear-gradient(transparent, #000 6%, #000 94%, transparent); mask-composite: intersect; }
+.island-scenery__artwork { position: absolute; inset: 0; pointer-events: none; mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent), linear-gradient(transparent var(--sky-blend-start), #000 var(--sky-blend-end), #000 94%, transparent); mask-composite: intersect; }
 .island-scenery__image { display: block; width: 100%; height: 100%; user-select: none; }
 .island-motion { position: absolute; inset: 0; width: 100%; height: 100%; display: block; visibility: hidden; pointer-events: none; }
 .island-motion[data-ready='true'] { visibility: visible; }
 .island-scenery[data-image-state='loading'] .island-scenery__image { opacity: 0; }
 .island-image-error { position: absolute; left: 50%; top: 45%; transform: translateX(-50%); max-width: 28rem; padding: 16px; border-radius: 16px; background: var(--island-surface); color: var(--island-ink); text-align: center; }
+.island-landing { min-height: min(480px, 100svh); }
 .island-landing__wordmark {
   position: absolute;
   top: 12%;
@@ -143,12 +144,10 @@
 .island-games-dialog__content > p:empty { display: none; }
 :root[data-theme='dark'] .island-screen :focus-visible { outline-color: #59d8f6; }
 :root[data-theme='dark'] .island-screen { --island-ink: #edf4f8; --island-surface: #1a2934f5; --island-secondary: #c2d0da; --island-border: #465b6aaa; }
-.island-screen[data-motion='true'] .island-scenery[data-image-state='ready'] .island-scenery__artwork { animation: island-arrive 400ms ease-out both; }
 .island-screen[data-motion='true'] .island-venue { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
 .island-screen[data-motion='true'] .island-venue[data-highlighted='true']:not(:disabled) { transform: translateY(-2px); }
-@keyframes island-arrive { from {opacity: 0;} to {opacity: 1;} }
 @media (max-width: 53.125em), (max-aspect-ratio: 1/1) {
-  .island-home { --island-compact-gutter: 20px; display: flex; flex-direction: column; height: auto; min-height: 100svh; padding: 22px var(--island-compact-gutter) 20px; overflow: visible; }
+  .island-home { --island-compact-gutter: 20px; display: flex; flex-direction: column; height: auto; min-height: 100svh; padding: 22px var(--island-compact-gutter) 20px; }
   .island-home .island-scenery { position: relative; inset: auto; flex: 0 0 auto; order: 1; height: min(56.28vw, 430px); width: calc(100% + var(--island-compact-gutter) * 2); margin-inline: calc(var(--island-compact-gutter) * -1); }
   .island-home .island-header { position: relative; inset: auto; order: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-bottom: 14px; }
   .island-header .island-wordmark { font-size: 1.625em; max-width: 100%; }
@@ -164,7 +163,6 @@
   .island-footer { position: relative; inset: auto; order: 4; margin-top: auto; padding-top: 24px; flex-wrap: wrap; }
   .island-footer .island-games-button { display: none; }
   .island-status { position: relative; order: 3; transform: none; left: auto; bottom: auto; max-width: 720px; margin: 16px auto 0; }
-  .island-landing { min-height: 480px; }
   .island-landing__wordmark { top: 19%; font-size: min(clamp(2.75em, calc(9vw + 1em - 16px), 5.25em), 12vw); }
   .island-landing__play { top: 83%; }
   .island-image-error { width: calc(100% - 32px); }

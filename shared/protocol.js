@@ -134,8 +134,8 @@ export const EVENTS = {
   PLAYER_LEAVE: 'player:leave',
   /**
    * Phone -> server: { ready: boolean }. Toggles during the ready check and the
-   * countdown. The last player to ready up starts the countdown; un-readying
-   * during it cancels it. Ack: { ok }.
+   * countdown. Once everyone is ready, the leader confirms PLAYER_START;
+   * un-readying during the countdown cancels it. Ack: { ok }.
    */
   PLAYER_READY: 'player:ready',
   /** Phone -> server: { watch: boolean }. One final vote per player. Ack: { ok }. */
@@ -379,6 +379,7 @@ export function normalizeCode(value) {
 export function cleanName(value) {
   if (typeof value !== 'string') return '';
   const collapsed = value
+    // eslint-disable-next-line no-control-regex -- Names deliberately strip ASCII control characters.
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim();

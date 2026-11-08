@@ -39,3 +39,26 @@ test('closing a room during the motion permission sheet invalidates its pending 
   h.handlers.get(EVENTS.ROOM_CLOSED)({code:'K7PM'});
   expect(view.accept(restored,ticket)).toBe(false);expect(render().snapshot).toBe(null);
 });
+
+test('a saved-room account mismatch stops reconnecting without discarding a valid seat token', async()=>{
+  h.request.mockResolvedValue({ok:false,error:'recovery-owner-required'});
+  render();cleanup=h.effects[0]();
+  await Promise.resolve();
+  expect(render().reconnecting).toBe(false);
+  expect(render().ended).toBe('recovery-owner-required');
+  expect(render().snapshot).toBe(null);
+  expect(h.clear).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(h.request).toHaveBeenCalledTimes(1);
+});
+
+test.each(['timeout','rate-limited','server-shutting-down'])('a transient %s keeps retrying the same seat',async error=>{
+  h.request.mockResolvedValueOnce({ok:false,error}).mockResolvedValue(restored);
+  render();cleanup=h.effects[0]();
+  await Promise.resolve();
+  expect(render().reconnecting).toBe(true);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(render().snapshot).toEqual(restored);
+  expect(render().reconnecting).toBe(false);
+  expect(h.clear).not.toHaveBeenCalled();
+});

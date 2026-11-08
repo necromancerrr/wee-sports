@@ -25,3 +25,18 @@ test('expired claims are discarded while temporary failures remain retryable', a
   await vault.claimFor('https://game.example',async claim => {const error=new Error('failed');error.status=claim[0]==='a'?403:503;throw error;});
   assert.deepEqual(read(),[{origin:'https://game.example',claim:'b'.repeat(43)}]);
 });
+test('an unavailable profile service stops the batch without losing pending ownership proofs', async () => {
+  const {vault,read} = await fixture();
+  const entries = [
+    {origin:'https://game.example',claim:'a'.repeat(43)},
+    {origin:'https://other.example',claim:'b'.repeat(43)},
+    {origin:'https://game.example',claim:'c'.repeat(43)},
+  ];
+  for (const {origin,claim} of entries) await vault.remember(origin,claim);
+  let requests = 0;
+  await vault.claimFor('https://game.example', async () => {requests++; throw new Error('profile-timeout');});
+  assert.equal(requests,1);
+  assert.deepEqual(read(),entries);
+  await vault.claimFor('https://game.example',async () => {});
+  assert.deepEqual(read(),[entries[1]]);
+});

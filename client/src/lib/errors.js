@@ -21,6 +21,8 @@ const TEXT = {
   'bad-version': 'This page is out of date. Reload and try again.',
   'bad-sport': "That sport isn't open yet.",
   'server-busy': 'The server is busy. Try again in a moment.',
+  'rate-limited': 'Too many requests. Wait a moment and try again.',
+  'server-shutting-down': 'The game server is restarting. Wait for it to reconnect, then try again.',
   'in-progress': 'That game has already started.',
   'not-player': "You're not in this game. Join again to get back in.",
   'no-ready-check': "It's not time to get ready yet.",

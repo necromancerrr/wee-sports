@@ -17,6 +17,7 @@ uniform float time;
 uniform float variant;
 uniform float ocean;
 uniform float strength;
+uniform float u_crop;
 
 float oval(vec2 p, vec2 center, vec2 radius) {
   return 1. - smoothstep(.65, 1., length((p - center) / radius));
@@ -40,6 +41,7 @@ vec2 boat(vec2 p, vec4 bounds, vec2 pivot, float phase, float travel, out float 
 void main() {
   bool landing = variant > .5;
   vec2 p = uv;
+  if (ocean > .5) p.x = .5 + (p.x - .5) * u_crop;
   float horizon = landing ? .465 : .323;
   float sky = 1. - smoothstep(landing ? .335 : .205, landing ? .378 : .242, p.y);
   float edges = smoothstep(0., .025, p.x) * (1. - smoothstep(.975, 1., p.x));
@@ -111,10 +113,12 @@ void main() {
 export function createIslandMotion(canvas, image, {variant, ocean = false}) {
   let gl;
   try {
-    gl = canvas.getContext('webgl', {alpha: false, antialias: false, depth: false,
+    gl = canvas.getContext('webgl', {alpha: true, antialias: false, depth: false,
       stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'low-power'});
   } catch { return null; }
   if (!gl) return null;
+  // A reset or unavailable frame must reveal the original image beneath it.
+  gl.clearColor(0, 0, 0, 0);
   const resources = {shaders: []};
   const dispose = () => {
     if (resources.texture) gl.deleteTexture(resources.texture);
@@ -157,28 +161,38 @@ export function createIslandMotion(canvas, image, {variant, ocean = false}) {
     gl.uniform1f(uniform('ocean'), ocean ? 1 : 0);
     const clock = uniform('time');
     const strength = uniform('strength');
+    const crop = uniform('u_crop');
     const maxSize = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE);
+    const draw = seconds => {
+      if (gl.isContextLost()) return false;
+      gl.uniform1f(clock, seconds);
+      // Ease into the effect from the exact still on every activation.
+      gl.uniform1f(strength, Math.min(seconds / 1.2, 1));
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      return true;
+    };
     return {
-      resize(width, height) {
+      resize(width, height, seconds = 0) {
         // Preserve native source detail even on a Retina display. There is no
         // adaptive low-resolution mode; unsupported sizes retain the still.
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
         const w = Math.round(width * ratio), h = Math.round(height * ratio);
-        if (!w || !h || w > maxSize || h > maxSize) return false;
+        if (![w, h].every(Number.isFinite) || w <= 0 || h <= 0 || w > maxSize || h > maxSize) {
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          return false;
+        }
         if (canvas.width !== w || canvas.height !== h) {
           canvas.width = w; canvas.height = h;
           gl.viewport(0, 0, w, h);
         }
-        return true;
+        // Match the centered ocean still: narrow windows crop its horizontal
+        // edges instead of stretching clouds vertically. Island UVs stay fixed.
+        gl.uniform1f(crop, ocean ? Math.min(1, width / height * image.naturalHeight / image.naturalWidth) : 1);
+        // Changing either canvas dimension clears its buffer. Repaint in this
+        // same callback, including recovery to an unchanged supported size.
+        return draw(seconds);
       },
-      draw(seconds) {
-        if (gl.isContextLost()) return false;
-        gl.uniform1f(clock, seconds);
-        // Ease into the effect from the exact still on every activation.
-        gl.uniform1f(strength, Math.min(seconds / 1.2, 1));
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-        return true;
-      },
+      draw,
       dispose,
     };
   } catch {

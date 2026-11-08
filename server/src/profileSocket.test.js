@@ -28,15 +28,19 @@ async function fixture(t) {
   return {accounts, owner, other, profiles, store, origin, connect, advance:ms => {now += ms;}};
 }
 
-test('foreign-origin and originless cookies cannot bind an account or restore private history', async t => {
+test('foreign-origin handshakes are rejected and originless cookies cannot bind an account', async t => {
   const f = await fixture(t);
-  for (const Origin of ['https://untrusted.example', undefined]) {
-    const socket = await f.connect({extraHeaders:{Cookie:`wee_profile=${f.owner.token}`, ...(Origin ? {Origin} : {})}});
-    const room = await send(socket, EVENTS.HOST_CREATE, {v, sport:'bowling'});
-    assert.equal(room.ok, true, 'guest play remains available');
-    assert.equal(f.store.sessionContext(socket.id).profileId, null);
-    assert.deepEqual(await send(socket, EVENTS.HOST_RESTORE, {matchId:'private-match'}), {ok:false,error:'not-signed-in'});
-  }
+  const denied = io(f.origin, {transports:['websocket'], reconnection:false,
+    extraHeaders:{Origin:'https://untrusted.example', Cookie:`wee_profile=${f.owner.token}`}});
+  t.after(() => denied.disconnect());
+  await once(denied, 'connect_error');
+  assert.equal(denied.connected, false);
+  assert.equal(f.store.roomCount, 0);
+  const socket = await f.connect({extraHeaders:{Cookie:`wee_profile=${f.owner.token}`}});
+  const room = await send(socket, EVENTS.HOST_CREATE, {v, sport:'bowling'});
+  assert.equal(room.ok, true, 'originless native guest play remains available');
+  assert.equal(f.store.sessionContext(socket.id).profileId, null);
+  assert.deepEqual(await send(socket, EVENTS.HOST_RESTORE, {matchId:'private-match'}), {ok:false,error:'not-signed-in'});
 });
 
 test('same-origin cookie auth is private and native bearer auth takes precedence over cookies', async t => {

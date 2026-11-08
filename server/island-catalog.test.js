@@ -3,7 +3,7 @@ import {SPORT_REGISTRY} from '../shared/sportRegistry.js';
 import {OPEN_SPORTS} from '../shared/protocol.js';
 import {SPORTS, buildSportsCatalog, playerRange} from '../client/src/lib/sports.js';
 import {RacketIcon, TableTennisIcon} from '../client/src/components/icons.jsx';
-import {MAIN_ISLAND, fitIsland, islandPoint, presentIslandSports} from '../client/src/lib/island.js';
+import {MAIN_ISLAND, fitIsland, fitIslandBackdrop, islandPoint, presentIslandSports} from '../client/src/lib/island.js';
 
 test('each supported game is discoverable with the authoritative name and player capacity', () => {
   for (const id of OPEN_SPORTS) {
@@ -58,4 +58,34 @@ test('unmeasured or hidden containers do not produce invalid image coordinates',
     expect(rect).toEqual({x: 0, y: 0, width: 0, height: 0, scale: 0});
     expect(islandPoint({x: .61, y: .22}, rect)).toEqual({x: 0, y: 0});
   }
+});
+
+test('sky and sea reach both screen edges while sharing the island horizon at any aspect ratio', () => {
+  for (const image of [MAIN_ISLAND.landing, MAIN_ISLAND.image]) {
+    for (const [width, height] of [[1672, 941], [3440, 1440], [430, 932], [768, 1600], [900, 300], [320, 200]]) {
+      const rect = fitIsland(width, height, image);
+      const backdrop = fitIslandBackdrop(height, rect, image.horizon);
+      expect(backdrop.y).toBeLessThanOrEqual(0);
+      expect(backdrop.y + backdrop.height).toBeGreaterThanOrEqual(height);
+      expect(backdrop.y + backdrop.height * image.horizon).toBeCloseTo(rect.y + rect.height * image.horizon, 8);
+    }
+  }
+});
+
+test('compact home extends scenery behind its header and game list without moving the art strip', () => {
+  const image = MAIN_ISLAND.image;
+  const rect = fitIsland(390, 219.5, image);
+  const backdrop = fitIslandBackdrop(1100, rect, image.horizon, 140);
+  expect(backdrop.y + 140).toBeLessThanOrEqual(0);
+  expect(backdrop.y + backdrop.height + 140).toBeGreaterThanOrEqual(1100);
+  expect(backdrop.y + backdrop.height * image.horizon).toBeCloseTo(rect.y + rect.height * image.horizon, 8);
+});
+
+test('unmeasured backdrop and invalid horizon values cannot introduce non-finite CSS sizes', () => {
+  const rect = fitIsland(800, 600);
+  for (const horizon of [0, 1, NaN, Infinity]) {
+    expect(fitIslandBackdrop(600, rect, horizon)).toEqual({y: 0, height: 0});
+  }
+  expect(fitIslandBackdrop(0, rect, .31)).toEqual({y: 0, height: 0});
+  expect(fitIslandBackdrop(600, fitIsland(0, 0), .31)).toEqual({y: 0, height: 0});
 });

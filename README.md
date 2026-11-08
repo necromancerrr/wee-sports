@@ -10,8 +10,8 @@ Table Tennis to open a room, then scan its QR with your phone. **Menu** keeps
 manual joining, profiles, help, appearance and motion preferences nearby.
 Phones and tablets open a **Controller** screen with **Scan TV code**, manual
 code entry and **Profile & history**. Scanning starts the camera only after a
-tap. The island fills wider displays with extra ocean, without cropping the
-resort. `/home` follows the same device roles; QR join links still go straight
+tap. Sky and ocean fill wide and tall displays while the whole resort keeps
+its proportions. `/home` follows the same device roles; QR join links still go straight
 to the controller. Resizing a computer window does not turn it into a phone.
 
 Each person scans, enters their playing name, and taps **Play** to join. The first phone gets **Start game**
@@ -62,6 +62,9 @@ reference artwork, responsive behavior and validation evidence.
 
 Developer measurements are opt-in: see [diagnostics](docs/developer-diagnostics.md)
 and the [motion research and implementation notes](docs/sports-motion-research.md).
+
+Golf is a coming-soon catalog entry. Pool/Billiards is a future game; neither is
+playable in the current sport registry.
 
 Tennis keyboard controls:
 
@@ -127,15 +130,20 @@ installed, use `npm run expo:dev`. Browser play remains available immediately.
 - [Build system](manuals/BUILD.md)
 - [Testing](manuals/TESTING.md)
 - [Continuous integration](manuals/CI.md)
+- [Production readiness and verification](docs/production-readiness.md)
+- [Railway deployment runbook](docs/railway.md)
 
-The project follows the Google TypeScript Style Guide and uses GTS for
-formatting and linting.
+Use `npm run check` for TypeScript and semantic ESLint checks across browser,
+native, server and test code. The optional `.prettierrc.cjs` formatter retains
+the GTS style settings without requiring a repository-wide formatting rewrite.
 
 ## Running the system
-### 1. Installing Node.js 24
+### 1. Install Node.js 24 and npm 11
 
 Install Node.js 24 for your operating system from the
 [official Node.js website](https://nodejs.org/en/download).
+The supported versions are recorded in `.nvmrc` and the package engines.
+Node 24 is required for the server's native SQLite and direct TypeScript imports.
 
 Verify the installation:
 
@@ -166,6 +174,12 @@ From the project folder:
 ```bash
 npm ci
 ```
+
+This root install covers the browser, server and local `shared` workspace;
+separate installs under `client` or `server` are unnecessary. Its `prepare`
+hook runs the TypeScript check, so development dependencies are required while
+installing and building. The optional native controller has a separate npm
+lockfile and uses `npm run expo:install`.
 
 ### 4. Run the game and phone connection
 
@@ -249,72 +263,39 @@ For phone sensors, keep using a trusted HTTPS tunnel or deployment and provide
 its origin through `PUBLIC_GAME_URL` when needed. The bottom tennis swing-status
 pill is hidden; scores and the serving marker remain in the top scoreboard.
 
+For an already built deployment, `npm start` serves the existing assets without
+building again. Follow the [Railway runbook](docs/railway.md) for origins,
+persistent storage, health checks and shutdown settings; the
+[readiness report](docs/production-readiness.md) records verified behavior and
+remaining release checks.
+
 ## Use Case: Join and play a motion-controlled game
 
-### Primary actors: Host and player
+1. On the TV or laptop, choose a playable sport to create a room. The lobby shows
+   its QR code and manual room code.
+2. Each player scans the QR or enters the code, enters a playing name, and taps
+   **Play**. Motion permission is requested on that tap when needed; denied or
+   unavailable sensors select touch controls. Setup and readiness are automatic.
+3. The TV shows the joined players. When everyone is ready, the first phone
+   chooses **Start game** and confirms **Start now**. Full rooms wait for the
+   same confirmation. Tutorials skip automatically.
+4. The countdown starts and the TV requests fullscreen. The game still fills
+   the available window if fullscreen permission is denied.
+5. Players use motion or touch controls. The TV simulates the sport, displays
+   actions and scores, and applies its scoring rules through the result screen.
+6. After a match, choose a rematch, return to the lobby, change sports when the
+   roster fits the next sport, or leave. The room and player identities can stay
+   together between sports.
 
-### Goal: Players join a shared game using their phones as controllers, complete the game, and view the results.
+An invalid, expired or full room shows an error and lets the player retry with a
+valid available room. Motion can be enabled later from controller options;
+interrupted sensor input requires fresh samples before another action is sent.
 
-### System: Wee Sports
-
-### Trigger: The host selects "create room"
-
-### Preconditions: The host has opened the application, and players have network access to the shared session
-
-### Basic Scenario
-
-Host first chooses to create the room
-
-1. The host creates a room, and the system/website displays a QR code
-2. Players scan the QR code, enter their names, and join the room.
-3. The system displays the connected players on the host's lobby screen, host selects a game.
-4. Players tap Play and grant motion permission if asked. Real sensor readings complete setup automatically; denied or unavailable motion uses touch controls. No separate Ready tap is required.
-5. Once all players are ready, host starts the game.
-6. Players move their phones to perform actions in selected game.
-7. The system responds to player input, displays corresponding game actions, and updates scores. Steps 6 - 7 repeated until the game is finished.
-8. The system identifies a winner based on game point counts, and displays this information.
-9. Results are displayed, participants may replay, return to lobby, or leave the game.
-
-### Variation flows
-
-2.1. Join using a room code
-2.1a. Player enters room manually instead of entering a room code
-2.1b. System validates code, player enters their name, and joins
-2.1c. Continue at step 3
-
-4.1. Use button controllers where supposed
-4.1a. Player makes decision on using button controller instead of motion controller
-4.1b. System displays supported controls, player marks themselves ready
-4.1c. Continue at step 5
-
-7.1. Tied scores
-7.1a. System applies the tied game rules
-7.1b. If ties are allowed, displays tied players. Else, return to step 6, repeat until game outcome is determined.
-
-### Exception flows
-
-2.1. Expired or invalid room code
-2.1a. The system displays an error and asks player to enter a valid code
-2.1b. Return to step 2, or player chooses to leave and their participation ends
-
-4.1. Motion permission denied or sensors unavailable
-4.1a. The system selects touch controls and explains that motion is off.
-4.1b. The player can play immediately or choose Use motion later.
-
-4.2 Motion samples are interrupted
-4.2a. The system discards the unfinished gesture and waits for fresh readings.
-4.2b. Setup resumes automatically, or the player can use touch controls.
-
-5.1. A required player is not ready
-5.1a. The system keeps the game in the lobby and identifies players who are not ready.
-5.1b. Return to step 4 for players that are not ready. Continue at step 5 once required players are ready.
-
-6.1. Player disconnects
-6.1a. System pauses the game.
-6.1b. The player reconnects and the controller resumes after fresh samples; old gestures are discarded.
-6.1c. Resume step 6 only after connection and controller readiness are reachieved.
-6.1d. If connection period expires, system applies the 60-second session-expiration policy where their seat is removed,, and the room closes.  
-
-Any step- User ends session
-a. The system notifies the players and closes the room.
-b. Game ends without completion, active players returned to lobby.
+A temporary player disconnect reserves the seat for up to 60 seconds and
+pauses play. Reconnecting resumes that identity while it remains valid and
+discards old motion. An expired or explicitly released player seat ends the
+current match and returns the remaining players to lobby readiness. A missing
+TV can return while its room remains alive; connected phones retain that room.
+This differs from **Close lobby**, which ends the room for everyone, and from a
+server restart, which expires all live room codes. Saved-game continuation has
+the separate boundaries described above.

@@ -1,26 +1,44 @@
 import {createRoomPersistence} from '../profiles/roomPersistence.js';
+import {ProfileError} from '../profiles/validation.js';
+import {isAllowedOrigin} from '../origins.js';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { ERRORS, EVENTS } from '../../shared/protocol.js';
 import { RoomStore } from './RoomStore.js';
 import { waitForSwingTransport } from '../../src/network/swingRequest.js';
 import {createDiagnostics, DIAGNOSTICS_PROBE} from '../../shared/diagnostics.js';
+import {createEventLimiter} from './eventLimits.js';
 
 /** Importable server for tests. index.js owns the listening port. */
 export function createGameServer({ store = new RoomStore(), origins = [], tickMs = 250, requestHandler, profiles } = {}) {
   const persistence = profiles ? createRoomPersistence(profiles) : null;
+  let closing = false;
+  let closePromise;
   const http = createServer(async (request, response) => {
-    if (profiles && await profiles.handle(request, response)) return;
-    if (!profiles && request.url?.startsWith('/api/profile')) {
-      response.writeHead(503, {'content-type':'application/json', 'cache-control':'no-store'});
-      response.end(JSON.stringify({error:'profile-storage-unavailable'})); return;
+    if (closing) {
+      response.writeHead(503, {'content-type':'text/plain', 'cache-control':'no-store', 'retry-after':'5'});
+      response.end('server-shutting-down'); return;
     }
-    if (request.url !== '/health' && requestHandler) return requestHandler(request, response);
-    response.writeHead(request.url === '/health' ? 200 : 404, { 'content-type': 'text/plain' });
-    response.end(request.url === '/health' ? 'ok' : 'Not found');
+    try {
+      if (profiles && await profiles.handle(request, response)) return;
+      if (!profiles && request.url?.startsWith('/api/profile')) {
+        response.writeHead(503, {'content-type':'application/json', 'cache-control':'no-store'});
+        response.end(JSON.stringify({error:'profile-storage-unavailable'})); return;
+      }
+      if (request.url !== '/health' && requestHandler) return await requestHandler(request, response);
+      response.writeHead(request.url === '/health' ? 200 : 404, { 'content-type': 'text/plain', 'cache-control':'no-store',
+        ...(request.url === '/health' ? {'x-wee-profiles':profiles?.status?.()?.available ? 'ready' : 'unavailable'} : {}) });
+      response.end(request.url === '/health' ? 'ok' : 'Not found');
+    } catch {
+      // Optional handlers must not turn a failed request into an unhandled rejection.
+      if (response.headersSent) {response.destroy(); return;}
+      response.writeHead(500, {'content-type':'text/plain', 'cache-control':'no-store'});
+      response.end('Internal server error');
+    }
   });
   const io = new Server(http, {
     cors: { origin: origins.length ? origins : true },
+    allowRequest: (request, callback) => callback(null, !closing && isAllowedOrigin(request, origins)),
     pingInterval: 5000,
     pingTimeout: 5000,
     maxHttpBufferSize: 8192,
@@ -76,6 +94,12 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     } else broadcast(result.code);
   }
   io.on('connection', socket => {
+    const admitEvent = createEventLimiter();
+    socket.use((packet, next) => {
+      const error = closing ? 'server-shutting-down' : !admitEvent(packet[0]) ? 'rate-limited' : null;
+      if (error) {reply(packet.at(-1), {ok:false, error}); return;}
+      next();
+    });
     let swingWaiting = false;
     let lastProbe = -Infinity;
     socket.on(DIAGNOSTICS_PROBE, (payload, ack) => {
@@ -117,7 +141,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
         const context = store.sessionContext(socket.id);
         const result = store.switchSport(socket.id, payload, role);
         if (result.ok && context.room.sport !== payload.sport && context.room.recoverySource && profiles) {
-          try {profiles.store.releaseRecovery(context.room.recoverySource.matchId,context.room.recoverySource.claimId);} catch {}
+          try {profiles.store.releaseRecovery(context.room.recoverySource.matchId,context.room.recoverySource.claimId);} catch { /* The lease expires if storage is unavailable. */ }
         }
         reply(ack, result); if (result.ok) broadcast(result.code);
       });
@@ -156,7 +180,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
           socket.join(result.code); broadcast(result.code);
         }
         reply(ack, result);
-      } catch (error) {reply(ack, {ok:false,error:error.code || 'recovery-unavailable'});}
+      } catch (error) {reply(ack, {ok:false,error:error instanceof ProfileError ? error.code : 'recovery-unavailable'});}
     });
     socket.on(EVENTS.HOST_CHECKPOINT, (payload, ack) => {
       const result = store.saveCheckpoint(socket.id, payload);
@@ -164,7 +188,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       let status = {saved: false, error: 'profile-storage-unavailable'};
       if (persistence && (!result.duplicate || !result.checkpoint.saved)) {
         try {status = persistence.save(store.sessionContext(socket.id), {payload: result.checkpoint.payload});}
-        catch (error) {status = {saved:false,error:error.code || 'profile-storage-unavailable'};}
+        catch (error) {status = {saved:false,error:error instanceof ProfileError ? error.code : 'profile-storage-unavailable'};}
         store.checkpointStatus(result.code, result.checkpoint.revision, status);
       } else if (result.duplicate) status = {saved:result.checkpoint.saved, error: result.checkpoint.saveError};
       reply(ack, {ok:true, revision:result.checkpoint.revision, saved:status.saved, error:status.error});
@@ -176,7 +200,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       const context = store.sessionContext(socket.id);
       if (context?.room.recoverySource && profiles) {
         try {profiles.store.reserveRecovery(context.profileId,context.room.recoverySource.matchId,context.room.recoverySource.claimId);}
-        catch (error) {return reply(ack,{ok:false,error:error.code || 'recovery-unavailable'});}
+        catch (error) {return reply(ack,{ok:false,error:error instanceof ProfileError ? error.code : 'recovery-unavailable'});}
       }
       // Rotation of the durable host lease makes older TV callbacks stale too.
       if (persistence) {
@@ -252,7 +276,9 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       // The phone waits for the game to apply the change, not just relay delivery.
       host.timeout(2500).emit(EVENTS.GAME_COMMAND, result.event, (error, received) => {
         store.finishGameCommand(result.code, result.event.id, result.event.gameId);
-        if (store.lobby(result.code)?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
+        const current = store.lobby(result.code);
+        if (current?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
+        if (current.hostEpoch !== result.hostEpoch || current.inputGeneration !== result.inputGeneration) return reply(ack, {ok:false,error:'outcome-unknown'});
         reply(ack, !error && received?.ok === true ? { ok: true, id: result.event.id }
           : { ok: false, error: !error && typeof received?.error === 'string' && received.error.length <= 160
             ? received.error : 'game-loading' });
@@ -287,8 +313,9 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
           store.finishRollDelivery(result.code, result.event.id, result.event.gameId, {ok:false,error:'outcome-unknown'});
           return reply(ack, {ok:false,error:'outcome-unknown',id:result.event.id});
         }
-        const outcome = !error && received?.ok ? {ok: true, id: result.event.id, receivers: 1}
-          : {ok: false, id: result.event.id, error: error ? 'outcome-unknown' : received?.error || 'game-loading'};
+        const outcome = !error && received?.ok === true ? {ok: true, id: result.event.id, receivers: 1}
+          : {ok: false, id: result.event.id, error: error ? 'outcome-unknown'
+            : typeof received?.error === 'string' && received.error.length <= 160 ? received.error : 'game-loading'};
         store.finishRollDelivery(result.code, result.event.id, result.event.gameId, outcome);
         if (store.lobby(result.code)?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
         reply(ack, outcome);
@@ -323,8 +350,10 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       // Once emitted there is no automatic retry or reconnect-buffered delivery.
       recordRelay(socket, host, 'swing', result.event.id, receivedAt, 'relayed');
       host.volatile.timeout(1500).emit(EVENTS.GAME_SWING, result.event, (error, received) => {
-        if (store.lobby(result.code)?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
-        reply(ack, !error && received?.ok
+        const current = store.lobby(result.code);
+        if (current?.gameId !== result.event.gameId) return reply(ack, { ok: false, error: 'not-playing' });
+        if (current.hostEpoch !== result.hostEpoch || current.inputGeneration !== result.inputGeneration) return reply(ack, {ok:false,error:'outcome-unknown'});
+        reply(ack, !error && received?.ok === true
           ? { ok: true, id: result.event.id, receivers: 1 }
           : { ok: false, error: 'game-loading' });
       });
@@ -349,5 +378,10 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     for (const code of store.reconnectingCodes) broadcast(code);
   }, tickMs);
   timer.unref();
-  return { http, io, store, close: () => new Promise(resolve => { clearInterval(timer); io.close(resolve); }) };
+  const beginShutdown = () => {closing = true; clearInterval(timer);};
+  const close = () => {
+    beginShutdown();
+    return closePromise ??= new Promise(resolve => io.close(resolve));
+  };
+  return {http, io, store, beginShutdown, close};
 }

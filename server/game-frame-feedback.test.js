@@ -106,7 +106,7 @@ test('stroke feedback is forwarded only to the current phone seat and match', ()
 
 test('switching sports keeps the same controller document and sends sport through its bridge', () => {
   const frames = [];
-  React.createElement = (tag, props) => { if (tag === 'iframe') frames.push(props); return null; };
+  globalThis.React.createElement = (tag, props) => { if (tag === 'iframe') frames.push(props); return null; };
   const first = mount({ controller: true, sport: 'tennis' });
   expect(first.contentWindow.postMessage).toHaveBeenCalledWith(expect.objectContaining({
     type: 'wee:lobby-state', sport: 'tennis',

@@ -20,11 +20,14 @@ async function joinPhone(page, code, name) {
   await page.getByLabel('Your playing name', {exact:true}).fill(name);
   await page.getByRole('button', {name:'Play', exact:true}).click();
 }
-async function returnFromPhone(phone) {
+async function returnFromPhone(phone, host) {
   await phone.getByRole('button', {name:'Game options', exact:true}).click();
   await phone.getByRole('button', {name:'Return to lobby', exact:true}).click();
   await phone.getByRole('button', {name:'Save and return', exact:true}).click();
   await phone.getByRole('dialog').waitFor({state:'hidden'});
+  // The phone acknowledgement can precede the TV's room broadcast. Inspect
+  // recovery choices only after the actual display has entered the lobby.
+  await host.locator('.host-lobby').getByRole('button', {name:'Close lobby', exact:true}).waitFor();
 }
 async function leavePhone(phone) {
   const more = phone.locator('.phone-session__options');
@@ -72,7 +75,7 @@ async function controllerReady(phone, sport) {
       await phone.getByRole('button', {name:'Start now', exact:true}).click();
       await host.locator(`iframe[title="${sport} game"]`).waitFor();
       await controllerReady(phone, sport);
-      await returnFromPhone(phone);
+      await returnFromPhone(phone, host);
       await host.locator('.host-lobby').getByRole('heading', {name:sport, exact:true}).waitFor();
       if (await host.getByRole('button', {name:'New game', exact:true}).isVisible()) await host.getByRole('button', {name:'New game', exact:true}).click();
       await start.click();
@@ -81,7 +84,7 @@ async function controllerReady(phone, sport) {
       await controllerReady(phone, sport);
       pass(`${sport}: solo starts from the phone and its controller works after return and restart`);
 
-      await returnFromPhone(phone);
+      await returnFromPhone(phone, host);
       await joinPhone(second, code, 'Sam');
       // A room returned from a match remains in the lobby until the leader starts.
       await second.waitForTimeout(1000);
@@ -106,7 +109,7 @@ async function controllerReady(phone, sport) {
       assert.match(await second.locator('.you .seat__badge').innerText(), /P1/);
       pass(`${sport}: leaving during play promotes the remaining phone, which can start and control a new game`);
 
-      await returnFromPhone(second);
+      await returnFromPhone(second, host);
       if (await host.getByRole('button', {name:'New game', exact:true}).isVisible()) await host.getByRole('button', {name:'New game', exact:true}).click();
       const next = sport === 'Bowling' ? 'table-tennis' : 'bowling';
       if (!await second.locator('.phone-session__options').evaluate(node=>node.open)) await second.locator('.phone-session__options > summary').click();

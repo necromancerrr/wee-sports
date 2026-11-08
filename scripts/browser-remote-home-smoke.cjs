@@ -92,7 +92,7 @@ function installCamera({matrix}) {
         await page.goto(base + path);
         await page.getByRole('button', {name: 'Scan TV code', exact: true}).waitFor();
         assert.equal(await page.locator('.island-screen').count(), 0);
-        assert.deepEqual(await page.evaluate(() => [__camera.calls, __camera.sensors]), [0, 0]);
+        assert.deepEqual(await page.evaluate(() => [window.__camera.calls, window.__camera.sensors]), [0, 0]);
       }
       assert.deepEqual(assets, [], 'phone entry must not download island artwork');
       assert.deepEqual(creates, [], 'phone entry must not create a room');
@@ -132,7 +132,7 @@ function installCamera({matrix}) {
     await page.reload();
     await page.getByRole('button', {name: 'Play', exact: true}).waitFor();
     assert.equal(await page.locator('.remote-home').count(), 0);
-    assert.deepEqual(await page.evaluate(() => [__camera.calls, __camera.sensors]), [0, 0]);
+    assert.deepEqual(await page.evaluate(() => [window.__camera.calls, window.__camera.sensors]), [0, 0]);
     pass('Manual entry and direct QR links reach the real controller Play screen and refresh without another entry screen');
 
     await page.goto(base + '/');
@@ -144,16 +144,16 @@ function installCamera({matrix}) {
     assert.equal(await scan.evaluate(element => document.activeElement === element), true);
     pass('Escape closes the scanner, stops camera tracks and restores focus');
 
-    await page.evaluate(() => {__camera.mode = 'pending';});
+    await page.evaluate(() => {window.__camera.mode = 'pending';});
     await scan.click();
-    await page.waitForFunction(() => !!__camera.release);
+    await page.waitForFunction(() => !!window.__camera.release);
     await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
     await page.getByRole('dialog').waitFor({state: 'hidden'});
-    await page.evaluate(() => __camera.release());
+    await page.evaluate(() => window.__camera.release());
     await stopped(page);
     pass('Closing while camera permission is pending also stops a stream granted afterwards');
 
-    await page.evaluate(() => {__camera.mode = 'denied';});
+    await page.evaluate(() => {window.__camera.mode = 'denied';});
     await scan.click();
     await page.getByRole('status').filter({hasText: 'Camera access is off.'}).waitFor();
     await page.getByRole('dialog').getByLabel('Lobby code', {exact: true}).waitFor();
@@ -162,7 +162,7 @@ function installCamera({matrix}) {
     await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
     pass('Denied camera permission keeps a manual code fallback in the scanner without navigation');
 
-    await page.evaluate(() => {__camera.mode = 'invalid';});
+    await page.evaluate(() => {window.__camera.mode = 'invalid';});
     await scan.click();
     await page.getByRole('status').filter({hasText: 'Use the Wee Sports QR code on your TV.'}).waitFor();
     assert.equal(new URL(page.url()).pathname, '/');
@@ -175,43 +175,42 @@ function installCamera({matrix}) {
     await page.evaluate(() => {delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));});
     pass('Unrelated QR codes do not navigate; hiding the page shuts down scanning');
 
-    await page.evaluate(() => {__camera.mode = 'qr';});
+    await page.evaluate(() => {window.__camera.mode = 'qr';});
     await scan.click();
     await page.waitForURL(`**/join?code=${code}`);
     await page.getByRole('button', {name: 'Play', exact: true}).waitFor();
     await stopped(page);
-    assert.ok(await page.evaluate(() => __camera.detected > 0));
-    assert.equal(await page.evaluate(() => __camera.sensors), 0);
+    assert.ok(await page.evaluate(() => window.__camera.detected > 0));
+    assert.equal(await page.evaluate(() => window.__camera.sensors), 0);
     pass('An actual QR image decodes through jsQR after native detection fails, opens the real room and releases the camera');
 
-    await page.evaluate(() => {__camera.mode = 'blank';});
-    await page.getByRole('button', {name: 'Scan TV code', exact: true}).click();
-    await page.getByRole('status').filter({hasText: 'Point at the QR code on your TV.'}).waitFor();
-    await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
-    await stopped(page);
+    await page.evaluate(() => {window.__camera.mode = 'blank';});
+    assert.equal(await page.getByRole('button', {name: 'Scan TV code', exact: true}).count(), 0,
+      'a recognized room keeps joining focused on the playing name; scanning another TV is available after joining');
     assert.equal(new URL(page.url()).searchParams.get('code'), code);
+    await page.getByLabel('Your playing name', {exact: true}).fill('Player');
     await page.getByRole('button', {name: 'Play', exact: true}).click();
     await page.locator('.you').waitFor();
     const more = page.locator('.phone-session__options');
-    if (!await more.evaluate(node => node.open)) await more.locator('summary').click();
+    if (!await more.evaluate(node => node.open)) await more.locator(':scope > summary').click();
     const another = page.getByRole('button', {name: 'Scan another TV', exact: true});
     await another.click();
     await page.getByRole('status').filter({hasText: 'Point at the QR code on your TV.'}).waitFor();
     await page.getByRole('button', {name: 'Close scanner', exact: true}).click();
     await stopped(page);
     assert.equal(await host.locator('ul[aria-label="Joined players"] .ready-card').count(), 1);
-    await page.evaluate(() => {__camera.mode = 'qr';});
+    await page.evaluate(() => {window.__camera.mode = 'qr';});
     await another.click();
     await page.getByRole('dialog').waitFor({state: 'hidden'});
     await stopped(page);
     assert.equal(await host.locator('ul[aria-label="Joined players"] .ready-card').count(), 1);
-    pass('Join-screen scanning is discoverable; canceling and scanning the current TV preserve the connected seat');
+    pass('Controller Tools expose scanning; canceling and scanning the current TV preserve the connected seat');
 
     const nextHost = await browser.newPage({viewport: {width: 960, height: 640}});
     await nextHost.goto(base + '/home');
     await nextHost.getByRole('button', {name: 'Play: Bowling', exact: true}).click();
     const nextCode = await nextHost.getByTestId('lobby-code').innerText();
-    await page.evaluate(() => {__camera.mode = 'denied';});
+    await page.evaluate(() => {window.__camera.mode = 'denied';});
     await another.click();
     const scanner = page.getByRole('dialog');
     await scanner.getByLabel('Lobby code', {exact: true}).fill(nextCode);
