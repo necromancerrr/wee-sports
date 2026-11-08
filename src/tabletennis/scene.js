@@ -23,9 +23,9 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   renderer.info.autoReset = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = .82;
+  renderer.toneMappingExposure = .94;
   container.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight('#cee2de', '#324b3b', 1.5));
+  scene.add(new THREE.HemisphereLight('#cee2de', '#324b3b', 1.65));
   const light = new THREE.DirectionalLight('#ffedce', 1.7);
   light.position.set(-3, 7, 4); light.castShadow = true;
   light.shadow.mapSize.set(1024, 1024);
