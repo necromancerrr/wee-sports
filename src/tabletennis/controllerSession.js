@@ -52,7 +52,10 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     },
     sample(sample) {
       if (mode !== 'motion' || suspended) return;
-      const value = automatic.push(sample, {safeBoundary: !playing || paused || phase === 'ready' || phase === 'complete'});
+      // A player can deliberately hold a target between points. Bias updates
+      // change the calibration revision, so keep this frame fixed throughout
+      // play; learn quiet bias in the lobby/countdown or while paused instead.
+      const value = automatic.push(sample, {safeBoundary: !playing || paused});
       if (!value.ready || !value.sample) {
         if (motionReady) {motionReady = false; paddle.reset(); latest = corrected = null; neutralPose = true; setup(null); changed();}
         return;

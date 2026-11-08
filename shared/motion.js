@@ -41,13 +41,16 @@ export function orientationFromWebEvent(event) {
       {x: Math.sin(b), y: 0, z: 0, w: Math.cos(b)}),
     {x: 0, y: Math.sin(g), z: 0, w: Math.cos(g)}));
 }
-function sampleBase({timeSeconds, sequence, screenAngle = 0, calibrationRevision = 0, orientation} = {}) {
+function sampleBase({timeSeconds, sequence, screenAngle = 0, calibrationRevision = 0, orientation, orientationTimeSeconds} = {}) {
   if (!Number.isFinite(timeSeconds) || timeSeconds < 0 || !Number.isSafeInteger(sequence) || sequence < 0 ||
       !Number.isSafeInteger(calibrationRevision) || calibrationRevision < 0 || !Number.isFinite(screenAngle)) return null;
   const sample = {schemaVersion: MOTION_SCHEMA_VERSION, timeSeconds, sequence, calibrationRevision,
     screenAngle: ((screenAngle % 360) + 360) % 360, timestampSource: 'receipt'};
   const normalized = normalizeQuaternion(orientation);
-  if (normalized) sample.orientation = normalized;
+  if (normalized) {
+    sample.orientation = normalized;
+    if (Number.isFinite(orientationTimeSeconds) && orientationTimeSeconds >= 0 && orientationTimeSeconds <= timeSeconds) sample.orientationTimeSeconds = orientationTimeSeconds;
+  }
   return sample;
 }
 /** Browser rotationRate follows alpha=X, beta=Y, gamma=Z (W3C + Chromium/WebKit).
@@ -88,6 +91,8 @@ export function isMotionSample(sample) {
     const q = sample.orientation;
     if (!normalizeQuaternion(q) || Math.abs(Math.hypot(q.x, q.y, q.z, q.w) - 1) > 1e-3) return false;
   }
+  if (sample.orientationTimeSeconds !== undefined && (!sample.orientation || !Number.isFinite(sample.orientationTimeSeconds) ||
+      sample.orientationTimeSeconds < 0 || sample.orientationTimeSeconds > sample.timeSeconds)) return false;
   return ['angularVelocity', 'acceleration', 'accelerationIncludingGravity', 'gravity', 'orientation'].some(key => sample[key] !== undefined);
 }
 /** Inverse browser mapping retains every legacy degree-based threshold.
@@ -176,9 +181,9 @@ function gyroStep(angularVelocity, dt) {
  * input has zero angular velocity, avoiding a synthetic recenter hit.
  */
 export function createPaddleIntentController({sensitivity = 1, maxGapSeconds = .15} = {}) {
-  let previous = null, neutral = null, orientation = identityQuaternion();
+  let previous = null, neutral = null, orientation = identityQuaternion(), attitudeAt = null;
   const gain = clamp(Number.isFinite(sensitivity) ? sensitivity : 1, .25, 2);
-  const reset = sample => {previous = null; neutral = sample?.orientation ? {...sample.orientation} : null; orientation = identityQuaternion();};
+  const reset = sample => {previous = null; neutral = sample?.orientation ? {...sample.orientation} : null; orientation = identityQuaternion(); attitudeAt = null;};
   return {
     recenter(sample) {reset(isMotionSample(sample) ? sample : undefined);},
     reset() {reset();},
@@ -187,15 +192,28 @@ export function createPaddleIntentController({sensitivity = 1, maxGapSeconds = .
       if (previous && (sample.sequence <= previous.sequence || sample.timeSeconds <= previous.timeSeconds)) return null;
       const continuity = previous && sample.timeSeconds - previous.timeSeconds <= maxGapSeconds &&
         sample.calibrationRevision === previous.calibrationRevision && sample.screenAngle === previous.screenAngle;
-      if (!continuity) {neutral = sample.orientation ? {...sample.orientation} : null; orientation = identityQuaternion();}
+      const sampleAttitudeAt = sample.orientation ? sample.orientationTimeSeconds ?? sample.timeSeconds : null;
+      if (!continuity) {neutral = sample.orientation ? {...sample.orientation} : null; orientation = identityQuaternion(); attitudeAt = sampleAttitudeAt;}
       const angularVelocity = continuity ? rotateVectorToScreen(sample.angularVelocity, sample.screenAngle) : {x: 0, y: 0, z: 0};
-      if (continuity && sample.orientation && neutral) {
-        const relative = multiplyQuaternions(inverseQuaternion(neutral), sample.orientation);
+      if (continuity) {
+        orientation = normalizeQuaternion(multiplyQuaternions(orientation, gyroStep(angularVelocity, sample.timeSeconds - previous.timeSeconds)));
+      }
+      // DeviceOrientation can arrive more slowly than the gyro. Reapplying
+      // its cached quaternion on every sample freezes aim between updates.
+      // Consume each attitude once; fresh gyro carries the pose in between.
+      if (continuity && sample.orientation && (attitudeAt === null || sampleAttitudeAt > attitudeAt)) {
         const halfAngle = -sample.screenAngle * DEG_TO_RAD / 2;
         const screen = {x: 0, y: 0, z: Math.sin(halfAngle), w: Math.cos(halfAngle)};
-        orientation = normalizeQuaternion(multiplyQuaternions(multiplyQuaternions(screen, relative), inverseQuaternion(screen)));
-      } else if (continuity) {
-        orientation = normalizeQuaternion(multiplyQuaternions(orientation, gyroStep(angularVelocity, sample.timeSeconds - previous.timeSeconds)));
+        if (!neutral) {
+          // Attitude may become available after gyro setup. Anchor it to the
+          // existing pose instead of jumping back to the middle of the table.
+          const relative = multiplyQuaternions(multiplyQuaternions(inverseQuaternion(screen), orientation), screen);
+          neutral = normalizeQuaternion(multiplyQuaternions(sample.orientation, inverseQuaternion(relative)));
+        } else {
+          const relative = multiplyQuaternions(inverseQuaternion(neutral), sample.orientation);
+          orientation = normalizeQuaternion(multiplyQuaternions(multiplyQuaternions(screen, relative), inverseQuaternion(screen)));
+        }
+        attitudeAt = sampleAttitudeAt;
       }
       previous = sample;
       // Roll/tilt supply bounded virtual reach. A hand preference does not
@@ -217,6 +235,7 @@ export function createMotionRecorder({maxSamples = 6000, sport = 'tennis', adapt
       if (!isMotionSample(sample)) return false;
       const safe = {schemaVersion: 1, timeSeconds: sample.timeSeconds, sequence: sample.sequence,
         screenAngle: sample.screenAngle, calibrationRevision: sample.calibrationRevision};
+      if (sample.orientationTimeSeconds !== undefined) safe.orientationTimeSeconds = sample.orientationTimeSeconds;
       for (const key of ['angularVelocity', 'acceleration', 'accelerationIncludingGravity', 'gravity', 'orientation']) {
         if (sample[key]) safe[key] = key === 'orientation' ? normalizeQuaternion(sample[key]) : vector(sample[key]);
       }

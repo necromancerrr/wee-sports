@@ -8,7 +8,7 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5196';
 async function sensorContext(browser) {
   const context = await browser.newContext({viewport: {width: 430, height: 900}});
   await context.addInitScript(() => {
-    window.__sensor = {running: true, pattern: null, started: 0, angle: {alpha: 0, beta: 0, gamma: 0}};
+    window.__sensor = {running: true, pattern: null, started: 0, angle: {alpha: 0, beta: 0, gamma: 0}, aimRate: 0, orientationEvery: 0, nextOrientation: 0};
     window.__bridge = []; window.__permissionCalls = [];
     const permission = name => {window.__permissionCalls.push({name, active: navigator.userActivation.isActive}); return Promise.resolve('granted');};
     Object.defineProperty(window, 'DeviceMotionEvent', {configurable: true, value: class {static requestPermission() {return permission('motion');}}});
@@ -24,6 +24,10 @@ async function sensorContext(browser) {
       const now = performance.now(), dt = Math.min((now - previous) / 1000, .05); previous = now;
       if (!window.__sensor.running) return;
       const rate = {alpha: 0, beta: 0, gamma: 0};
+      if (window.__sensor.aimRate) {
+        rate.beta = window.__sensor.aimRate;
+        window.__sensor.angle.gamma += rate.beta * dt;
+      }
       if (window.__sensor.pattern) {
         const elapsed = (now - window.__sensor.started) / 1000;
         // Keep moving between strokes. The old detector silently stopped
@@ -37,8 +41,11 @@ async function sensorContext(browser) {
       Object.assign(motion, {rotationRate: rate, acceleration: {x: 0, y: 0, z: 0},
         accelerationIncludingGravity: {x: 0, y: 0, z: 9.80665}, interval: 16});
       window.dispatchEvent(motion);
-      const orientation = new Event('deviceorientation');
-      Object.assign(orientation, window.__sensor.angle); window.dispatchEvent(orientation);
+      if (now >= window.__sensor.nextOrientation) {
+        window.__sensor.nextOrientation = now + window.__sensor.orientationEvery;
+        const orientation = new Event('deviceorientation');
+        Object.assign(orientation, window.__sensor.angle); window.dispatchEvent(orientation);
+      }
     }, 16);
   });
   return context;
@@ -99,6 +106,25 @@ async function visibility(frame, hidden) {
     assert.equal(await game.locator('#tt-you').innerText(), '0');
     pass('An idle motion controller produces no automatic player hit or credited return');
 
+    const aimSince = await phone.evaluate(() => performance.now());
+    await controller.evaluate(() => {window.__sensor.orientationEvery = 100; window.__sensor.aimRate = 20;});
+    await phone.waitForTimeout(1100);
+    await controller.evaluate(() => {window.__sensor.aimRate = 0;});
+    const aimPoses = await phone.evaluate(since => window.__bridge.filter(message => message.type === 'wee:player-pose' && message.receivedAt > since).map(message => message.event.reach.x), aimSince);
+    assert.ok(aimPoses.at(-1) - aimPoses[0] > .2, 'gentle aiming must move the target');
+    const advancing = aimPoses.slice(1).filter((value,index) => value - aimPoses[index] > .001).length;
+    assert.ok(advancing > aimPoses.length * .55, 'aim must advance between slower attitude updates');
+    assert.equal(await playerHits(), 0, 'gentle aiming must not create a stroke');
+    pass('Gentle horizontal aiming keeps advancing with 100 ms attitude updates and fresh gyro samples');
+    await phone.waitForTimeout(200);
+    const heldAim = await phone.evaluate(() => window.__bridge.filter(message => message.type === 'wee:player-pose').at(-1).event.reach.x);
+    await phone.waitForTimeout(1800);
+    const afterHold = await phone.evaluate(() => window.__bridge.filter(message => message.type === 'wee:player-pose').at(-1).event.reach.x);
+    assert.ok(Math.abs(afterHold - heldAim) < .02, 'holding an off-centre aim must not automatically recenter it');
+    pass('Holding an off-centre phone keeps its aim through a quiet period');
+    await controller.evaluate(() => {window.__sensor.orientationEvery = 0; window.__sensor.angle = {alpha:0,beta:0,gamma:0};});
+    await phone.waitForTimeout(350);
+
     async function practice() {
       await setPattern(controller);
       await controller.locator('#tt-practice-phone').click();
@@ -140,7 +166,7 @@ async function visibility(frame, hidden) {
     if (process.env.WEE_SMOKE_SCREENSHOT) await host.screenshot({path: process.env.WEE_SMOKE_SCREENSHOT});
     const report = {recordedAt: new Date().toISOString(), base, runtime: process.version, browser: browser.version(),
       rendering: 'headless Chromium software WebGL; 960x640 functional viewport',
-      sensorSource: 'Generated DeviceMotion and matching DeviceOrientation at 16 ms; continuous 3 rad/s sine gestures with a 700 ms period and no rest interval',
+      sensorSource: 'Generated motion at 16 ms; gentle 20 degrees/s aim with attitude every 100 ms, then continuous 3 rad/s sine gestures with a 700 ms period and attitude at sensor cadence',
       checks, axisResults, errors,
       limitations: ['Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.',
         'No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established.']};

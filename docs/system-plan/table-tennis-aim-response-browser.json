@@ -1,0 +1,50 @@
+{
+  "recordedAt": "2026-11-08T06:57:29.455Z",
+  "runtime": "v24.22.1",
+  "browser": "156.0.8078.79",
+  "rendering": "headless Chromium software WebGL; 960x640 functional viewport",
+  "sensorSource": "Generated motion at 16 ms; gentle 20 degrees/s aim with attitude every 100 ms, then continuous 3 rad/s sine gestures with a 700 ms period and attitude at sensor cadence",
+  "checks": [
+    "Play joins and the leader starts a scored table-tennis motion game without a calibration checklist",
+    "An idle motion controller produces no automatic player hit or credited return",
+    "Gentle horizontal aiming keeps advancing with 100 ms attitude updates and fresh gyro samples",
+    "Holding an off-centre phone keeps its aim through a quiet period",
+    "Y sideways continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+    "Z screen-up continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+    "Hidden controller stops pose delivery and foreground resumes only with fresh input",
+    "Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt",
+    "The same controller can enter the twelve-point bot game",
+    "No uncaught browser errors"
+  ],
+  "axisResults": [
+    {
+      "axis": "Y sideways",
+      "hostHits": 3,
+      "legalReturns": 3,
+      "elapsedMs": 9429
+    },
+    {
+      "axis": "Z screen-up",
+      "hostHits": 3,
+      "legalReturns": 3,
+      "elapsedMs": 10003
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.",
+    "No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established."
+  ],
+  "automatedValidation": {
+    "root": {
+      "files": 73,
+      "passed": 635
+    },
+    "native": {
+      "passed": 69
+    },
+    "typeScript": "passed",
+    "productionBuild": "passed; six pages and required assets",
+    "expoExports": "iOS and Android Hermes bundles passed"
+  }
+}

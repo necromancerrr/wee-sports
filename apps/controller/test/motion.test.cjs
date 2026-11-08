@@ -201,3 +201,21 @@ test('table-tennis animation events follow recognized strokes and stop with Tool
   playing=true;session.seat.gameState.phase='complete';samples(0);samples(-3);assert.equal(gestures.length,2);
   controller.stop();
 });
+
+test('native table-tennis keeps a deliberately held target between points', async () => {
+  const {MotionController}=await import('../src/motionCore.js');
+  let now=1000;const poses=[];
+  const session={inputSetup:'motion',seat:{sport:'table-tennis',gameState:{phase:'ready'}},playing:()=>true,
+    latest:(kind,value)=>poses.push(value)};
+  const controller=new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now});
+  const samples=(rate,count)=>{for(let i=0;i<count;i++){now+=20;controller.sample({x:0,y:rate,z:0});}};
+  try {
+    await controller.calibrate();samples(0,12);samples(.5,40);
+    const target=poses.at(-1);assert.ok(target.reach.x>.3);
+    const first=poses.length;samples(0,90);
+    for(const held of poses.slice(first)) {
+      assert.ok(Math.abs(held.reach.x-target.reach.x)<1e-10,'quiet aim stays at the chosen side');
+      assert.equal(held.calibrationRevision,target.calibrationRevision);
+    }
+  } finally {controller.stop();}
+});

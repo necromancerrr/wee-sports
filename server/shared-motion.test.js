@@ -137,6 +137,46 @@ test('relative orientation crosses 360 degrees without an Euler discontinuity', 
   expect(Math.abs(pose.orientation[3])).toBeGreaterThan(.99);
 });
 
+test('cached browser attitude does not freeze gyro aim between slower orientation events', async () => {
+  const target = new EventTarget(), document = new EventTarget();
+  Object.assign(target, {isSecureContext: true, DeviceMotionEvent: {}, screen: {orientation: {angle: 0}}});
+  document.hidden = false;
+  let time = 0;
+  const poses = [], paddle = createPaddleIntentController();
+  const adapter = createWebMotionAdapter({target, document, clock: () => time,
+    onSample: value => poses.push(paddle.push(value))});
+  await adapter.start();
+  try {
+    for (let i = 0; i <= 60; i++) {
+      time = i / 60;
+      if (i % 6 === 0) target.dispatchEvent(Object.assign(new Event('deviceorientation'), {alpha: 0, beta: 0, gamma: time * 20}));
+      target.dispatchEvent(Object.assign(new Event('devicemotion'), {rotationRate: {alpha: 0, beta: 20, gamma: 0}}));
+    }
+    for (let i = 1; i < poses.length; i++) {
+      expect(poses[i].reach.x - poses[i - 1].reach.x).toBeGreaterThan(.005);
+      expect(poses[i].reach.x).toBeCloseTo(2 * Math.sin(i / 60 * 20 * DEG_TO_RAD / 2), 8);
+    }
+  } finally {adapter.dispose();}
+});
+
+test('attitude arriving after gyro setup anchors without changing the existing aim', () => {
+  for (const screenAngle of [0, 90]) {
+    const paddle = createPaddleIntentController();
+    const rate = {x: 0, y: .5, z: 0};
+    for (let i = 0; i <= 10; i++) paddle.push(native(i * .02, rate, {screenAngle}));
+    const baseline = createPaddleIntentController();
+    for (let i = 0; i <= 10; i++) baseline.push(native(i * .02, rate, {screenAngle}));
+    const pose = paddle.push(native(.22, rate, {screenAngle,
+      orientation: orientationFromWebEvent({alpha: 30, beta: 20, gamma: 15}), orientationTimeSeconds: .22}));
+    const integrated = baseline.push(native(.22, rate, {screenAngle}));
+    pose.orientation.forEach((value, index) => expect(value).toBeCloseTo(integrated.orientation[index], 10));
+    // A newer measured attitude continues from that anchor, rather than being ignored forever.
+    const next = paddle.push(native(.24, {x: 0, y: 0, z: 0}, {screenAngle,
+      orientation: orientationFromWebEvent({alpha: 30, beta: 20, gamma: 25}), orientationTimeSeconds: .24}));
+    expect(Math.hypot(next.reach.x - pose.reach.x, next.reach.y - pose.reach.y)).toBeGreaterThan(.1);
+  }
+});
+
 test('bounded opt-in traces contain only motion fields and cannot retain tokens', () => {
   const recorder = createMotionRecorder({maxSamples: 2});
   for (let i = 0; i < 3; i++) recorder.record({...native(i), token: 'private', angularVelocity: {x: 0, y: 0, z: 0, token: 'private'}});

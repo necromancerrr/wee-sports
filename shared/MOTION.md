@@ -2,11 +2,29 @@
 
 `motion.js` is pure JavaScript shared by the browser and optional Expo controller. Samples use monotonic receipt time in seconds, radians per second, metres per second squared, and Hamilton quaternions `{x,y,z,w}`. The phone frame is X to the right edge, Y toward the top, Z out of the screen. `screenAngle` is retained separately; new paddle control applies the explicit screen transform. Missing sensors stay absent. Total acceleration is not called gravity unless linear acceleration can be subtracted.
 
+An optional `orientationTimeSeconds` identifies when the cached absolute
+orientation was received, on the same local clock as `timeSeconds`. It is not a
+hardware capture timestamp or a network latency measurement. It must accompany
+an orientation and be between zero and the containing sample's time. Browser
+motion samples can carry the same orientation timestamp when gyro events arrive
+more often than orientation events. The paddle applies that attitude once and
+integrates fresh gyro between updates, instead of repeatedly snapping back to
+the cached pose. If attitude starts arriving after gyro setup, it anchors to the
+current pose without a jump. Samples without this optional field retain the
+existing contract that their attitude is fresh. Local recordings preserve the
+field for faithful replay; the network pose protocol is unchanged.
+
 `normalizeWebMotion` maps browser rotation-rate alpha → X, beta → Y, gamma → Z, converting degrees to radians. `normalizeNativeGyroscope` keeps native Gyroscope X/Y/Z and radians unchanged. `toLegacyMotionSample` reverses the browser mapping and returns the existing millisecond/degree fields. Existing tennis and bowling recognizer thresholds are unchanged. All five selected team-motion recordings pass through this round trip without changing recognized labels or peaks.
 
 The primary [W3C rotation-rate definition](https://w3c.github.io/deviceorientation/#device-motion-event-rotation-rate-api) maps alpha=X, beta=Y, gamma=Z. This is independently corroborated by [Chromium's gyro event conversion](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/modules/device_orientation/device_motion_event_pump.cc) and [WebKit's native motion conversion](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/platform/ios/WebCoreMotionManager.mm). DeviceOrientation **Euler** alpha/beta/gamma use Z/X/Y instead; those are distinct fields. An earlier implementation relied on an inconsistent MDN/TypeScript description and permuted these axes incorrectly. The canonical conversion and inverse legacy adapter are corrected together, preserving browser detector values while restoring native/browser axis equivalence. Tests independently exercise a native X-axis underhand trace and reject pure Y/Z-axis traces. Synthetic equivalence does not replace real-phone grip and sign validation.
 
 `createAutomaticMotionSetup` enables play after a short continuous real sensor stream (default 150 ms and at least five samples), even while the player is moving. Its initial zero bias is explicitly provisional; permission alone or cached values do not establish readiness. It refines a bounded bias estimate only after quiet samples at a caller-declared safe boundary. Neutral orientation updates are optional and safe-boundary-only, never midstroke. `read(nowSeconds)` revokes readiness after silent sensors without replaying an old sample. Gaps, rotation and background reset partial input; resuming collects fresh samples automatically. These timings are engineering defaults for real-device validation, not measured universal device guarantees.
+
+Table tennis keeps its calibration frame fixed throughout live play, including
+the time between points: holding an off-centre target is intentional aiming,
+not a request to reset it. Both web and native refine quiet bias before play or
+while paused. Explicit recenter, a new session/input boundary, a sensor gap or a
+screen rotation still cancels partial movement and establishes a fresh frame.
 
 `createMotionCalibration` remains available for diagnostics and requires a continuous stillness window and estimates bias in rad/s. Calibration is local and carries a screen angle/revision; `applyMotionCalibration` rejects a changed screen orientation. Legacy recognizer thresholds remain unchanged while automatic readiness replaces mandatory calibration UI. `createPaddleIntentController` outputs normalized orientation `[x,y,z,w]`, bounded reach and angular intent; it does not integrate acceleration into hand position. Duplicate samples are ignored; gaps, new calibration revisions and screen changes clear partial movement. Recenter/first resumed samples have zero angular velocity. The host determines contact and score.
 

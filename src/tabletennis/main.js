@@ -156,7 +156,7 @@ $('tt-sensitivity').oninput = () => { game.configure({sensitivity: Number($('tt-
 $('tt-feed').onchange = () => game.startPractice($('tt-feed').value);
 if (embedded) {
   document.body.classList.add('tt-embedded');
-  $('tt-help').textContent = 'Point the paddle to aim. Make a compact swing after the bounce.';
+  $('tt-help').textContent = 'Tilt to move the ring. Swing after the bounce.';
   // Embedded matches change rounds through authenticated P1 commands. The
   // standalone diagnostic controls must not reset a durable room locally.
   document.querySelector('.tt-controls').hidden = true;

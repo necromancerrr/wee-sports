@@ -28,7 +28,7 @@ export function createWebMotionAdapter({target = globalThis.window, document = t
     const timeSeconds = clock();
     const currentOrientation = orientationAt !== null && timeSeconds - orientationAt >= 0 && timeSeconds - orientationAt <= .25 ? orientation : undefined;
     const sample = normalizeWebMotion(event, {timeSeconds, sequence: sequence++, screenAngle: angle,
-      calibrationRevision: calibrationRevision(), orientation: currentOrientation});
+      calibrationRevision: calibrationRevision(), orientation: currentOrientation, orientationTimeSeconds: currentOrientation ? orientationAt : undefined});
     if (sample) onSample(sample);
   };
   const rotation = event => {if (active && pageActive && !document?.hidden) {orientation = orientationFromWebEvent(event); orientationAt = clock();}};

@@ -19,6 +19,26 @@ const newPlayer = () => ({input: {reach: {x: 0, y: 0}, orientation: [0, 0, 0, 1]
   strokeDetector: createStrokeIntentDetector(), pendingStroke: null, stroke: newStroke(),
   localStrokeRequested: false, aimTarget: null, idleReach: {x: 0, y: 0}});
 
+function captureStrokeIntent(controller, player, request, now) {
+  const stroke = controller.stroke;
+  stroke.intent = request?.intent || shotIntent(controller.input, player);
+  stroke.kind = stroke.intent.kind; stroke.hand = stroke.intent.hand; stroke.direction = stroke.intent.direction;
+  stroke.receivedAt = request?.receivedAt ?? now; stroke.gestureId = request?.id;
+  controller.pendingStroke = null;
+}
+
+function refreshAim(controller, player) {
+  // Preserve a quiet resting racket, but don't make a deliberate turn collect
+  // a large deadband before the visible target follows it.
+  const turning = length(controller.input.angularVelocity) > .12;
+  const deadband = turning ? .004 : .03;
+  for (const axis of ['x', 'y']) {
+    if (Math.abs(controller.input.reach[axis] - controller.idleReach[axis]) > deadband) controller.idleReach[axis] = controller.input.reach[axis];
+  }
+  controller.aimTarget = {...(controller.stroke.intent && ['queued', 'forward'].includes(controller.stroke.phase)
+    ? controller.stroke.intent.target : shotIntent({...controller.input, reach: controller.idleReach}, player).target)};
+}
+
 /** Predict bounded reach, including one future table bounce. This moves the
  * paddle before contact; it never redirects a ball already in flight. */
 export function predictInterception(ball, z) {
@@ -211,13 +231,24 @@ export class TableTennisGame {
     if (active && controller.stroke.gestureId === active.id && ['queued', 'forward'].includes(controller.stroke.phase)) {
       controller.stroke.power = Math.max(controller.stroke.power, Math.min(active.strength, 9));
     }
-    if (gesture && !this.paused && this.physics.ball.active && this.serveMotion?.player !== player) {
+    if (gesture && !this.paused && this.physics.ball.active && this.serveMotion?.player !== player && controller.stroke.phase !== 'forward') {
       // A short swing may finish while the paddle is recovering, the input is
       // settling, or the opponent is making contact. Keep the latest action
       // until this player's next legal receive instead of silently losing it.
       controller.pendingStroke = {...gesture, receivedAt: now,
         intent: shotIntent({reach: gesture.aim, angularVelocity: gesture.spin}, player, gesture)};
+      if (controller.stroke.phase === 'queued') {
+        // Only the latest deliberate swing owns the upcoming receive. Keeping
+        // an older queue made the target feel stuck and could replay the newer
+        // gesture on a later ball. Once forward motion begins, intent is fixed.
+        controller.stroke.power = clamp(gesture.strength, 1.5, 9);
+        controller.stroke.until = this.time + (this.settings.assistance === 'friendly' ? FRIENDLY_STROKE_BUFFER : .18);
+        captureStrokeIntent(controller, player, controller.pendingStroke, now);
+      }
     }
+    // Presentation can use the newest accepted pointing sample even if no
+    // fixed physics step is due on this display frame.
+    refreshAim(controller, player);
     return true;
   }
 
@@ -357,9 +388,6 @@ export class TableTennisGame {
     const baseZ = plane + sign * .1;
     const intercept = ball.active ? predictInterception(ball, plane) : v3(0, 1.02, sign * 1.1);
     const reach = controller.input.reach;
-    for (const axis of ['x', 'y']) {
-      if (Math.abs(reach[axis] - controller.idleReach[axis]) > .03) controller.idleReach[axis] = reach[axis];
-    }
     if (stale) controller.stroke = newStroke(controller.input.hand);
     const wasReady = controller.stroke.phase === 'ready';
     const request = incoming && !controller.settling ? controller.pendingStroke : null;
@@ -372,13 +400,7 @@ export class TableTennisGame {
       nearBall: incoming && this.lastBounceSide === player && (!friendly || (paddle.position.z - ball.position.z) * sign > .035) &&
         (baseZ - ball.position.z) * sign / (ball.velocity.z * sign + 1.3) <= .14});
     if (wasReady && controller.stroke.phase !== 'ready') {
-      controller.stroke.intent = request?.intent || shotIntent(controller.input, player);
-      controller.stroke.kind = controller.stroke.intent.kind;
-      controller.stroke.hand = controller.stroke.intent.hand;
-      controller.stroke.direction = controller.stroke.intent.direction;
-      controller.stroke.receivedAt = request?.receivedAt ?? this.now();
-      controller.stroke.gestureId = request?.id;
-      controller.pendingStroke = null;
+      captureStrokeIntent(controller, player, request, this.now());
     }
     if (oldPhase !== 'forward' && controller.stroke.phase === 'forward') {
       controller.stroke.plane = plane;
@@ -386,8 +408,7 @@ export class TableTennisGame {
       // stroke instead of canceling it halfway through its contact window.
       controller.stroke.forwardAt = this.now();
     }
-    controller.aimTarget = {...(controller.stroke.intent && ['queued', 'forward'].includes(controller.stroke.phase)
-      ? controller.stroke.intent.target : shotIntent({...controller.input, reach: controller.idleReach}, player).target)};
+    refreshAim(controller, player);
     controller.localStrokeRequested = false;
     // Assistance follows the ball only after a deliberate stroke. A still
     // controller holds a stable ready pose instead of chasing every prediction.

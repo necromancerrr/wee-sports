@@ -29,6 +29,22 @@ test('ordinary 15–19 ms sensor jitter sends each fresh pose without alternatin
   expect(f.session.frame(time)).toBeNull(); // No replay of the last sensor sample.
 });
 
+test('holding an off-centre target between points does not silently recalibrate it to centre', () => {
+  const f = create(); f.session.select('motion'); f.warm(); f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'held-aim', generation: 1});
+  f.session.setPhase('ready');
+  f.session.sample(sample(.22, 11));
+  const aimed = {...sample(.24, 12), orientation: {x: 0, y: Math.sin(.2), z: 0, w: Math.cos(.2)}};
+  const initial = f.session.sample(aimed);
+  expect(initial.reach.x).toBeGreaterThan(.3);
+  for (let i = 1; i <= 90; i++) {
+    const held = f.session.sample({...aimed, timeSeconds: .24 + i * .02, sequence: 12 + i});
+    expect(held.reach.x).toBeCloseTo(initial.reach.x, 10);
+    expect(held.calibrationRevision).toBe(initial.calibrationRevision);
+    expect(held.angularVelocity).toEqual({x: 0, y: 0, z: 0});
+  }
+});
+
 test('motion startup needs continuous live samples and a matching server acknowledgement', () => {
   const f = create();
   f.session.select('motion');

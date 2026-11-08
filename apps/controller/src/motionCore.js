@@ -137,8 +137,7 @@ export class MotionController {
     }
     const seat = this.session.seat;
     const safeBoundary = !this.session.playing() ||
-      (seat?.sport === 'bowling' && seat.gameState?.phase === 'ready' && this.delivery.phase !== 'forward') ||
-      (seat?.sport === 'table-tennis' && seat.gameState?.phase !== 'rally');
+      (seat?.sport === 'bowling' && seat.gameState?.phase === 'ready' && this.delivery.phase !== 'forward');
     const status = this.automatic.push(sample, {safeBoundary,recenter:safeBoundary});
     this.calibration = status.calibration;
     const aimReady = seat?.sport !== 'bowling' || Boolean(sample.gravity || sample.accelerationIncludingGravity);

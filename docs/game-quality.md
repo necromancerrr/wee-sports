@@ -8,6 +8,13 @@ missed phone gestures, accidental idle contacts and inconsistent spin response.
 It includes primary-source research and new complete-motion-path regressions;
 the earlier selected-contact checks below did not establish phone hit accuracy.
 
+The latest [motion and shot logic guide](table-tennis-controls.md) explains the
+aim-response repair: fresh gyro continuation between attitude updates, stable
+held aim during live points, immediate target feedback with a smaller moving
+deadband, and replacement of an old waiting swing by the newest deliberate
+gesture. A forward hit keeps its captured target. These changes address input
+and target delays without changing the ball's physical coefficients.
+
 ## Controller play and TV presentation
 
 The native controller now has one play card with compact scoring. Racket
