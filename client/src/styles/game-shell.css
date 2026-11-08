@@ -4,9 +4,11 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: min(860px, 94vh);
   height: min(860px, 94dvh);
   min-height: 320px;
   max-width: 1600px;
+  margin: 3vh auto;
   margin: 3dvh auto;
   overflow: hidden;
   background: #081a20;
@@ -18,6 +20,7 @@
   inset: 0;
   z-index: 30;
   width: 100%;
+  height: 100vh;
   height: 100dvh;
   min-height: 0;
   max-width: none;
@@ -43,6 +46,8 @@
 .game-session__identity h1 { margin: 0; font-size: 1rem; font-weight: 800; }
 .game-session__room { font-size: 0.7rem; letter-spacing: 0.16em; color: #e4f2df; text-shadow: 0 1px 4px #132c27; }
 .game-session__display { pointer-events: auto; }
+.game-session .game-session__fullscreen { pointer-events: auto; gap: 8px; min-height: 44px; background: #d5f487; color: #102c34; border-color: #d5f487; }
+.game-session .game-session__fullscreen:hover { background: #e4ffad; }
 .game-session__menu-panel button + button { margin-top: 8px; }
 .game-session__menu-panel button { width: 100%; }
 .game-session__return { margin: 8px 0; }

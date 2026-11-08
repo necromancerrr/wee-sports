@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {BowlingMatch, BowlingPlayer, BowlingState, BowlingMatchCheckpoint, BowlingResult} from './match';
 import {BALL_RADIUS, BowlingPhysics, LANE, PIN_COM, pinSpot, RollControls, RollSettlement, validRoll, SettledPin, validSettledPins} from './physics';
 import {createBowlingAimGuide, updateBowlingAimGuide} from './aimGuide';
+import {createFrameQuality, FrameQualitySettings} from '../rendering/frameQuality';
 
 export type {BowlingPlayer, BowlingState} from './match';
 export interface BowlingRoll extends RollControls {player: number}
@@ -42,6 +43,10 @@ export class BowlingWorld {
   private lastTime = 0;
   private cameraPosition = new THREE.Vector3(0.1, 2.25, -4);
   private cameraTarget = new THREE.Vector3(0, 0.05, 7.8);
+  private cameraDirection = new THREE.Vector3();
+  private readonly frameQuality = createFrameQuality({maxPixelRatio: Math.min(window.devicePixelRatio || 1, 2)});
+  private renderedFrames = 0;
+  private shadowsDirty = true;
   private aim = 0;
   private practice = false;
   private practiceLastRoll: BowlingResult | null = null;
@@ -52,9 +57,9 @@ export class BowlingWorld {
     this.physics.onPinHit = () => this.pinContact();
     this.physics.onGutter = () => this.gutterContact();
     this.renderer = new THREE.WebGLRenderer({antialias: true, alpha: false});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.25;
@@ -92,6 +97,7 @@ export class BowlingWorld {
     this.observer.observe(container);
     this.resize();
     this.syncBodies();
+    this.shadowsDirty = true;
     this.render();
   }
 
@@ -135,7 +141,7 @@ export class BowlingWorld {
       this.setAim(data.settings.aim);
       this.aimLine.visible = !match.getState().complete;
       this.trail.visible = false;
-      this.syncBodies(); this.render();
+      this.syncBodies(); this.shadowsDirty = true; this.render();
       this.onState?.(this.getState());
       return true;
     } catch { return false; }
@@ -151,6 +157,7 @@ export class BowlingWorld {
   stop(): void {
     this.running = false;
     cancelAnimationFrame(this.animation);
+    this.frameQuality.sample(0, 0, false);
     this.endRollingSound();
     // Neither physical time nor the result-reveal timer advances while paused.
   }
@@ -166,6 +173,7 @@ export class BowlingWorld {
     // screen-right is world -X. Keep the physics' world coordinates unchanged.
     if (!this.physics.roll({...roll, aim: -roll.aim, spin: -roll.spin})) return {ok: false, error: 'This delivery could not start.'};
     this.rolling = true;
+    this.shadowsDirty = true;
     this.trailCount = 0;
     this.trail.geometry.setDrawRange(0, 0);
     this.trail.visible = true;
@@ -196,6 +204,7 @@ export class BowlingWorld {
     this.aimLine.visible = true;
     this.trail.visible = false;
     this.syncBodies();
+    this.shadowsDirty = true;
     this.render();
     this.onState?.(this.getState());
   }
@@ -234,7 +243,9 @@ export class BowlingWorld {
     const height = Math.max(this.container.clientHeight, 1);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, false);
+    // Change logical size and pixel ratio together: setPixelRatio first would
+    // briefly reallocate the old (possibly 4K) viewport at the new higher ratio.
+    this.renderer.setDrawingBufferSize(width, height, this.frameQuality.resize(width, height).pixelRatio);
     this.render();
   };
 
@@ -261,6 +272,7 @@ export class BowlingWorld {
 
   private tick = (time: number): void => {
     if (!this.running) return;
+    const frameAt = performance.now();
     const dt = Math.min(Math.max((time - this.lastTime) / 1000, 0), 0.1);
     this.lastTime = time;
     this.advanceDelivery(dt);
@@ -270,11 +282,13 @@ export class BowlingWorld {
     this.cameraPosition.set(0.1, this.rolling ? 2.35 : 2.25, advance - (this.rolling ? 2.9 : 4));
     this.cameraTarget.set(0, 0.05, Math.min(advance + 7.8, 18.8));
     this.camera.position.lerp(this.cameraPosition, 1 - Math.exp(-dt * 3));
-    const target = new THREE.Vector3();
+    const target = this.cameraDirection;
     this.camera.getWorldDirection(target);
     target.multiplyScalar(10).add(this.camera.position).lerp(this.cameraTarget, 1 - Math.exp(-dt * 5));
     this.camera.lookAt(target);
     this.render();
+    const quality = this.frameQuality.sample(time, performance.now() - frameAt, !document.hidden);
+    if (quality) this.applyQuality(quality);
     this.animation = requestAnimationFrame(this.tick);
   };
 
@@ -285,6 +299,7 @@ export class BowlingWorld {
       this.settlement = this.physics.step(dt);
       if (this.settlement) {
         this.revealTime = 1.1;
+        this.shadowsDirty = true;
         this.endRollingSound();
       }
     } else if (this.settlement) {
@@ -299,6 +314,7 @@ export class BowlingWorld {
         else if (!this.match.getState().complete) this.physics.sweep(this.settlement.remaining);
         this.settlement = null;
         this.rolling = false;
+        this.shadowsDirty = true;
         this.trail.visible = false;
         this.aimLine.visible = !this.match.getState().complete;
         this.onState?.(this.getState());
@@ -331,7 +347,30 @@ export class BowlingWorld {
     this.trail.geometry.setDrawRange(0, this.trailCount);
   }
 
-  private render(): void { this.renderer.render(this.scene, this.camera); }
+  private applyQuality(quality: FrameQualitySettings): void {
+    if (this.renderer.getPixelRatio() !== quality.pixelRatio) this.renderer.setPixelRatio(quality.pixelRatio);
+    if (this.renderer.shadowMap.enabled !== quality.shadows) {
+      this.renderer.shadowMap.enabled = quality.shadows;
+      // Shadow shader variants are cached on materials. Invalidate them when
+      // emergency quality changes so recovery actually restores the shadows.
+      this.scene.traverse(object => {
+        const material = (object as THREE.Mesh).material;
+        if (material) for (const value of Array.isArray(material) ? material : [material]) value.needsUpdate = true;
+      });
+      this.shadowsDirty = true;
+    }
+  }
+
+  private render(): void {
+    // The light and alley stay fixed. Camera/aim movement does not change their
+    // shadow map; only a moving delivery or a rack/quality change needs a pass.
+    const moving = this.rolling && !this.settlement;
+    const shadowFrame = this.renderedFrames++ % this.frameQuality.settings.shadowEvery === 0;
+    this.renderer.shadowMap.needsUpdate = this.renderer.shadowMap.enabled &&
+      (this.shadowsDirty || moving && shadowFrame);
+    this.renderer.render(this.scene, this.camera);
+    this.shadowsDirty = false;
+  }
 
   private mesh(geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
     const mesh = new THREE.Mesh(geometry, material);

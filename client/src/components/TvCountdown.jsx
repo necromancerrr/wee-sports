@@ -7,7 +7,7 @@ import { sportName } from '../lib/sports.js';
 import { LobbyBackdrop } from './LobbyBackdrop.jsx';
 import { SelectedSportIcon } from './SelectedSportIcon.jsx';
 
-export function TvCountdown({ lobby, onTick, fullscreen, onFullscreen }) {
+export function TvCountdown({ lobby, onTick, fullscreen, fullscreenAvailable = true, onFullscreen }) {
   const counting = lobby.phase === PHASES.COUNTDOWN;
   const secondsLeft = useCountdown(counting ? lobby.countdown.msLeft : null);
   useEffect(() => { if (counting) onTick?.(secondsLeft); }, [counting, secondsLeft, onTick, lobby.gameId]);
@@ -17,7 +17,8 @@ export function TvCountdown({ lobby, onTick, fullscreen, onFullscreen }) {
   return (
     <main className="game-countdown game-countdown--immersive" data-state="counting">
       <LobbyBackdrop />
-      {!fullscreen ? <button className="game-countdown__view" onClick={onFullscreen}>Full screen</button> : null}
+      {!fullscreen && fullscreenAvailable ? <button type="button" className="game-countdown__view" onClick={onFullscreen}
+        title="Enter full screen on this screen" autoFocus>Full screen</button> : null}
       <p className="game-countdown__sport"><SelectedSportIcon sport={lobby.sport} />{sportName(lobby.sport)}</p>
       {/* Keyed by the number, so each one gets its own entrance. */}
       <span key={secondsLeft} className="play-slot__number game-countdown__number" aria-hidden="true">

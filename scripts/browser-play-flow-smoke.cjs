@@ -21,7 +21,14 @@ const shots=process.env.WEE_SMOKE_SCREENSHOTS;
         Object.defineProperty(window,'DeviceOrientationEvent',{value:undefined,configurable:true});
       });
       await tvContext.addInitScript(deny=>{
-        if(deny)Element.prototype.requestFullscreen=async()=>{throw new Error('Fullscreen denied by browser');};
+        window.__fullscreenRequests=0;
+        window.__denyFullscreen=deny;
+        const requestFullscreen=Element.prototype.requestFullscreen;
+        Element.prototype.requestFullscreen=function(...args){
+          window.__fullscreenRequests++;
+          if(window.__denyFullscreen)return Promise.reject(new Error('Fullscreen denied by browser'));
+          return requestFullscreen.apply(this,args);
+        };
         window.__latestTable=null;
         window.addEventListener('message',e=>{if(e.origin===location.origin && e.data?.type==='wee:table-tennis-state')window.__latestTable=e.data;});
       },sport==='Bowling');
@@ -52,6 +59,27 @@ const shots=process.env.WEE_SMOKE_SCREENSHOTS;
       await capture(tv,sport.toLowerCase().replace(' ','-')+'-countdown');
       await tv.locator(`iframe[title="${sport} game"]`).waitFor({timeout:20000});
       const game=tv.frameLocator(`iframe[title="${sport} game"]`);
+      if(sport==='Bowling') {
+        const frame=await tv.locator('iframe').elementHandle();
+        assert.equal(await tv.locator('.game-session--immersive').count(),1,'a rejected automatic request still fills the browser viewport');
+        assert.equal(await tv.locator('.game-session__fullscreen').isVisible(),true,'fullscreen retry stays visible after the countdown');
+        assert.equal(await tv.locator('.game-session__fullscreen').evaluate(node=>node===document.activeElement),true,'the TV remote can select the fullscreen action without opening menus');
+        await tv.getByLabel('TV display controls').click();
+        assert.equal(await tv.locator('.game-session__view').innerText(),'Full screen','CSS viewport mode is not mistaken for browser fullscreen');
+        const before=await tv.evaluate(()=>{window.__denyFullscreen=false;return window.__fullscreenRequests;});
+        await tv.locator('.game-session__view').click();
+        await tv.waitForFunction(()=>Boolean(document.fullscreenElement));
+        assert.equal(await tv.evaluate(()=>window.__fullscreenRequests),before+1,'the first local click requests fullscreen without a windowed-view detour');
+        assert.equal(await frame.evaluate(node=>node.isConnected && node===document.querySelector('iframe')),true,'entering fullscreen preserves the game iframe');
+        await tv.locator('.game-session__view').click();
+        await tv.waitForFunction(()=>!document.fullscreenElement);
+        await tv.getByLabel('TV display controls').click();
+        await tv.locator('.game-session__fullscreen').focus();
+        await tv.keyboard.press('Enter');
+        await tv.waitForFunction(()=>Boolean(document.fullscreenElement));
+        assert.equal(await frame.evaluate(node=>node.isConnected && node===document.querySelector('iframe')),true,'keyboard fullscreen retry preserves the current game');
+        pass('Fullscreen denied at remote start: visible one-click/Enter retry, correct display label, and unchanged game iframe');
+      }
       if(sport==='Tennis')await game.locator('html[data-views="1"]').waitFor();
       if(sport==='Table Tennis') {
         await game.locator('#table-court[data-views="1"]').waitFor();

@@ -173,14 +173,18 @@ export function createIslandMotion(canvas, image, {variant, ocean = false}) {
     };
     return {
       resize(width, height, seconds = 0) {
-        // Preserve native source detail even on a Retina display. There is no
-        // adaptive low-resolution mode; unsupported sizes retain the still.
-        const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        const w = Math.round(width * ratio), h = Math.round(height * ratio);
-        if (![w, h].every(Number.isFinite) || w <= 0 || h <= 0 || w > maxSize || h > maxSize) {
+        if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
           gl.clear(gl.COLOR_BUFFER_BIT);
           return false;
         }
+        // The two decorative layers used to each render up to 4K/Retina size
+        // at 30 fps, although their artwork contains only ~1.6M source pixels.
+        // Bound shader work to that source detail. CSS framing, the original
+        // still and all interactive text remain at their normal resolution.
+        const budget = Math.min(image.naturalWidth * image.naturalHeight, 1920 * 1080);
+        const ratio = Math.min(window.devicePixelRatio || 1, 2,
+          Math.sqrt(budget / (width * height)), maxSize / width, maxSize / height);
+        const w = Math.max(1, Math.floor(width * ratio)), h = Math.max(1, Math.floor(height * ratio));
         if (canvas.width !== w || canvas.height !== h) {
           canvas.width = w; canvas.height = h;
           gl.viewport(0, 0, w, h);

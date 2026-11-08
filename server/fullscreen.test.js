@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { enterFullscreen, exitFullscreen, fullscreenElement } from '../client/src/lib/fullscreen.js';
+import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement } from '../client/src/lib/fullscreen.js';
 
 describe('host fullscreen request', () => {
   it('requests synchronously in the user gesture, before waiting for a server start', async () => {
@@ -19,6 +19,32 @@ describe('host fullscreen request', () => {
     expect(await enterFullscreen(denied)).toBe(false);
     expect(await enterFullscreen({ documentElement: {} })).toBe(false);
     expect(await exitFullscreen(denied)).toBeUndefined();
+  });
+
+  it('retries a remote-start denial synchronously on the first local gesture', async () => {
+    let hasLocalGesture = false;
+    const doc = { fullscreenElement: null, fullscreenEnabled: true, documentElement: {} };
+    doc.documentElement.requestFullscreen = vi.fn(function () {
+      if (!hasLocalGesture) return Promise.reject(new Error('User activation required'));
+      doc.fullscreenElement = this;
+      return Promise.resolve();
+    });
+    expect(await enterFullscreen(doc)).toBe(false);
+    expect(canEnterFullscreen(doc)).toBe(true);
+    hasLocalGesture = true;
+    const retry = enterFullscreen(doc);
+    expect(doc.documentElement.requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(await retry).toBe(true);
+  });
+
+  it('does not offer unsupported or policy-disabled fullscreen as an available action', async () => {
+    const requestFullscreen = vi.fn();
+    const policyDisabled = { fullscreenEnabled: false, documentElement: { requestFullscreen } };
+    expect(canEnterFullscreen(policyDisabled)).toBe(false);
+    expect(await enterFullscreen(policyDisabled)).toBe(false);
+    expect(requestFullscreen).not.toHaveBeenCalled();
+    expect(canEnterFullscreen({ documentElement: {} })).toBe(false);
+    expect(canEnterFullscreen({ webkitFullscreenEnabled: false, documentElement: { webkitRequestFullscreen: vi.fn() } })).toBe(false);
   });
 
   it('supports Safari’s prefixed API and safely exits an already ended session', async () => {

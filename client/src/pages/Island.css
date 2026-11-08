@@ -14,6 +14,7 @@
   position: relative;
   width: 100%;
   min-height: 480px;
+  height: 100vh;
   height: 100svh;
   overflow: hidden;
   isolation: isolate;
@@ -37,7 +38,7 @@
 .island-motion[data-ready='true'] { visibility: visible; }
 .island-scenery[data-image-state='loading'] .island-scenery__image { opacity: 0; }
 .island-image-error { position: absolute; left: 50%; top: 45%; transform: translateX(-50%); max-width: 28rem; padding: 16px; border-radius: 16px; background: var(--island-surface); color: var(--island-ink); text-align: center; }
-.island-landing { min-height: min(480px, 100svh); }
+.island-landing { min-height: min(480px, 100vh); min-height: min(480px, 100svh); }
 .island-landing__wordmark {
   position: absolute;
   top: 12%;
@@ -45,6 +46,7 @@
   transform: translateX(-50%);
   width: max-content;
   color: #16465e;
+  font-size: clamp(2.75em, calc(min(6vw, 10.65vh) + 1em - 16px), 13.125em);
   font-size: clamp(2.75em, calc(min(6vw, 10.65svh) + 1em - 16px), 13.125em);
   font-weight: 950;
   letter-spacing: -.05em;
@@ -129,7 +131,7 @@
 .island-status:empty { display: none; }
 .island-unmapped-note { font-size: .875em; padding: 8px 12px; border-radius: 12px; background: var(--island-surface); }
 .island-compact-games { display: none; }
-.island-games-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100svh - 32px); padding: 0; border: 1px solid var(--island-border); border-radius: 24px; background: var(--island-surface); color: var(--island-ink); box-shadow: 0 24px 80px #12313c40; }
+.island-games-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); max-height: calc(100svh - 32px); padding: 0; border: 1px solid var(--island-border); border-radius: 24px; background: var(--island-surface); color: var(--island-ink); box-shadow: 0 24px 80px #12313c40; }
 .island-games-dialog::backdrop { background: #12313c44; }
 .island-games-dialog__content { padding: 24px; }
 .island-games-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
@@ -147,7 +149,7 @@
 .island-screen[data-motion='true'] .island-venue { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
 .island-screen[data-motion='true'] .island-venue[data-highlighted='true']:not(:disabled) { transform: translateY(-2px); }
 @media (max-width: 53.125em), (max-aspect-ratio: 1/1) {
-  .island-home { --island-compact-gutter: 20px; display: flex; flex-direction: column; height: auto; min-height: 100svh; padding: 22px var(--island-compact-gutter) 20px; }
+  .island-home { --island-compact-gutter: 20px; display: flex; flex-direction: column; height: auto; min-height: 100vh; min-height: 100svh; padding: 22px var(--island-compact-gutter) 20px; }
   .island-home .island-scenery { position: relative; inset: auto; flex: 0 0 auto; order: 1; height: min(56.28vw, 430px); width: calc(100% + var(--island-compact-gutter) * 2); margin-inline: calc(var(--island-compact-gutter) * -1); }
   .island-home .island-header { position: relative; inset: auto; order: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-bottom: 14px; }
   .island-header .island-wordmark { font-size: 1.625em; max-width: 100%; }

@@ -111,7 +111,9 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   let width = 1, height = 1, split = game.mode === 'versus', viewports = [];
   function resize() {
     width = Math.max(1, container.clientWidth); height = Math.max(1, container.clientHeight);
-    renderer.setSize(width, height);
+    renderer.setDrawingBufferSize(width, height, frameQuality.resize(width, height).pixelRatio);
+    renderer.domElement.style.width = `${width}px`;
+    renderer.domElement.style.height = `${height}px`;
     viewports = views.layout(width, height, split);
     container.dataset.views = split ? '2' : '1';
   }
@@ -120,7 +122,7 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   renderer.domElement.addEventListener('pointerdown', onAction);
   const normal = new THREE.Vector3(), lookAt = new THREE.Vector3(), screen = new THREE.Vector3();
   let contactId = null, contactAt = -Infinity, renderedFrames = 0, previousFrame = null;
-  function render(now) {
+  function render(now, frameStartedAt = performance.now()) {
     const workAt = performance.now();
     if (!document.hidden && previousFrame !== null && now > previousFrame && now - previousFrame <= 1000) diagnostics.observe('frameGapMs',now-previousFrame);
     previousFrame = document.hidden ? null : now;
@@ -175,14 +177,16 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
       handle.position.y = -paddle.radiusY - .055;
       display.visible = true;
       if (labels[index]) {
+        let transform;
         if (split) {
           const view = viewports[index];
-          labels[index].style.transform = `translate(${view.x + view.width / 2}px, ${height - 68}px) translate(-50%, 0)`;
+          transform = `translate(${view.x + view.width / 2}px, ${height - 68}px) translate(-50%, 0)`;
         } else {
         // Names sit outside the table and remain still while players swing.
         screen.set(index === 0 ? -1.05 : 1.05, TABLE.height + .10, index === 0 ? 1.5 : -1.5).project(camera);
-        labels[index].style.transform = `translate(${(screen.x * .5 + .5) * width}px, ${(-screen.y * .5 + .5) * height}px) translate(-50%, 0)`;
+        transform = `translate(${(screen.x * .5 + .5) * width}px, ${(-screen.y * .5 + .5) * height}px) translate(-50%, 0)`;
         }
+        if (labels[index].style.transform !== transform) labels[index].style.transform = transform;
       }
     });
     if (game.lastContact && game.lastContact.id !== contactId) {
@@ -203,8 +207,11 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
       renderer.render(scene, view.camera);
     }
     renderer.setScissorTest(false);
-    const workMs = performance.now()-workAt, previousLevel = frameQuality.settings.level;
-    if (!document.hidden) diagnostics.observe('renderSubmissionMs',workMs);
+    const workEnd = performance.now(), workMs = workEnd-frameStartedAt, previousLevel = frameQuality.settings.level;
+    if (!document.hidden) {
+      diagnostics.observe('renderSubmissionMs',workEnd-workAt);
+      diagnostics.observe('frameWorkMs',workMs);
+    }
     const quality = frameQuality.sample(now, workMs, !document.hidden);
     if (quality) diagnostics.count(quality.level > previousLevel ? 'qualityReduced' : 'qualityRecovered');
     if (quality && renderer.getPixelRatio() !== quality.pixelRatio) renderer.setPixelRatio(quality.pixelRatio);

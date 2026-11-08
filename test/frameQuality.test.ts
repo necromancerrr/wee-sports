@@ -80,3 +80,44 @@ test('a stable cheap 30Hz display recovers gradually after severe overload', () 
     for (let frame = 0; frame < 1200; frame++) quality.sample(now += 1000 / 30, 2);
     expect(quality.settings.level).toBe(0);
 });
+
+test('stable GPU-bound 30 FPS is probed and the responsive budget stays stable', () => {
+    const quality = createFrameQuality({maxPixelRatio: 1});
+    let now = 0;
+    // The CPU merely submits work. Rendering above this pixel budget misses
+    // every other 60 Hz vblank; a lower buffer restores the real refresh rate.
+    for (let frame = 0; frame < 1500; frame++) {
+        quality.sample(now += quality.settings.pixelRatio > .75 ? 1000 / 30 : 1000 / 60, 2);
+    }
+    expect(quality.settings.pixelRatio).toBe(.7);
+    expect(quality.diagnostics()).toMatchObject({resolutionProbes: 1, responsiveProbes: 1});
+    expect(quality.diagnostics().frameP95Ms).toBeCloseTo(1000 / 60);
+});
+
+test('a resolution probe rolls back on a genuinely capped display', () => {
+    const quality = createFrameQuality({maxPixelRatio: 1});
+    let now = 0;
+    for (let frame = 0; frame < 900; frame++) quality.sample(now += 1000 / 30, 2);
+    expect(quality.settings.level).toBe(0);
+    expect(quality.diagnostics()).toMatchObject({resolutionProbes: 1, responsiveProbes: 0});
+});
+
+test('an observed fast display detects later GPU slowdown even with cheap CPU submission', () => {
+    const quality = createFrameQuality({maxPixelRatio: 1});
+    let now = 0;
+    for (let frame = 0; frame < 180; frame++) quality.sample(now += 1000 / 60, 2);
+    for (let frame = 0; frame < 180; frame++) quality.sample(now += 1000 / 30, 2);
+    expect(quality.settings.level).toBeGreaterThan(0);
+});
+
+test('large and retina viewports have a bounded drawing buffer without changing layout', () => {
+    for (const [width, height, dpr] of [[3840, 2160, 1], [7680, 4320, 2], [1920, 1080, 2], [1280, 720, 1]]) {
+        const quality = createFrameQuality({maxPixelRatio: dpr});
+        const setting = quality.resize(width, height);
+        expect(width * height * setting.pixelRatio ** 2).toBeLessThanOrEqual(1920 * 1080 + .001);
+        expect(setting.pixelRatio).toBeLessThanOrEqual(dpr);
+        const normal = quality.resize(1280, 720);
+        expect(normal.pixelRatio).toBe(Math.min(dpr, 1.5));
+        expect(quality.resize(NaN, 0)).toEqual(normal);
+    }
+});

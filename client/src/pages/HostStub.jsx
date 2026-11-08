@@ -17,7 +17,7 @@ import { request } from '../lib/socket.js';
 import { useReconnect } from '../lib/useReconnect.js';
 import { ReconnectNotice } from '../components/ReconnectNotice.jsx';
 import { sportName } from '../lib/sports.js';
-import { enterFullscreen, exitFullscreen, fullscreenElement } from '../lib/fullscreen.js';
+import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement } from '../lib/fullscreen.js';
 import { useTvAudio } from '../lib/useTvAudio.jsx';
 import { useRevealHold } from '../lib/useRevealHold.js';
 import '../styles/game-shell.css';
@@ -45,6 +45,8 @@ export default function HostStub() {
   const [immersive, setImmersive] = useState(true);
   const [fullscreen, setFullscreen] = useState(Boolean(fullscreenElement(document)));
   const requestedFullscreen = useRef(Boolean(fullscreenElement(document)));
+  const observedFullscreen = useRef(Boolean(fullscreenElement(document)));
+  const fullscreenAvailable = canEnterFullscreen(document);
   const displayCleanup = useRef(null);
   const countdownDisplay = useRef(null);
 
@@ -68,9 +70,12 @@ export default function HostStub() {
     clearTimeout(displayCleanup.current);
     const changed = () => {
       const entered = Boolean(fullscreenElement(document));
+      const exited = observedFullscreen.current && !entered;
+      observedFullscreen.current = entered;
       setFullscreen(entered);
       // Escape should return to the windowed view without remounting the game.
-      if (!entered && requestedFullscreen.current) {
+      // A denied automatic request is not an exit: keep the viewport filled.
+      if (exited) {
         requestedFullscreen.current = false;
         setImmersive(false);
       }
@@ -175,7 +180,8 @@ export default function HostStub() {
     onAudio={audio.onAudio} audioControls={audio.controls}
     onReturnToLobby={returnToLobby} returning={returning} returnDisabled={reconnecting || pausing}
     onPauseToggle={togglePause} pauseDisabled={reconnecting || pausing || returning || (lobby.gameState?.phase === 'complete' && !lobby.manuallyPaused)}
-    immersive={immersive} fullscreen={fullscreen} onToggleView={immersive ? leaveGameView : enterGameView}
+    immersive={immersive} fullscreen={fullscreen} fullscreenAvailable={fullscreenAvailable}
+    onToggleView={fullscreen ? leaveGameView : enterGameView}
     paused={reconnecting || lobby.paused} error={startError ? errorText(startError) : null} onClose={async () => {
       if (await leave()) { leaveGameView(); navigate('/home'); }
       else setStartError('disconnected');
@@ -194,7 +200,7 @@ export default function HostStub() {
   // The vote, then its reveal for a moment, then the tutorial if anyone asked.
   if (lobby.phase === PHASES.VOTE || revealing) return <TvVote lobby={lobby} />;
   if (lobby.phase === PHASES.TUTORIAL) return <TvTutorial lobby={lobby} />;
-  if (lobby.phase === PHASES.COUNTDOWN) return <TvCountdown lobby={lobby} onTick={audio.onCountdown} fullscreen={fullscreen} onFullscreen={enterGameView} />;
+  if (lobby.phase === PHASES.COUNTDOWN) return <TvCountdown lobby={lobby} onTick={audio.onCountdown} fullscreen={fullscreen} fullscreenAvailable={fullscreenAvailable} onFullscreen={enterGameView} />;
 
   return (
     <main className="stub host-lobby" data-party={lobby.players.length > 4} data-empty={!lobby.players.length}>

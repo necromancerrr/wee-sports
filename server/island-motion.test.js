@@ -60,6 +60,7 @@ beforeEach(() => {
   images = []; observers = []; frames = new Map(); now = 0; events = []; cleanup = null;
   surface = createSurface(); gl = createGL(); let frameId = 0;
   vi.stubGlobal('window', {devicePixelRatio: 1});
+  vi.stubGlobal('document', {hidden: false});
   vi.stubGlobal('performance', {now: () => now});
   vi.stubGlobal('requestAnimationFrame', vi.fn(callback => {frames.set(++frameId, callback); return frameId;}));
   vi.stubGlobal('cancelAnimationFrame', vi.fn(id => frames.delete(id)));
@@ -88,13 +89,13 @@ test('each buffer resize paints synchronously with transparent clears and no pre
   renderer.dispose();
 });
 
-test('unsupported dimensions reveal the still and recover even to the previous buffer size', () => {
+test('invalid dimensions reveal the still and recover even to the previous buffer size', () => {
   window.devicePixelRatio = 3;
   const renderer = createIslandMotion(surface, source, {variant: 'bay'});
   expect(renderer.resize(800, 450, 0)).toBe(true);
   expect([surface.width, surface.height]).toEqual([1600, 900]);
   const draws = gl.drawArrays.mock.calls.length;
-  for (const [width, height] of [[0, 450], [-1, 450], [NaN, 450], [Infinity, 450], [800, 3000]]) {
+  for (const [width, height] of [[0, 450], [-1, 450], [NaN, 450], [Infinity, 450]]) {
     expect(renderer.resize(width, height, 1)).toBe(false);
     expect(surface.painted).toBe(false);
     expect([surface.width, surface.height]).toEqual([1600, 900]);
@@ -124,7 +125,7 @@ test('only the ocean crops to the centered source aspect in tall windows and res
   island.dispose();
 });
 
-test('visible resize bypasses the frame throttle and zero/oversized surfaces recover without another loop', () => {
+test('visible resize bypasses the frame throttle and invalid surfaces recover without another loop', () => {
   mount(); images[0].onload();
   expect(surface.dataset.ready).toBe('true');
   advance(1000);
@@ -134,7 +135,7 @@ test('visible resize bypasses the frame throttle and zero/oversized surfaces rec
   expect(surface.painted).toBe(true);
   expect(gl.drawArrays).toHaveBeenCalledTimes(draws + 1);
   expect(frames.size).toBe(1);
-  for (const [width, height] of [[0, 0], [5000, 900]]) {
+  for (const [width, height] of [[0, 0], [NaN, 900]]) {
     resize(width, height);
     expect(surface.dataset.ready).toBe('false');
     const previous = gl.drawArrays.mock.calls.length;
@@ -147,7 +148,7 @@ test('visible resize bypasses the frame throttle and zero/oversized surfaces rec
   }
 });
 
-test.each([[0, 0], [5000, 900]])('an initial %i × %i surface waits for a supported size before revealing motion', (width, height) => {
+test.each([[0, 0], [-1, 900]])('an initial %i × %i surface waits for a supported size before revealing motion', (width, height) => {
   surface.clientWidth = width; surface.clientHeight = height;
   mount(); images[0].onload(); advance(100);
   expect(surface.dataset.ready).toBe('false');
@@ -201,5 +202,51 @@ test('unavailable WebGL keeps the original still without an animation loop', () 
   mount(); images[0].onload();
   expect(surface.dataset.ready).toBe('false');
   expect(observers).toHaveLength(0);
+  expect(frames.size).toBe(0);
+});
+
+test('4K, Retina and ultrawide decoration keeps framing within the source pixel budget', () => {
+  window.devicePixelRatio = 2;
+  const renderer = createIslandMotion(surface, source, {variant: 'bay'});
+  for (const [width, height] of [[3840, 2160], [7680, 2160], [5000, 900], [800, 3000]]) {
+    expect(renderer.resize(width, height)).toBe(true);
+    expect(surface.width * surface.height).toBeLessThanOrEqual(source.naturalWidth * source.naturalHeight);
+    expect(Math.max(surface.width, surface.height)).toBeLessThanOrEqual(4096);
+    expect(surface.width / surface.height).toBeCloseTo(width / height, 1);
+    expect(surface.painted).toBe(true);
+  }
+  renderer.dispose();
+});
+
+test('sustained very slow frames release decorative rendering and preserve the original still', () => {
+  mount(); images[0].onload();
+  for (let time = 100; time <= 6500; time += 100) advance(time);
+  expect(surface.dataset.ready).toBe('false');
+  expect(frames.size).toBe(0);
+  expect(gl.deleteProgram).toHaveBeenCalledOnce();
+  const draws = gl.drawArrays.mock.calls.length;
+  advance(7000);
+  expect(gl.drawArrays).toHaveBeenCalledTimes(draws);
+});
+
+test('native 30Hz callbacks and a single long stall do not disable decoration', () => {
+  mount(); images[0].onload();
+  advance(5000);
+  for (let time = 5033; time <= 18000; time += 1000 / 30) advance(time);
+  expect(surface.dataset.ready).toBe('true');
+  expect(frames.size).toBe(1);
+  expect(gl.deleteProgram).not.toHaveBeenCalled();
+});
+
+test('repeated visible second-long frames fall back, while hidden gaps do not', () => {
+  mount(); images[0].onload();
+  document.hidden = true;
+  for (let time = 1200; time <= 12000; time += 1200) advance(time);
+  expect(gl.deleteProgram).not.toHaveBeenCalled();
+  document.hidden = false;
+  advance(13200); advance(14400); advance(15600);
+  expect(surface.dataset.ready).toBe('true');
+  advance(16800);
+  expect(surface.dataset.ready).toBe('false');
   expect(frames.size).toBe(0);
 });

@@ -3,9 +3,16 @@ export function fullscreenElement(doc) {
   return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
 }
 
+export function canEnterFullscreen(doc) {
+  const element = doc.documentElement;
+  if (typeof element?.requestFullscreen === 'function') return doc.fullscreenEnabled !== false;
+  return typeof element?.webkitRequestFullscreen === 'function' && doc.webkitFullscreenEnabled !== false;
+}
+
 /** Invoke directly in a click handler: browsers require transient user activation. */
 export async function enterFullscreen(doc) {
   if (fullscreenElement(doc)) return true;
+  if (!canEnterFullscreen(doc)) return false;
   const element = doc.documentElement;
   const request = element?.requestFullscreen ?? element?.webkitRequestFullscreen;
   if (!request) return false;

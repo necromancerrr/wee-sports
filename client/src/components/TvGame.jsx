@@ -8,7 +8,7 @@ import { sportName } from '../lib/sports.js';
 import { GameFrame } from './GameFrame.jsx';
 import { shouldTogglePause } from '../../../src/network/pauseShortcut.js';
 
-export function TvGame({ lobby, paused, onClose, error, immersive = true, fullscreen = false, onToggleView, onAudio, audioControls,
+export function TvGame({ lobby, paused, onClose, error, immersive = true, fullscreen = false, fullscreenAvailable = true, onToggleView, onAudio, audioControls,
   onReturnToLobby, returning = false, returnDisabled = false, onPauseToggle, pauseDisabled = false }) {
   const [confirmReturn, setConfirmReturn] = useState(false);
   useEffect(() => {
@@ -27,6 +27,11 @@ export function TvGame({ lobby, paused, onClose, error, immersive = true, fullsc
         <div className="game-session__actions">
           {audioControls}
           <span className="game-session__room" aria-label={`Room ${lobby.code}`}>{lobby.code}</span>
+          {!fullscreen && fullscreenAvailable ? <button type="button" className="game-session__fullscreen" onClick={onToggleView}
+            title="Enter full screen on this screen" autoFocus>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
+            Full screen
+          </button> : null}
           <details className="game-session__menu game-session__display" onToggle={event => { if (!event.currentTarget.open) setConfirmReturn(false); }}>
             <summary aria-label="TV display controls" title="TV display controls">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M9 21h6m-3-4v4" /></svg>
@@ -34,9 +39,9 @@ export function TvGame({ lobby, paused, onClose, error, immersive = true, fullsc
             </summary>
             <div className="game-session__menu-panel">
               <p>Sound and match settings are on your phone.</p>
-              <button type="button" className="game-session__view" onClick={onToggleView}>
-                {immersive ? fullscreen ? 'Exit full screen' : 'Windowed view' : 'Full screen'}
-              </button>
+              {fullscreen || fullscreenAvailable ? <button type="button" className="game-session__view" onClick={onToggleView}>
+                {fullscreen ? 'Exit full screen' : 'Full screen'}
+              </button> : <p>This browser keeps the game in its window.</p>}
               {onPauseToggle ? <button type="button" disabled={pauseDisabled} onClick={onPauseToggle}
                 aria-keyshortcuts="P">{lobby.manuallyPaused ? 'Resume game' : 'Pause game'} · P</button> : null}
               {onReturnToLobby ? <div className="game-session__return">

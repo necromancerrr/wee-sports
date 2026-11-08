@@ -111,9 +111,14 @@ async function ready(page, previous = {}) {
     const surfaces = [...document.querySelectorAll('canvas[data-motion-layer]')];
     return image?.complete && image.naturalWidth > 1000 && surfaces.length === 2 && surfaces.every(canvas => {
       const entry = window.__islandResize.layers[canvas.dataset.motionLayer];
-      const ratio = Math.min(devicePixelRatio, 2);
-      return canvas.dataset.ready === 'true' && canvas.width === Math.round(canvas.clientWidth * ratio) &&
-        canvas.height === Math.round(canvas.clientHeight * ratio) && entry?.draws > (before[entry.layer] || 0) + 1 &&
+      const source = canvas.parentElement.querySelector('img');
+      const context = canvas.getContext('webgl');
+      const limit = context.getParameter(context.MAX_RENDERBUFFER_SIZE);
+      const ratio = Math.min(devicePixelRatio, 2,
+        Math.sqrt(Math.min(source.naturalWidth * source.naturalHeight, 1920 * 1080) / (canvas.clientWidth * canvas.clientHeight)),
+        limit / canvas.clientWidth, limit / canvas.clientHeight);
+      return canvas.dataset.ready === 'true' && canvas.width === Math.max(1, Math.floor(canvas.clientWidth * ratio)) &&
+        canvas.height === Math.max(1, Math.floor(canvas.clientHeight * ratio)) && entry?.draws > (before[entry.layer] || 0) + 1 &&
         entry.painted === entry.generation;
     });
   }, previous, {timeout: 20000});

@@ -222,27 +222,30 @@ try {
   $('tt-error').textContent = 'This browser could not start 3D graphics. Enable WebGL or try a current Chrome, Safari, or Firefox browser.';
 }
 const setText = (id, text) => { if ($(id).textContent !== String(text)) $(id).textContent = text; };
+const setHidden = (id, hidden) => { if ($(id).hidden !== hidden) $(id).hidden = hidden; };
+const app = $('table-tennis-app'), score = document.querySelector('.tt-score');
+const setData = (key, value) => { const text = String(value); if (app.dataset[key] !== text) app.dataset[key] = text; };
 let previous = performance.now(), nextPublish = 0;
 function frame(now) {
+  const frameStartedAt = performance.now();
   if (!document.hidden) diagnostics.observe('frame.intervalMs', now - previous);
   game.update((now - previous) / 1000); previous = now;
+  const physicsEndedAt = diagnostics.enabled ? performance.now() : 0;
   const state = game.snapshot();
   const result = tableTennisResult(state, playerName, opponentName);
-  const app = $('table-tennis-app');
-  app.dataset.mode = state.mode;
-  app.dataset.phase = state.phase;
-  app.dataset.stale = String(Boolean(state.stale));
-  app.dataset.challenge = state.practiceChallenge?.stage || '';
-  app.dataset.targetHits = String(state.practiceChallenge?.hits || 0);
-  $('tt-connection').hidden = diagnosticsEnabled || Boolean(result) || !(game.paused || state.stale);
-  $('tt-connection').textContent = game.paused ? 'Paused' : 'Controller paused';
-  $('tt-result').hidden = !result;
+  setData('mode', state.mode);
+  setData('phase', state.phase);
+  setData('stale', Boolean(state.stale));
+  setData('challenge', state.practiceChallenge?.stage || '');
+  setData('targetHits', state.practiceChallenge?.hits || 0);
+  setHidden('tt-connection', diagnosticsEnabled || Boolean(result) || !(game.paused || state.stale));
+  setText('tt-connection', game.paused ? 'Paused' : 'Controller paused');
+  setHidden('tt-result', !result);
   if (result) {setText('tt-winner', result.title); setText('tt-final-score', result.score); setText('tt-result-detail', result.detail);}
   const winnerName = state.winner === 1 ? playerName : opponentName;
   const winnerText = winnerName === 'You' ? 'You win' : `${winnerName} wins`;
   setText('tt-you-label', state.practice ? 'Returns' : playerName);
   setText('tt-bot-label', state.practice ? 'Best rally' : opponentName);
-  const score = document.querySelector('.tt-score');
   const scoreLabel = state.practice ? 'Practice returns and best rally' : 'Match score';
   if (score.getAttribute('aria-label') !== scoreLabel) score.setAttribute('aria-label', scoreLabel);
   setText('tt-you', state.practice ? state.returns : state.score[0]);
@@ -257,18 +260,21 @@ function frame(now) {
   $('tt-practice').classList.toggle('selected', state.practice); $('tt-match').classList.toggle('selected', !state.practice);
   $('tt-you-side').classList.toggle('serving', !state.practice && state.server === 1);
   $('tt-bot-side').classList.toggle('serving', !state.practice && state.server === 2);
-  $('tt-announcement').hidden = Boolean(state.winner) || game.paused || state.stale || now >= announcementUntil;
+  setHidden('tt-announcement', Boolean(state.winner) || game.paused || state.stale || now >= announcementUntil);
+  if (now >= nextPublish) { publish(); nextPublish = now + 250; }
   const renderStart = diagnostics.enabled ? performance.now() : 0;
-  court?.render(now);
+  court?.render(now, frameStartedAt);
   if (diagnostics.enabled && court) {
+    diagnostics.observe('frame.physicsMs', physicsEndedAt - frameStartedAt);
+    diagnostics.observe('frame.hudMs', renderStart - physicsEndedAt);
     diagnostics.observe('frame.renderSubmissionMs', performance.now() - renderStart);
+    diagnostics.observe('frame.workMs', performance.now() - frameStartedAt);
     for (const id of pendingPoseRender.values()) {
       diagnostics.mark(id, 'renderSubmission');
       diagnostics.measure(id, 'received', 'renderSubmission', 'pose.receivedToRenderSubmissionMs');
     }
     pendingPoseRender.clear();
   }
-  if (now >= nextPublish) { publish(); nextPublish = now + 250; }
   requestAnimationFrame(frame);
 }
 window.addEventListener('pagehide', event => { if (!event.persisted) { sound?.dispose(); court?.dispose(); } });

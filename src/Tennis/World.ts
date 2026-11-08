@@ -81,9 +81,8 @@ export class World {
         this.worldCamera = new WorldCamera();
         this.camera = this.worldCamera.primary;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.frameQuality.settings.pixelRatio);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        this.handleResize();
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFShadowMap;
         this.renderer.shadowMap.autoUpdate = false;
@@ -161,8 +160,13 @@ export class World {
     }
 
     private handleResize = (): void => {
-        this.worldCamera.resize(window.innerWidth, window.innerHeight);
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        const width = window.innerWidth, height = window.innerHeight;
+        this.worldCamera.resize(width, height);
+        // Resize logical dimensions and DPR together: changing DPR first could
+        // briefly reallocate the previous 4K viewport at the new larger ratio.
+        this.renderer.setDrawingBufferSize(width, height, this.frameQuality.resize(width, height).pixelRatio);
+        this.renderer.domElement.style.width = `${width}px`;
+        this.renderer.domElement.style.height = `${height}px`;
     };
 
     public setSplitScreen(enabled: boolean): void {

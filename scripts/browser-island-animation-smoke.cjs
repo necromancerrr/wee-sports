@@ -67,7 +67,9 @@ async function screenshot(page, name) {
   const checks = [], errors = [], pixels = {};
   const pass = value => {checks.push(value); console.log('PASS:', value);};
   try {
-    const context = await browser.newContext({viewport: {width: 1672, height: 941}, reducedMotion: 'no-preference'});
+    // Inspect motion at a modest viewport on the software GPU. Large-screen
+    // budgets and slow-renderer fallback have their own TV performance check.
+    const context = await browser.newContext({viewport: {width: 960, height: 540}, reducedMotion: 'no-preference'});
     await context.addInitScript(instrument);
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
