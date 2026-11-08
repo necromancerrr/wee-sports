@@ -150,6 +150,41 @@ test('candidate and request floods stay bounded without allocating extra pairs',
   assert.equal(f.host.sent.filter(item=>item.event==='direct:signal').length,64);
 });
 
+test('peer heartbeats avoid public snapshots and room changes validate only that room', t => {
+  const f=fixture(t,{count:1}), otherHost=f.socket('other-host'), otherPhone=f.socket('other-phone');
+  const otherRoom=f.store.createRoom(otherHost.id,{v,sport:'tennis',capabilities});
+  f.store.join(otherPhone.id,{v,code:otherRoom.code,name:'Other',capabilities});
+  f.store.setSetup(otherPhone.id,{setup:'buttons'});f.store.setReady(otherPhone.id,{ready:true});
+  f.store.startGame(otherPhone.id);f.advance(5000);f.store.finishCountdown(otherRoom.code);
+  if(f.store.lobby(otherRoom.code).phase==='vote')f.store.vote(otherPhone.id,{watch:false});
+  const other=f.store.lobby(otherRoom.code), otherScope={gameId:other.gameId,generation:other.inputGeneration,hostEpoch:other.hostEpoch};
+  const first=f.open(), scope=f.context();
+  otherHost.request('direct:register',otherScope);otherPhone.request('direct:register',otherScope);
+  const second=otherPhone.request('direct:open',otherScope);
+  assert.equal(second.ok,true);
+
+  const contexts=[], original=f.store.directInputContext.bind(f.store);
+  f.store.directInputContext=id=>{contexts.push(id);return original(id);};
+  f.store.lobby=()=>{throw new Error('Signaling must not rebuild a public lobby snapshot');};
+  f.store.sessionContext=()=>{throw new Error('Signaling must not build profile/player snapshots');};
+  assert.equal(f.host.request('direct:register',scope).ok,true);
+  assert.deepEqual(new Set(contexts),new Set([f.host.id,f.phone.id]));
+  contexts.length=0;
+  assert.equal(f.host.request('direct:signal',{pairId:first.pairId,description:{type:'offer',sdp}}).ok,true);
+  assert.deepEqual(new Set(contexts),new Set([f.host.id,f.phone.id]));
+
+  f.store.setPaused(otherHost.id,{gameId:other.gameId,paused:true});
+  f.broker.sync(f.room.code);
+  assert.equal(otherHost.sent.some(item=>item.event==='direct:closed'),false);
+  contexts.length=0;f.broker.sync(otherRoom.code);
+  assert.deepEqual(new Set(contexts),new Set([otherHost.id,otherPhone.id]));
+  assert.ok(otherHost.sent.some(item=>item.event==='direct:closed'&&item.payload.pairId===second.pairId));
+  assert.equal(f.host.sent.some(item=>item.event==='direct:closed'),false);
+
+  f.advance(3001);f.broker.sync();
+  assert.ok(f.host.sent.some(item=>item.event==='direct:closed'&&item.payload.pairId===first.pairId));
+});
+
 test('real sockets route signaling to the authenticated TV and revoke it immediately on a room pause', async t => {
   let time=0;
   const store=new RoomStore({now:()=>time}), app=createGameServer({store,tickMs:10}), clients=[];

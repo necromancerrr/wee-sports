@@ -8,6 +8,10 @@ import {browserDiagnostics} from '../../shared/diagnostics.js';
 import './controller.css';
 
 const $ = id => document.getElementById(id);
+const setView = (id, property, value) => {
+  const target = $(id);
+  if (target[property] !== value) target[property] = value;
+};
 const embedded = window.parent !== window && new URLSearchParams(location.search).has('lobby');
 const post = message => { if (embedded) window.parent.postMessage(message, location.origin); };
 let attempt = 0, lastParentIntent = null, pendingRecenter = null, commandSequence = 0;
@@ -38,24 +42,27 @@ function render() {
   else if (!state.setup) {title = 'Getting ready…'; cue = 'Pick up your phone. We’ll do the rest.';}
   else if (!state.playing) {title = 'You’re in'; cue = 'Watch the TV. The game starts together.';}
   if (state.setupError) {title = 'Reconnecting your controls…'; cue = 'Keep this page open. We’ll retry automatically.'; label = 'Reconnecting';}
-  $('tt-title').textContent = title;
-  $('tt-cue').textContent = cue;
-  $('tt-phone-status').textContent = label;
-  $('tt-enable-motion').hidden = Boolean(state.mode) && !state.setupError;
-  $('tt-use-touch').textContent = state.mode === 'touch' ? 'Use motion' : 'Use touch';
-  $('tt-use-touch').hidden = false;
-  $('tt-touch').hidden = state.mode !== 'touch';
-  $('tt-illustration').hidden = state.mode === 'touch';
-  $('tt-options').hidden = !state.mode;
-  $('tt-touch-stroke').disabled = !session.canSend;
-  for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) $(id).disabled = !session.canSend;
-  for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) $(id).hidden = humanOpponent;
+  setView('tt-title', 'textContent', title);
+  setView('tt-cue', 'textContent', cue);
+  setView('tt-phone-status', 'textContent', label);
+  setView('tt-enable-motion', 'hidden', Boolean(state.mode) && !state.setupError);
+  setView('tt-use-touch', 'textContent', state.mode === 'touch' ? 'Use motion' : 'Use touch');
+  setView('tt-use-touch', 'hidden', false);
+  setView('tt-touch', 'hidden', state.mode !== 'touch');
+  setView('tt-illustration', 'hidden', state.mode === 'touch');
+  setView('tt-options', 'hidden', !state.mode);
+  setView('tt-touch-stroke', 'disabled', !session.canSend);
+  for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) setView(id, 'disabled', !session.canSend);
+  for (const id of ['tt-practice-phone', 'tt-match-phone', 'tt-recenter-phone']) setView(id, 'hidden', humanOpponent);
   const showNotice = notice && performance.now() < noticeUntil;
-  $('tt-notice').textContent = showNotice ? notice : '';
-  $('tt-notice').hidden = !showNotice;
-  $('tt-touch-paddle').style.left = `${(state.reach.x + 1) * 50}%`;
-  $('tt-touch-paddle').style.top = `${(1 - state.reach.y) * 50}%`;
-  $('tt-touchpad').setAttribute('aria-valuenow', Math.round(state.reach.x * 100));
+  setView('tt-notice', 'textContent', showNotice ? notice : '');
+  setView('tt-notice', 'hidden', !showNotice);
+  const left = `${(state.reach.x + 1) * 50}%`, top = `${(1 - state.reach.y) * 50}%`;
+  const paddle = $('tt-touch-paddle');
+  if (paddle.style.left !== left) paddle.style.left = left;
+  if (paddle.style.top !== top) paddle.style.top = top;
+  const value = String(Math.round(state.reach.x * 100));
+  if ($('tt-touchpad').getAttribute('aria-valuenow') !== value) $('tt-touchpad').setAttribute('aria-valuenow', value);
 }
 function showNotice(message, duration = 3500) {notice = message; noticeUntil = performance.now() + duration; render();}
 

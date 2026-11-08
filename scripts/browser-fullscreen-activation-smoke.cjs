@@ -44,7 +44,11 @@ const base=process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5262';
     await phone.getByRole('button',{name:'Start now',exact:true}).click();
     await tv.locator('.game-countdown').waitFor();
     await tv.waitForFunction(()=>window.__fullscreenAttempts.some(attempt=>attempt.error));
-    const automatic=await tv.evaluate(()=>({attempts:window.__fullscreenAttempts,fullscreen:Boolean(document.fullscreenElement)}));
+    const automatic=await tv.evaluate(async()=>{
+      let permission='unsupported';
+      try {permission=(await navigator.permissions.query({name:'fullscreen',allowWithoutGesture:true})).state;} catch { /* Older browsers do not expose this descriptor. */ }
+      return {attempts:window.__fullscreenAttempts,fullscreen:Boolean(document.fullscreenElement),permission};
+    });
     assert.equal(automatic.attempts.length,1);
     assert.equal(automatic.attempts[0].active,false);
     assert.equal(automatic.attempts[0].stage,'countdown');
@@ -55,19 +59,23 @@ const base=process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5262';
     assert.deepEqual(bounds,{x:0,y:0,w:bounds.vw,h:bounds.vh,vw:bounds.vw,vh:bounds.vh});
     pass('First remote start requests fullscreen only after the lobby; real browser denial still fills the viewport');
 
-    await tv.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});
+    await tv.locator('iframe[title="Tennis game"]').waitFor();
+    const frame=await tv.locator('iframe').elementHandle();
+    const game=await frame.contentFrame();
+    await game.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});
     await tv.keyboard.press('Enter');
     await tv.waitForFunction(()=>Boolean(document.fullscreenElement));
     const local=await tv.evaluate(()=>window.__fullscreenAttempts.at(-1));
     assert.equal(local.active,true);assert.equal(local.entered,true);
-    pass('A real TV Enter on the stage completes fullscreen on the first press without opening Display');
+    // Fullscreen's DOM promise resolves before the queued fullscreenchange
+    // event. Wait for the real UI to observe entry before testing an exit.
+    await tv.getByRole('button',{name:'Exit full screen',exact:true,includeHidden:true}).waitFor({state:'attached'});
+    pass('A real TV Enter focused inside the game iframe completes fullscreen on the first press without opening Display');
 
-    await tv.locator('iframe[title="Tennis game"]').waitFor();
-    const frame=await tv.locator('iframe').elementHandle();
     await tv.evaluate(()=>document.exitFullscreen());
     await tv.waitForFunction(()=>!document.fullscreenElement);
     await tv.locator('.game-session:not(.game-session--immersive)').waitFor();
-    await tv.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});
+    await game.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});
     const before=await tv.evaluate(()=>window.__fullscreenAttempts.length);
     await tv.keyboard.press('Enter');
     assert.equal(await tv.evaluate(()=>window.__fullscreenAttempts.length),before,'an intentional exit must not be immediately reversed');
@@ -85,8 +93,8 @@ const base=process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5262';
     assert.equal(await tv.evaluate(()=>window.__fullscreenAttempts[0].active),true);
     pass('Saved-match choices stay windowed; Continue enters fullscreen on its first real TV click');
     assert.deepEqual(errors,[]);
-    const report={recordedAt:new Date().toISOString(),checks,errors,limitations:[
-      'Chrome requires a gesture on the TV document when automatic fullscreen permission is unavailable. A phone tap cannot grant it.',
+    const report={recordedAt:new Date().toISOString(),checks,errors,automatic,local,limitations:[
+      'Browsers require a gesture on the TV document when automatic fullscreen permission is unavailable. A phone tap cannot grant it.',
       'Headless Chromium DOM Fullscreen API state was observed; this does not prove that a physical TV or managed browser hides its browser chrome.',
       'Chromium software rendering; physical TV browser and remote were not measured.'
     ]};

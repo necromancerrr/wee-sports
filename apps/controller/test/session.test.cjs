@@ -303,7 +303,9 @@ test('native tennis sends one expiring swing with its captured placement and sta
   session.seat.sport='tennis';
   const result=await session.action(EVENTS.PLAYER_SWING,{type:'swing',label:'Forehand',hand:'Right',power:.6,aim:-.4,depth:.25});
   assert.equal(result.ok,true);assert.equal(socket.sent.length,1);assert.equal(socket.sent[0].volatile,true);
-  assert.deepEqual(socket.sent[0].payload,{type:'swing',label:'Forehand',hand:'Right',power:.6,aim:-.4,depth:.25,
+  const {transportWaitMs=0,...delivered}=socket.sent[0].payload;
+  assert.ok(Number.isFinite(transportWaitMs)&&transportWaitMs>=0&&transportWaitMs<160);
+  assert.deepEqual(delivered,{type:'swing',label:'Forehand',hand:'Right',power:.6,aim:-.4,depth:.25,
     generation:3,hostEpoch:2,id:result.id,gameId:'game-a'});
   socket.responses.set(EVENTS.PLAYER_SWING,'timeout');
   const unknown=await session.action(EVENTS.PLAYER_SWING,{type:'swing',label:'Backhand',hand:'Right'});

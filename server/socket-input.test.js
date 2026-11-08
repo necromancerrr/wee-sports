@@ -20,7 +20,7 @@ const input = {type: 'swing', id: 'one', gameId: 'current', hand: 'Right', label
 test('blocked motion expires without entering Socket.IO buffers or replaying on recovery', async () => {
   h.socket.io.engine.transport.writable = false;
   const blocked = requestSwing('player:swing', input);
-  await vi.advanceTimersByTimeAsync(80);
+  await vi.advanceTimersByTimeAsync(160);
   expect(await blocked).toEqual({ok: false, error: 'network-busy'});
   expect(packets).toEqual([]); expect(h.socket.sendBuffer).toEqual([]);
   expect(Object.keys(h.socket.acks)).toEqual([]);
@@ -44,9 +44,39 @@ test('a normal polling handoff waits briefly and delivers exactly once without q
   h.socket.io.engine.transport.writable = true;
   await vi.advanceTimersByTimeAsync(4);
   expect(packets).toHaveLength(1);
+  expect(packets[0].data[1].transportWaitMs).toBe(24);
   expect(h.socket.sendBuffer).toEqual([]);
   h.socket.onack({id: packets[0].id, data: [{ok: true}]});
   expect(await pending).toEqual({ok: true});
+});
+
+test('tennis accepts a fresh 120ms polling handoff and spends that wait from its server budget', async () => {
+  const {remainingSwingTransportWait}=await import('../src/network/swingRequest.js');
+  h.socket.io.engine.transport.writable=false;
+  const pending=requestSwing('player:swing',{...input,transportWaitMs:-1000});
+  await vi.advanceTimersByTimeAsync(116);h.socket.io.engine.transport.writable=true;
+  await vi.advanceTimersByTimeAsync(4);
+  expect(packets).toHaveLength(1);
+  expect(packets[0].data[1].transportWaitMs).toBe(120);
+  expect(remainingSwingTransportWait(packets[0].data[1])).toBe(40);
+  h.socket.onack({id:packets[0].id,data:[{ok:true}]});expect((await pending).ok).toBe(true);
+});
+
+test('phone and server share one 160ms queue budget, including exhausted or invalid metadata', async () => {
+  const {remainingSwingTransportWait,waitForSwingTransport}=await import('../src/network/swingRequest.js');
+  expect(remainingSwingTransportWait({})).toBe(160);
+  for(const transportWaitMs of [-1,161,Infinity,NaN,'0'])expect(remainingSwingTransportWait({transportWaitMs})).toBe(0);
+  expect(await waitForSwingTransport(()=>true,()=>true,()=>true,remainingSwingTransportWait({transportWaitMs:160}))).toBe('network-busy');
+  let writable=false;
+  const within=waitForSwingTransport(()=>writable,()=>true,()=>true,remainingSwingTransportWait({transportWaitMs:80}));
+  await vi.advanceTimersByTimeAsync(72);writable=true;await vi.advanceTimersByTimeAsync(4);
+  expect(await within).toBe('ready');
+  writable=false;
+  const expired=waitForSwingTransport(()=>writable,()=>true,()=>true,remainingSwingTransportWait({transportWaitMs:80}));
+  await vi.advanceTimersByTimeAsync(80);writable=true;
+  expect(await expired).toBe('network-busy');
+  const available=waitForSwingTransport(()=>writable,()=>true,()=>true,remainingSwingTransportWait({transportWaitMs:80}));
+  expect(await available).toBe('ready');
 });
 
 test('a match lifecycle change while waiting cancels the old motion even after recovery', async () => {

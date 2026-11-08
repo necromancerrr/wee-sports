@@ -1,8 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {PHASES} from '../../shared/protocol.js';
 
 const LEASE_MS = 3000;
-const supported = new Set(['tennis', 'table-tennis']);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const same = (a, b) => a && b && a.code === b.code && a.gameId === b.gameId &&
   a.generation === b.generation && a.hostEpoch === b.hostEpoch && a.sport === b.sport;
@@ -42,18 +40,7 @@ export function createDirectInputBroker({io, store, now = () => performance.now(
   let stopped = false;
   const reply = (ack, value) => {if (typeof ack === 'function') ack(value);};
   const socketFor = id => io.sockets.sockets.get(id);
-  const current = id => {
-    if (!socketFor(id)?.connected) return null;
-    const member = store.sessionContext(id), room = member && store.lobby(member.code);
-    if (!room || !supported.has(room.sport) || room.phase !== PHASES.GAME || room.paused ||
-        !room.gameId || room.gameState?.phase === 'complete') return null;
-    const seat = member.role === 'player' && member.room.players.find(player => player.memberId === member.memberId);
-    if (member.role === 'host' ? store.hostedBy(id) !== member.code :
-      member.role !== 'player' || !seat || seat.slot > 1 || !room.players.find(player => player.slot === seat.slot)?.setup) return null;
-    return {memberId: member.memberId, role: member.role, code: member.code,
-      gameId: room.gameId, generation: room.inputGeneration, hostEpoch: room.hostEpoch,
-      sport: room.sport, ...(seat ? {player: seat.slot + 1} : {})};
-  };
+  const current = id => socketFor(id)?.connected ? store.directInputContext(id) : null;
   const validRegistration = id => {
     const registered = registrations.get(id), context = current(id);
     return registered && registered.until > now() && same(registered, context) &&
@@ -68,9 +55,11 @@ export function createDirectInputBroker({io, store, now = () => performance.now(
     return same(host, phone) && same(pair, host) && host.role === 'host' && phone.role === 'player' &&
       phone.player === pair.player && phone.memberId === pair.phoneMember && host.memberId === pair.hostMember;
   };
-  const sync = () => {
-    for (const pair of pairs.values()) if (!validPair(pair)) closePair(pair);
-    for (const id of registrations.keys()) if (!validRegistration(id)) registrations.delete(id);
+  const sync = code => {
+    // Room changes invalidate their own peers immediately. The periodic sweep
+    // checks all rooms once, rather than every room on every peer renewal.
+    for (const pair of pairs.values()) if ((!code || pair.code === code) && !validPair(pair)) closePair(pair);
+    for (const [id, registered] of registrations) if ((!code || registered.code === code) && !validRegistration(id)) registrations.delete(id);
   };
   const closeSocket = id => {
     registrations.delete(id);
@@ -85,8 +74,9 @@ export function createDirectInputBroker({io, store, now = () => performance.now(
     };
     const register = (payload, ack) => {
       if (!allowed()) return reply(ack, {ok:false,error:'rate-limited'});
-      sync();
       const context = current(socket.id);
+      const code = context?.code ?? registrations.get(socket.id)?.code;
+      if (code) sync(code);
       if (!context || !record(payload) || payload.gameId !== context.gameId ||
           payload.generation !== context.generation || payload.hostEpoch !== context.hostEpoch) {
         if (!context || !same(registrations.get(socket.id), context)) closeSocket(socket.id);
@@ -97,7 +87,8 @@ export function createDirectInputBroker({io, store, now = () => performance.now(
     };
     const open = (payload, ack) => {
       if (!allowed()) return reply(ack, {ok:false,error:'rate-limited'});
-      sync();
+      const code = registrations.get(socket.id)?.code;
+      if (code) sync(code);
       const phone = validRegistration(socket.id);
       if (!phone || phone.role !== 'player' || !record(payload) || payload.gameId !== phone.gameId ||
           payload.generation !== phone.generation || payload.hostEpoch !== phone.hostEpoch) return reply(ack, {ok:false,error:'not-controller'});
@@ -118,9 +109,9 @@ export function createDirectInputBroker({io, store, now = () => performance.now(
     };
     const signal = (payload, ack) => {
       if (!allowed()) return reply(ack, {ok:false,error:'rate-limited'});
-      sync();
       const pair = record(payload) && pairs.get(payload.pairId);
       if (!pair || (pair.host !== socket.id && pair.phone !== socket.id)) return reply(ack, {ok:false,error:'unknown-peer'});
+      if (!validPair(pair)) {closePair(pair);return reply(ack, {ok:false,error:'unknown-peer'});}
       const clean = cleanSignal(payload, pair.phone === socket.id ? 'player' : 'host');
       if (!clean) return reply(ack, {ok:false,error:'bad-signal'});
       if (clean.description) {

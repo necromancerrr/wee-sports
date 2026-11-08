@@ -1,0 +1,227 @@
+{
+  "recordedAt": "2026-11-08T20:42:46.599Z",
+  "checks": 8,
+  "measurements": [
+    {
+      "label": "Forehand",
+      "hand": "Right",
+      "delayMs": 0,
+      "before": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "after": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.29999999701976776,
+          "receivedToContactMs": 10.599999994039536
+        }
+      ],
+      "elapsedAfterInputMs": 206.90000000596046
+    },
+    {
+      "label": "Forehand",
+      "hand": "Right",
+      "delayMs": 120,
+      "before": [
+        -2.1382092130730266,
+        1.0263969451148862,
+        -8.36863242839962
+      ],
+      "after": [
+        -1.894330231307139,
+        1.8177536521580415,
+        -5.658301362822014
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.09999999403953552,
+          "receivedToContactMs": 2
+        }
+      ],
+      "elapsedAfterInputMs": 4.899999991059303
+    },
+    {
+      "label": "Backhand",
+      "hand": "Right",
+      "delayMs": 0,
+      "before": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "after": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.7000000029802322,
+          "receivedToContactMs": 4.200000002980232
+        }
+      ],
+      "elapsedAfterInputMs": 11.400000005960464
+    },
+    {
+      "label": "Backhand",
+      "hand": "Right",
+      "delayMs": 120,
+      "before": [
+        -2.1382092130730266,
+        1.0263969451148862,
+        -8.36863242839962
+      ],
+      "after": [
+        -1.9831984334859785,
+        1.5670281430105255,
+        -6.669740100888613
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.10000000894069672,
+          "receivedToContactMs": 1.4000000059604645
+        }
+      ],
+      "elapsedAfterInputMs": 4.299999997019768
+    },
+    {
+      "label": "Forehand",
+      "hand": "Left",
+      "delayMs": 0,
+      "before": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "after": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.7000000029802322,
+          "receivedToContactMs": 1.800000011920929
+        }
+      ],
+      "elapsedAfterInputMs": 7.5
+    },
+    {
+      "label": "Forehand",
+      "hand": "Left",
+      "delayMs": 120,
+      "before": [
+        -2.1382092130730266,
+        1.0263969451148862,
+        -8.36863242839962
+      ],
+      "after": [
+        -2.001711784850644,
+        1.5090991729160441,
+        -6.8766772915752705
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.3999999910593033,
+          "receivedToContactMs": 3.0999999940395355
+        }
+      ],
+      "elapsedAfterInputMs": 11
+    },
+    {
+      "label": "Backhand",
+      "hand": "Left",
+      "delayMs": 0,
+      "before": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "after": [
+        -1.9310901529814386,
+        0.8328800593085709,
+        -7.066788367866441
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.09999999403953552,
+          "receivedToContactMs": 1.7999999970197678
+        }
+      ],
+      "elapsedAfterInputMs": 4.799999997019768
+    },
+    {
+      "label": "Backhand",
+      "hand": "Left",
+      "delayMs": 120,
+      "before": [
+        -2.1382092130730266,
+        1.0263969451148862,
+        -8.36863242839962
+      ],
+      "after": [
+        -1.894330231307142,
+        1.8177536521579976,
+        -5.658301362822094
+      ],
+      "lastHitBy": "player2",
+      "strokes": [
+        {
+          "id": "late-return",
+          "player": 2,
+          "result": "hit",
+          "reason": "Racket contact",
+          "receivedToPreparationMs": 0.5999999940395355,
+          "receivedToContactMs": 1.8999999910593033
+        }
+      ],
+      "elapsedAfterInputMs": 6.799999997019768
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Real Chromium/GLB animation and contact with a controlled delay after the incoming-ball window. Does not include live sensors, Railway RTT or physical TV FPS.",
+    "Software WebGL; render submission time is included after contact and is not a motion-to-display latency measurement."
+  ]
+}

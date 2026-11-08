@@ -117,6 +117,43 @@ test('fast confirmation rejects an isolated post-peak dip and waits for sustaine
   assert.equal(events.length, 1, 'completion of the same follow-through is not a second delivery');
 });
 
+test('a broad directed swing confirms on its first sustained slowdown without waiting for a deep drop', () => {
+  const stream = createSwingStream('Right', {fast: true});
+  const events = [];
+  const push = (timeMs, magnitude) => {
+    stream.push({timeMs, rotationAlpha: magnitude * .45, rotationBeta: magnitude * .9, rotationGamma: 0});
+    events.push(...stream.analyze().filter(event => event.label !== 'Unknown'));
+  };
+  for (let timeMs = 0; timeMs <= 200; timeMs += 20) push(timeMs, 0);
+  for (const [timeMs, magnitude] of [[220, 300], [240, 600], [260, 900], [280, 1100],
+    [300, 1080], [320, 960]]) push(timeMs, magnitude);
+  assert.deepEqual(events, [], 'one lower sample must not commit a stroke');
+  push(340, 950);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].label, 'Forehand');
+  assert.equal(events[0].peakTimeMs, 280);
+  assert.equal(events[0].detectedAtMs, 340);
+  for (let timeMs = 360; timeMs <= 600; timeMs += 20) push(timeMs, 0);
+  assert.equal(events.length, 1);
+});
+
+test('faster confirmation still requires post-peak evidence and repeated polling cannot replay it', () => {
+  const stream = createSwingStream('Right', {fast: true});
+  const events = [];
+  const push = (timeMs, magnitude) => {
+    stream.push({timeMs, rotationAlpha: magnitude * .45, rotationBeta: magnitude * .9, rotationGamma: 0});
+    events.push(...stream.analyze().filter(event => event.label !== 'Unknown'));
+    assert.deepEqual(stream.analyze(), [], 'a watchdog poll adds no new sensor evidence');
+  };
+  for (let timeMs = 0; timeMs <= 180; timeMs += 20) push(timeMs, 0);
+  for (const [timeMs, magnitude] of [[200, 300], [220, 700], [240, 1000], [250, 850], [270, 840]]) push(timeMs, magnitude);
+  assert.deepEqual(events, [], 'two lower readings alone do not replace the post-peak direction window');
+  push(280, 830);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].peakTimeMs, 240);
+  assert.equal(events[0].detectedAtMs, 280);
+});
+
 for (const early of [false, true]) {
   test(`gentler forehands and backhands work for both hands (${early ? 'early' : 'completion'})`, () => {
     for (const [hand, label, alpha, beta, gamma] of [

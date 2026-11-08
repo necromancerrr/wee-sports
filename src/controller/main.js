@@ -22,6 +22,11 @@ import '../play.css';
 import './controller.css';
 
 const element = id => document.getElementById(id);
+// Polling freshness must not rewrite the same controls/live regions each tick.
+const setView = (id, property, value) => {
+  const target = element(id);
+  if (target[property] !== value) target[property] = value;
+};
 const embedded = window.parent !== window;
 const query = new URLSearchParams(location.search);
 const motionDiagnostics = browserDiagnostics('phone.tennis');
@@ -113,10 +118,10 @@ function renderTiming() {
   for (const [key, label] of [['recognition', 'Motion confirmation'], ['delivery', 'Delivery acknowledgement round trip'], ['contact', 'TV arrival to contact']]) {
     const sample = timingStats[key].summary();
     if (key === 'contact' && !embedded) {
-      element('timing-contact').textContent = 'TV arrival to contact: available when playing through the homepage lobby.';
+      setView('timing-contact', 'textContent', 'TV arrival to contact: available when playing through the homepage lobby.');
       continue;
     }
-    element(`timing-${key}`).textContent = `${label}: ${sample ? `median ${Math.round(sample.median)} ms · p95 ${Math.round(sample.p95)} ms · ${sample.count} ${sample.count === 1 ? 'sample' : 'samples'}` : 'waiting for samples'}.`;
+    setView(`timing-${key}`, 'textContent', `${label}: ${sample ? `median ${Math.round(sample.median)} ms · p95 ${Math.round(sample.p95)} ms · ${sample.count} ${sample.count === 1 ? 'sample' : 'samples'}` : 'waiting for samples'}.`);
   }
 }
 renderTiming();
@@ -155,7 +160,7 @@ const screenAwake = createScreenAwake({ navigator: globalThis.navigator, documen
 function recentReadings() { return lastReading !== null && performance.now() - lastReading < 1500; }
 function publishSetup() {
   const setup = !pageActive || document.hidden ? null : buttonMode ? 'buttons' : bias && !rehearsal ? 'motion' : null;
-  element('setup-status').textContent = setup === 'motion' ? 'Motion ready' : setup === 'buttons' ? 'Touch controls ready' : 'Connecting motion';
+  setView('setup-status', 'textContent', setup === 'motion' ? 'Motion ready' : setup === 'buttons' ? 'Touch controls ready' : 'Connecting motion');
   const now = performance.now();
   const reason = !pageActive || document.hidden ? 'background' : undefined;
   if (embedded && (setup !== lastSetup || reason !== lastSetupReason || connected && (pendingSetup !== null && now - setupSentAt > 6000 || setupError && now >= setupRetryAt))) {
@@ -175,22 +180,22 @@ function cancelArmedRoll() { bowlingGate.suspend(); bowlingDetector = null; lock
 // calibration, sensor permission and the lobby connection.
 function renderPlayState() {
   const setup = buttonMode || Boolean(bias);
-  element('setup-panel').hidden = !settingsOpen;
-  element('controller-options').hidden = !settingsOpen;
-  element('play-panel').hidden = settingsOpen;
-  element('timing-details').hidden = bowling || !settingsOpen;
-  element('strength-panel').hidden = bowling || buttonMode || !bias || !settingsOpen;
-  element('tune-strength').disabled = !bias || !recentReadings() || Boolean(rehearsal) || Boolean(calibration);
-  element('tune-strength').textContent = strengthProfile ? 'Retune power' : 'Tune power';
-  element('skip-strength').textContent = rehearsal ? 'Cancel rehearsal' : 'Use default power';
-  element('strength-progress').hidden = !rehearsal;
-  element('controller-header').hidden = embedded && !settingsOpen;
-  element('toggle-settings').hidden = settingsOpen;
-  element('back-to-play').hidden = !settingsOpen;
-  element('toggle-settings').disabled = Boolean(calibration) || Boolean(rehearsal) || permissionPending;
-  element('toggle-settings').textContent = settingsOpen ? 'Back to play' : 'Settings';
-  element('toggle-settings').ariaExpanded = String(settingsOpen);
-  element('stop').hidden = !setup || buttonMode || !gameActive || !settingsOpen;
+  setView('setup-panel', 'hidden', !settingsOpen);
+  setView('controller-options', 'hidden', !settingsOpen);
+  setView('play-panel', 'hidden', settingsOpen);
+  setView('timing-details', 'hidden', bowling || !settingsOpen);
+  setView('strength-panel', 'hidden', bowling || buttonMode || !bias || !settingsOpen);
+  setView('tune-strength', 'disabled', !bias || !recentReadings() || Boolean(rehearsal) || Boolean(calibration));
+  setView('tune-strength', 'textContent', strengthProfile ? 'Retune power' : 'Tune power');
+  setView('skip-strength', 'textContent', rehearsal ? 'Cancel rehearsal' : 'Use default power');
+  setView('strength-progress', 'hidden', !rehearsal);
+  setView('controller-header', 'hidden', embedded && !settingsOpen);
+  setView('toggle-settings', 'hidden', settingsOpen);
+  setView('back-to-play', 'hidden', !settingsOpen);
+  setView('toggle-settings', 'disabled', Boolean(calibration) || Boolean(rehearsal) || permissionPending);
+  setView('toggle-settings', 'textContent', settingsOpen ? 'Back to play' : 'Settings');
+  setView('toggle-settings', 'ariaExpanded', String(settingsOpen));
+  setView('stop', 'hidden', !setup || buttonMode || !gameActive || !settingsOpen);
   let state = 'ready';
   let status = buttonMode ? 'Touch ready' : 'Motion ready';
   let title = 'You’re in';
@@ -256,24 +261,24 @@ function renderPlayState() {
   for (const [id, text] of [['play-status', status], ['play-title', title], ['play-help', help], ['play-notice', notice]]) {
     if (element(id).textContent !== text) element(id).textContent = text;
   }
-  element('play-panel').dataset.state = state;
-  element('play-notice').hidden = !notice || (!setupError && (!gameActive || lobbyPaused || !connected));
-  element('record').hidden = !setup || buttonMode || !gameActive || lobbyPaused || !connected || recording || settingsOpen || state === 'finished';
-  element('record').disabled = !gameActive || lobbyPaused || !connected || !enabled || !bias || recording || Boolean(calibration) || !recentReadings();
-  element('bowling-controls').hidden = !bowling || state !== 'playing' || !turnReady();
-  element('shot-adjustments').hidden = !buttonMode;
-  element('curve-buttons').hidden = !buttonMode;
-  element('aim').hidden = false;
-  element('aim-label').textContent = 'Aim';
-  element('tilt-help').hidden = true;
-  element('bowling-readout').hidden = !bowling || buttonMode || !gameActive || state === 'paused' || !(bowlingReadout && performance.now() < feedbackUntil);
-  element('grip-cue').hidden = !bowling || buttonMode || !setup || state !== 'playing';
-  element('use-buttons').hidden = buttonMode || settingsOpen;
-  element('enable').hidden = settingsOpen || (setup && !buttonMode) || enabled && !buttonMode;
-  element('enable').textContent = buttonMode ? 'Use motion' : 'Allow motion';
-  element('bowling-buttons').hidden = !buttonMode;
-  element('manual-controls').hidden = bowling || !buttonMode || state !== 'playing';
-  element('latest').hidden = !gameActive || state === 'paused' || performance.now() >= feedbackUntil;
+  if (element('play-panel').dataset.state !== state) element('play-panel').dataset.state = state;
+  setView('play-notice', 'hidden', !notice || (!setupError && (!gameActive || lobbyPaused || !connected)));
+  setView('record', 'hidden', !setup || buttonMode || !gameActive || lobbyPaused || !connected || recording || settingsOpen || state === 'finished');
+  setView('record', 'disabled', !gameActive || lobbyPaused || !connected || !enabled || !bias || recording || Boolean(calibration) || !recentReadings());
+  setView('bowling-controls', 'hidden', !bowling || state !== 'playing' || !turnReady());
+  setView('shot-adjustments', 'hidden', !buttonMode);
+  setView('curve-buttons', 'hidden', !buttonMode);
+  setView('aim', 'hidden', false);
+  setView('aim-label', 'textContent', 'Aim');
+  setView('tilt-help', 'hidden', true);
+  setView('bowling-readout', 'hidden', !bowling || buttonMode || !gameActive || state === 'paused' || !(bowlingReadout && performance.now() < feedbackUntil));
+  setView('grip-cue', 'hidden', !bowling || buttonMode || !setup || state !== 'playing');
+  setView('use-buttons', 'hidden', buttonMode || settingsOpen);
+  setView('enable', 'hidden', settingsOpen || (setup && !buttonMode) || enabled && !buttonMode);
+  setView('enable', 'textContent', buttonMode ? 'Use motion' : 'Allow motion');
+  setView('bowling-buttons', 'hidden', !buttonMode);
+  setView('manual-controls', 'hidden', bowling || !buttonMode || state !== 'playing');
+  setView('latest', 'hidden', !gameActive || state === 'paused' || performance.now() >= feedbackUntil);
   const activeController = setup && gameActive && connected && !lobbyPaused && !settingsOpen && pageActive && !document.hidden && (state === 'playing' || state === 'waiting');
   const readyInLobby = !gameActive && Boolean(bias) && !buttonMode && connected && !settingsOpen && pageActive && !document.hidden && state === 'ready';
   const rehearsing = Boolean(rehearsal) && connected && pageActive && !document.hidden;
@@ -795,22 +800,28 @@ element('use-buttons').onclick = () => {
 function sensorStatus(now) {
   if (now - sensorUpdatedAt < 250) return;
   sensorUpdatedAt = now;
+  // Readiness and notices still refresh during play. Live gyro counters belong
+  // to Settings, so do not rebuild their hidden text on every sensor poll.
+  if (gameActive && !settingsOpen && (buttonMode || recentReadings())) {
+    renderPlayState(); return;
+  }
   const status = element('sensor-status');
-  status.dataset.state = 'ready';
+  let sensorState = 'ready';
   if (!window.isSecureContext) {
-    status.textContent = 'HTTP connection: phone motion is unavailable. Use an HTTPS link or button controls.';
-    status.dataset.state = 'error';
+    setView('sensor-status', 'textContent', 'HTTP connection: phone motion is unavailable. Use an HTTPS link or button controls.');
+    sensorState = 'error';
   } else if (!window.DeviceMotionEvent) {
-    status.textContent = 'No motion API on this device. Button controls are available.';
-    status.dataset.state = 'error';
-  } else if (recentReadings()) status.textContent = `Gyroscope connected · ${validReadings} readings received`;
+    setView('sensor-status', 'textContent', 'No motion API on this device. Button controls are available.');
+    sensorState = 'error';
+  } else if (recentReadings()) setView('sensor-status', 'textContent', `Gyroscope connected · ${validReadings} readings received`);
   else if (enabled && now - permissionAt > 2500) {
-    status.textContent = eventsSeen ? 'Motion events arrived without gyroscope data. Check browser permissions or use buttons.' : 'Permission allowed, but no readings arrived. Keep this page visible and check browser motion permissions.';
-    status.dataset.state = 'error';
-  } else status.textContent = enabled ? 'Waiting for sensor readings…' : 'Allow motion or choose touch controls.';
-  element('sensor-detail').textContent = `${window.isSecureContext ? 'Secure context' : 'Insecure context'} · ${eventsSeen} events · ${validReadings} valid gyro readings${latestRate ? ` · ${Math.round(Math.hypot(...Object.values(latestRate)))}°/s · last reading ${Math.round(now - lastReading)} ms ago` : ''}`;
-  element('detector-state').textContent = !recording ? 'Motion idle' : bowling ? bowlingDetector ? 'Forward swing · aim locked' : 'Motion live · waiting for your turn and a brief rest'
-    : stream?.phase === 'recovering' ? 'Return to rest for the next stroke' : 'Motion live · ready for a swing';
+    setView('sensor-status', 'textContent', eventsSeen ? 'Motion events arrived without gyroscope data. Check browser permissions or use buttons.' : 'Permission allowed, but no readings arrived. Keep this page visible and check browser motion permissions.');
+    sensorState = 'error';
+  } else setView('sensor-status', 'textContent', enabled ? 'Waiting for sensor readings…' : 'Allow motion or choose touch controls.');
+  setView('sensor-detail', 'textContent', `${window.isSecureContext ? 'Secure context' : 'Insecure context'} · ${eventsSeen} events · ${validReadings} valid gyro readings${latestRate ? ` · ${Math.round(Math.hypot(...Object.values(latestRate)))}°/s · last reading ${Math.round(now - lastReading)} ms ago` : ''}`);
+  setView('detector-state', 'textContent', !recording ? 'Motion idle' : bowling ? bowlingDetector ? 'Forward swing · aim locked' : 'Motion live · waiting for your turn and a brief rest'
+    : stream?.phase === 'recovering' ? 'Return to rest for the next stroke' : 'Motion live · ready for a swing');
+  if (status.dataset.state !== sensorState) status.dataset.state = sensorState;
   renderPlayState();
 }
 setInterval(() => {

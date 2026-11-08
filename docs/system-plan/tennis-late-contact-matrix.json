@@ -1,0 +1,90 @@
+{
+  "before": [
+    {
+      "inputLeadMs": 300,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": 80,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": 0,
+      "hits": 4,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -40,
+      "hits": 4,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -80,
+      "hits": 0,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -120,
+      "hits": 0,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -160,
+      "hits": 0,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -240,
+      "hits": 0,
+      "cases": 8
+    }
+  ],
+  "after": [
+    {
+      "inputLeadMs": 300,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": 80,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": 0,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -40,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -80,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -120,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -160,
+      "hits": 8,
+      "cases": 8
+    },
+    {
+      "inputLeadMs": -240,
+      "hits": 4,
+      "cases": 8
+    }
+  ],
+  "notes": [
+    "Shipped GLB player/racket models; both seats, hands and stroke labels. Positive lead is early; negative lead is late relative to the nominal predicted arrival plane.",
+    "Historical-contact allowance is bounded to 200ms from an actual reachable contact, not this nominal plane. These are controlled model tests, not device or network latency measurements."
+  ]
+}

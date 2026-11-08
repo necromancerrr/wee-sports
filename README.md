@@ -267,7 +267,9 @@ Browser tennis and table-tennis controllers try a direct connection to the TV
 to reduce input delay on reachable local networks. They fall back to Railway
 when that connection is unavailable; bowling keeps its existing route.
 See [input, first-shot placement and fullscreen](docs/direct-input-and-first-shot.md)
-for the behavior and browser restrictions.
+for the behavior and browser restrictions. The latest
+[tennis response validation](docs/tennis-response-validation.md) records late-hit,
+polling transport and cross-browser fullscreen fixes with their test evidence.
 
 For an already built deployment, `npm start` serves the existing assets without
 building again. Follow the [Railway runbook](docs/railway.md) for origins,

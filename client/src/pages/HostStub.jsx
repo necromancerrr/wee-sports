@@ -17,7 +17,7 @@ import { request } from '../lib/socket.js';
 import { useReconnect } from '../lib/useReconnect.js';
 import { ReconnectNotice } from '../components/ReconnectNotice.jsx';
 import { sportName } from '../lib/sports.js';
-import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement, isFullscreenStartGesture } from '../lib/fullscreen.js';
+import { canEnterFullscreen, enterFullscreen, exitFullscreen, fullscreenElement, listenForFullscreenStart, observeAutomaticFullscreen } from '../lib/fullscreen.js';
 import { useTvAudio } from '../lib/useTvAudio.jsx';
 import { useRevealHold } from '../lib/useRevealHold.js';
 import '../styles/game-shell.css';
@@ -107,14 +107,14 @@ export default function HostStub() {
 
   useEffect(() => {
     if (![PHASES.COUNTDOWN, PHASES.GAME].includes(phase)) return;
-    const retry = event => {
-      if (requestedFullscreen.current && !fullscreenElement(document) && isFullscreenStartGesture(event)) enterGameView();
+    const retry = () => {
+      if (requestedFullscreen.current && !fullscreenElement(document)) enterGameView();
     };
-    document.addEventListener('click', retry);
-    document.addEventListener('keydown', retry);
+    const stopGestures = listenForFullscreenStart(document, retry);
+    const stopPermission = observeAutomaticFullscreen(document, retry);
     return () => {
-      document.removeEventListener('click', retry);
-      document.removeEventListener('keydown', retry);
+      stopGestures();
+      stopPermission();
     };
   }, [phase, enterGameView]);
 

@@ -1,11 +1,11 @@
 // Provisional rules inferred from screenshots, not fitted to raw recordings.
-export const classifierVersion = 'gyro-handed-responsive-v9'
+export const classifierVersion = 'gyro-handed-responsive-v10'
 export const SWING_LIMITS = Object.freeze({ start: 200, minPeak: 280 })
 // Keep the real peak and at least 40 ms of post-peak direction evidence. A
-// sustained 18% drop is sufficient deceleration; waiting for a 28% drop and
-// then another 24 ms added one or two sensor frames to otherwise valid hits.
+// sustained 12% drop is sufficient deceleration once that evidence exists.
+// Requiring a larger slowdown added sensor frames to broad, valid swings.
 // The hold spans at least two readings at 60 Hz; a one-sample dip cannot fire.
-const FAST_DROP_RATIO = .82
+const FAST_DROP_RATIO = .88
 const FAST_DROP_HOLD_MS = 16
 const FAST_POST_PEAK_MS = 40
 const axes = ['Alpha', 'Beta', 'Gamma']

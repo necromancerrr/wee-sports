@@ -71,8 +71,8 @@ test('recorded fast confirmation keeps bounded post-peak delay without waiting f
   delays.sort((a, b) => a - b);
   assert.equal(delays.length, 19);
   // Fixture-clock timing only: neither network RTT nor motion-to-screen delay.
-  assert.ok(delays[Math.floor(delays.length / 2)] <= 67);
-  assert.ok(delays[Math.ceil(delays.length * .95) - 1] <= 117);
+  assert.ok(delays[Math.floor(delays.length / 2)] <= 51);
+  assert.ok(delays[Math.ceil(delays.length * .95) - 1] <= 100);
   assert.ok(delays.every(delay => delay >= 40), 'retain post-peak evidence before committing');
 });
 

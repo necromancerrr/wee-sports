@@ -2,6 +2,7 @@ import {isPose, isSwing, isStrokeResult} from '../../../shared/protocol.js';
 
 const LEASE_MS = 3000, REGISTER_MS = 1000, CONNECT_MS = 6500;
 const PING_MS = 500, HEALTH_MS = 1600, PACKET_AGE_MS = 160, ACK_MS = 1200;
+const SWING_AGE_MS = 250;
 const MAX_BYTES = 4096;
 const events = {register:'direct:register', open:'direct:open', peer:'direct:peer',
   signal:'direct:signal', closed:'direct:closed', close:'direct:close', unregister:'direct:unregister'};
@@ -31,7 +32,11 @@ export function createDirectInput({socket, context, onSwing = () => false,
   let disposed = false, leaseUntil = 0, lastRegister = -Infinity, registrationPending = false;
   let openPending = false, lastOpen = -Infinity, pingSequence = 0, failedNegotiations = 0, nextOpenAt = 0;
   const count = key => diagnostics?.count?.('direct.' + key);
-  const active = () => !disposed && socket.connected && now() < leaseUntil;
+  // A polling POST occupies the transport for a whole HTTP round trip. Optional
+  // lease renewals must not block the bounded, time-sensitive swing relay.
+  // Recheck on each tick so a later WebSocket upgrade enables direct input.
+  const canNegotiate = () => socket.io?.engine?.transport?.name === 'websocket';
+  const active = () => !disposed && socket.connected && canNegotiate() && now() < leaseUntil;
   const matches = value => value?.gameId === scope.gameId && value.generation === scope.generation && value.hostEpoch === scope.hostEpoch;
   const admitInput = (peer, kind, at) => {
     const bucket = peer[kind + 'Bucket'], capacity = kind === 'swing' ? 20 : 6, rate = kind === 'swing' ? .01 : .06;
@@ -40,7 +45,7 @@ export function createDirectInput({socket, context, onSwing = () => false,
     bucket.tokens--; return true;
   };
   const control = (event, payload, callback) => {
-    if (disposed || !socket.connected) return false;
+    if (disposed || !socket.connected || !canNegotiate()) return false;
     socket.timeout(1200).emit(event, payload, (error, result) => {
       if (!disposed) callback?.(error ? {ok:false,error:'timeout'} : result);
     });
@@ -120,7 +125,18 @@ export function createDirectInput({socket, context, onSwing = () => false,
     // These clocks are aligned by local ping/pong, never by comparing device
     // wall clocks. Include half the best RTT as the clock estimate uncertainty.
     const age = received-(packet.at-peer.clockOffset);
-    if (age > PACKET_AGE_MS + peer.bestRtt/2 || age < -PACKET_AGE_MS) {count('staleDropped'); return;}
+    // Discrete strokes must survive a short TV frame stall, just as the server
+    // route does. Pose samples can be superseded; a swing cannot. Both remain
+    // bounded so a reliable-channel retransmit cannot play an old action.
+    const maxAge = context.sport === 'tennis' ? SWING_AGE_MS : PACKET_AGE_MS;
+    if (age > maxAge + peer.bestRtt/2 || age < -PACKET_AGE_MS) {
+      count('staleDropped');
+      if (context.role === 'host' && context.sport === 'tennis' && packet.kind === 'swing' &&
+          object(packet.event) && matches(packet.event) && isSwing(packet.event)) {
+        send(peer,{kind:'ack',id:packet.event.id,result:{ok:false,error:'input-expired'}});
+      }
+      return;
+    }
     if (context.role === 'host' && (packet.kind === 'swing' || packet.kind === 'pose')) {
       if (!object(packet.event) || !matches(packet.event)) return;
       // The authenticated broker assigned this player; the packet cannot select
@@ -152,7 +168,7 @@ export function createDirectInput({socket, context, onSwing = () => false,
       clearTimeout(pending.timer); peer.pending.delete(packet.id);
       if (!packet.result.ok) peer.results.delete(packet.id);
       pending.resolve(packet.result.ok ? {ok:true,id:packet.id,receivers:1}
-        : {ok:false,id:packet.id,error:packet.result.error === 'rate-limited' ? 'rate-limited' : 'not-playing'});
+        : {ok:false,id:packet.id,error:['rate-limited','input-expired'].includes(packet.result.error) ? packet.result.error : 'not-playing'});
     } else if (context.role === 'player' && packet.kind === 'result' && isStrokeResult(packet.event) &&
         packet.event.gameId === scope.gameId && packet.event.player === peer.player && peer.results.has(packet.event.id)) {
       peer.results.delete(packet.event.id); onStrokeResult(packet.event);
@@ -201,9 +217,12 @@ export function createDirectInput({socket, context, onSwing = () => false,
     pc.ondatachannel = event => bindChannel(peer,event.channel);
     if (context.role === 'host') {
       try {
-        // A lost datagram can recover briefly without holding later input behind
-        // it. Old packets expire after 80 ms instead of waiting indefinitely.
-        bindChannel(peer,pc.createDataChannel('wee-input-v1',{ordered:false,maxPacketLifeTime:80}));
+        // Strokes are discrete actions: a dropped datagram must be allowed to
+        // retransmit, with freshness enforced by the receiver above. Continuous
+        // paddle poses retain short transport expiry because newer poses replace
+        // them. Unordered delivery prevents an older packet holding up the next.
+        bindChannel(peer,pc.createDataChannel('wee-input-v1',context.sport === 'tennis'
+          ? {ordered:false} : {ordered:false,maxPacketLifeTime:80}));
         const offer = await pc.createOffer();
         if (!active() || peer.closed) return;
         await pc.setLocalDescription(offer);
@@ -213,7 +232,7 @@ export function createDirectInput({socket, context, onSwing = () => false,
   }
   const closed = payload => closePeer(peers.get(payload?.pairId),false);
   function renew() {
-    if (disposed || !socket.connected || registrationPending) return;
+    if (disposed || !socket.connected || !canNegotiate() || registrationPending) return;
     registrationPending = true; lastRegister = now();
     // Grant age is measured from request start, not a delayed reply arrival.
     const requestedAt = now();
@@ -227,6 +246,12 @@ export function createDirectInput({socket, context, onSwing = () => false,
     if (disposed) return;
     const time = now();
     if (!socket.connected) {dispose(); return;}
+    if (!canNegotiate()) {
+      leaseUntil = 0; lastRegister = -Infinity;
+      for (const peer of peers.values()) closePeer(peer,false);
+      failedNegotiations = 0; nextOpenAt = 0;
+      return;
+    }
     if (time-lastRegister >= REGISTER_MS) renew();
     if (!active()) {for (const peer of peers.values()) closePeer(peer); return;}
     for (const peer of peers.values()) {
@@ -277,7 +302,7 @@ export function createDirectInput({socket, context, onSwing = () => false,
   }
   function dispose() {
     if (disposed) return;
-    if (socket.connected) control(events.unregister,scope);
+    if (socket.connected && canNegotiate()) control(events.unregister,scope);
     for (const peer of peers.values()) closePeer(peer);
     disposed = true; leaseUntil = 0; clearInterval(timer);
     socket.off(events.peer,pair); socket.off(events.signal,signal); socket.off(events.closed,closed); socket.off('disconnect',dispose);

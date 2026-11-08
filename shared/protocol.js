@@ -9,6 +9,8 @@ import {getSport} from './sportRegistry.js';
 /** Bumped when a message shape changes incompatibly. */
 export const PROTOCOL_VERSION = 4;
 export const PROTOCOL_MINOR = 1;
+/** Combined phone/server queue-wait budget, excluding network travel time. */
+export const TENNIS_TRANSPORT_WAIT_MS = 160;
 
 /** A dropped connection keeps its seat for one minute. */
 export const RECONNECT_MS = 60_000;
@@ -175,6 +177,7 @@ export function isSwing(event) {
   return event?.type === 'swing' && typeof event.id === 'string' && event.id.length > 0 &&
     event.id.length <= 100 && ['Forehand', 'Backhand'].includes(event.label) &&
     ['Left', 'Right'].includes(event.hand) &&
+    (event.transportWaitMs === undefined || Number.isFinite(event.transportWaitMs) && event.transportWaitMs >= 0 && event.transportWaitMs <= TENNIS_TRANSPORT_WAIT_MS) &&
     (event.power === undefined || (Number.isFinite(event.power) && event.power >= 0 && event.power <= 1)) &&
     ['aim','depth'].every(key => event[key] === undefined || Number.isFinite(event[key]) && Math.abs(event[key]) <= 1);
 }

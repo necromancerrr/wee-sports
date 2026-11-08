@@ -18,7 +18,7 @@ import {
     NEUTRAL_INPUT,
     type PlayerInput,
 } from '../Controllers/playerInput';
-import { planCourtShot, type ShotIntent } from './shotTrajectory';
+import { planCourtShot, type ShotIntent, type ShotPlan } from './shotTrajectory';
 import { chooseBotStroke, chooseBotPlacement, type BotStroke } from './botPlayer';
 import { predictBaselineIntercept, lateralSteering } from './autoPosition';
 import { sweptRacketContact, contactWindowCrossed } from './components/racketContact';
@@ -34,6 +34,25 @@ const PREPARATION_WAIT = {standard: .36, beginner: .46};
 const STRIKE_PROGRESS = 0.45;
 // The authored backhand rises through contact later than the forehand.
 const BACKHAND_PROGRESS = 0.65;
+// Recognition and delivery can arrive after a visually timed phone stroke.
+// This is a bounded contact allowance, not a client-supplied rewind timestamp.
+const RECENT_CONTACT_SECONDS = .2;
+
+interface ContactSample {
+    time: number;
+    observedAt: number;
+    ball: THREE.Vector3;
+    players: [THREE.Matrix4, THREE.Matrix4];
+    lastHitBy?: BallPlayer;
+    bounceCount: number;
+    legal: boolean;
+}
+
+interface RecentContact {
+    position: THREE.Vector3;
+    progress: number;
+    age: number;
+}
 
 interface PendingSwing {
     backhand: boolean;
@@ -140,6 +159,14 @@ export class GameLogic {
     private pendingSwings: [PendingSwing | null, PendingSwing | null] = [null, null];
     private swingPowers = [0.5, 0.5];
     private accumulatedTime = 0;
+    // Reuse fixed storage during 120 Hz play; search it only for a late phone
+    // stroke that cannot meet the current/future ball with ordinary contact.
+    private readonly contactHistory: ContactSample[] = Array.from({length: 27}, () => ({
+        time: -Infinity, observedAt: -Infinity, ball: new THREE.Vector3(),
+        players: [new THREE.Matrix4(), new THREE.Matrix4()], bounceCount: 0, legal: false,
+    }));
+    private contactHistoryCount = 0;
+    private contactHistoryNext = 0;
     private readonly courtMinX = -4.115;
     private readonly courtMaxX = 4.115;
 
@@ -290,6 +317,8 @@ export class GameLogic {
         this.player2Input = { ...NEUTRAL_INPUT };
         this.player1.stopAnimation();
         this.player2.stopAnimation();
+        this.contactHistoryCount = 0;
+        this.contactHistoryNext = 0;
     }
 
     public handleKeyDown = (event: KeyboardEvent): void => {
@@ -617,6 +646,85 @@ export class GameLogic {
                 this.reportStroke(number, 'miss', reason);
             }
         }
+        this.recordContactSample();
+    }
+
+    private recordContactSample(): void {
+        const data = this.ball.userData as BallUserData;
+        if (data.isWaitingForServe || data.waitingForRacketHit || !data.lastHitBy) return;
+        const sample = this.contactHistory[this.contactHistoryNext];
+        sample.time = this.simulationTime;
+        sample.observedAt = performance.now();
+        sample.ball.copy(this.ball.position);
+        for (const [player, index] of [[this.player1, 0], [this.player2, 1]] as const) {
+            player.group.updateWorldMatrix(true, false);
+            sample.players[index].copy(player.group.matrixWorld);
+        }
+        sample.lastHitBy = data.lastHitBy;
+        sample.bounceCount = data.bounceCount;
+        sample.legal = data.bounceCount < 2 && !data.netTouched &&
+            !(data.isServeFlight && data.bounceCount === 0) &&
+            (data.bounceCount === 0 || data.firstBounceInBounds);
+        this.contactHistoryNext = (this.contactHistoryNext + 1) % this.contactHistory.length;
+        this.contactHistoryCount = Math.min(this.contactHistory.length, this.contactHistoryCount + 1);
+    }
+
+    private recentContact(player: PlayerController, animation: string, backhand: boolean, number: 1 | 2): RecentContact | null {
+        const data = this.ball.userData as BallUserData;
+        const poses = player.swingPoses[`${animation}:${backhand}`], hitbox = player.hitbox;
+        if (!poses || !hitbox || this.contactHistoryCount < 2 || data.isWaitingForServe || data.waitingForRacketHit ||
+            data.lastHitBy === this.toBallPlayer(number) || data.netTouched ||
+            (number === 1 ? data.velocity.z <= 0 : data.velocity.z >= 0)) return null;
+        const now = performance.now();
+        const previousPose = new THREE.Matrix4(), nextPose = new THREE.Matrix4();
+        // Newest first minimizes the correction. Both endpoints must be legal
+        // samples from this incoming flight, with the feet actually there then.
+        for (let offset = 1; offset < this.contactHistoryCount; offset++) {
+            const currentIndex = (this.contactHistoryNext - offset + this.contactHistory.length) % this.contactHistory.length;
+            const previousIndex = (currentIndex - 1 + this.contactHistory.length) % this.contactHistory.length;
+            const previous = this.contactHistory[previousIndex], current = this.contactHistory[currentIndex];
+            const age = this.simulationTime - previous.time;
+            if (age > RECENT_CONTACT_SECONDS + 1e-8 || now - previous.observedAt > RECENT_CONTACT_SECONDS * 1000) break;
+            if (!previous.legal || !current.legal || previous.lastHitBy !== data.lastHitBy || current.lastHitBy !== data.lastHitBy ||
+                previous.bounceCount !== current.bounceCount || current.ball.z * (number === 1 ? 1 : -1) <= 0) continue;
+            for (let frame = 1; frame < poses.length; frame++) {
+                const before = (frame - 1) / (poses.length - 1), after = frame / (poses.length - 1);
+                if (!contactWindowCrossed(before, after, backhand)) continue;
+                previousPose.multiplyMatrices(previous.players[number - 1], poses[frame - 1]);
+                nextPose.multiplyMatrices(current.players[number - 1], poses[frame]);
+                if (sweptRacketContact(hitbox.bounds, previousPose, nextPose, previous.ball, current.ball, BALL_RADIUS)) {
+                    return {position: current.ball.clone(), progress: after, age: this.simulationTime - current.time};
+                }
+            }
+        }
+        return null;
+    }
+
+    private resolveRecentContact(player: PlayerController, number: 1 | 2, contact: RecentContact): boolean {
+        const data = this.ball.userData as BallUserData;
+        const plan = planCourtShot(contact.position, number, player.swingBackhand, data.gravity,
+            this.swingPowers[number - 1], {timing: this.swingTimings[number - 1], ...this.swingPlacement[number - 1],
+                beginner: this.settings.assistance === 'beginner'});
+        if (!plan) return false;
+        // Advance only this returned ball, using the ordinary integrator. Never
+        // rewind scores/players or skip a net, bounce or point during catch-up.
+        // An interval crossing any such boundary keeps the ordinary miss path.
+        const replay = {position: contact.position.clone(), userData: {...data,
+            velocity: new THREE.Vector3(), pendingVelocity: new THREE.Vector3(), servePosition: data.servePosition.clone()}} as unknown as THREE.Mesh;
+        hitBall(replay, plan.velocity, this.toBallPlayer(number));
+        let crossedRuleBoundary = false;
+        for (let remaining = contact.age; remaining > 1e-8; remaining -= PHYSICS_STEP) {
+            updateBallMotion(replay, Math.min(PHYSICS_STEP, remaining),
+                () => {crossedRuleBoundary = true;}, () => {crossedRuleBoundary = true;}, () => {crossedRuleBoundary = true;});
+            const replayData = replay.userData as BallUserData;
+            if (crossedRuleBoundary || replayData.netTouched || replayData.bounceCount !== 0 || replayData.isWaitingForServe) return false;
+        }
+        const action = player.actions[player.currentAnimation!];
+        action.time = action.getClip().duration * Math.min(.75, contact.progress + contact.age / action.getClip().duration);
+        player.update(0);
+        this.ball.position.copy(replay.position);
+        this.commitRacketContact(player, number, plan, false, (replay.userData as BallUserData).velocity);
+        return true;
     }
 
     private updatePlayer(player: PlayerController, input: PlayerInput, delta: number, number: 1 | 2): void {
@@ -895,8 +1003,17 @@ export class GameLogic {
                 action.setEffectiveWeight(1);
                 // The real phone swing already happened. Skip only the serve
                 // wind-up; the ball must still cross the authored racket path.
-                action.time = heldServe ? action.getClip().duration * 0.35
-                    : plannedStart ?? this.assistedStartTime(player, animation, isBackhand, number) ?? 0;
+                const start = heldServe ? action.getClip().duration * 0.35
+                    : plannedStart ?? this.assistedStartTime(player, animation, isBackhand, number);
+                if (!heldServe && trace?.id) {
+                    const recent = this.recentContact(player, animation, isBackhand, number);
+                    // A contact in the current physics interval wins over an
+                    // approximate future pose forecast. Otherwise retain live
+                    // contact whenever the racket can still reach the ball.
+                    if (recent && (recent.age <= PHYSICS_STEP + 1e-8 || start === null) &&
+                        this.resolveRecentContact(player, number, recent)) return;
+                }
+                action.time = start ?? 0;
             }
         }
         this.feedback(`Player ${number}: ${isBackhand ? 'Backhand' : 'Forehand'} · swinging`);
@@ -952,7 +1069,14 @@ export class GameLogic {
             this.reportStroke(number, 'miss', 'Contact outside the playable court');
             return;
         }
-        hitBall(this.ball, plan.velocity, id, serving);
+        this.commitRacketContact(player, number, plan, serving);
+    }
+
+    private commitRacketContact(player: PlayerController, number: 1 | 2, plan: ShotPlan, serving: boolean,
+        velocity = plan.velocity): void {
+        hitBall(this.ball, velocity, this.toBallPlayer(number), serving);
+        this.contactHistoryCount = 0;
+        this.contactHistoryNext = 0;
         if (number === 2 && this.botEnabled) this.botShot++;
         this.hasShotTarget = true;
         this.shotTargetMarker.position.set(plan.target.x, 0.08, plan.target.z);

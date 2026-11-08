@@ -3,6 +3,7 @@ import {createDirectInput} from '../client/src/lib/directInput.js';
 
 class Socket {
   connected = true; handlers = new Map(); sent = []; grant = true;
+  io = {engine:{transport:{name:'websocket'}}};
   on(name,fn) {this.handlers.set(name,fn);}
   off(name) {this.handlers.delete(name);}
   dispatch(name,value) {this.handlers.get(name)?.(value);}
@@ -58,10 +59,29 @@ test('unsupported browsers use the existing relay without negotiation',()=>{
   expect(socket.sent).toEqual([]);input.dispose();
 });
 
+test('polling relay sends no optional lease traffic and a WebSocket upgrade enables negotiation',async()=>{
+  const socket=new Socket();socket.io.engine.transport.name='polling';
+  const input=createDirectInput({socket,context:{...scope,role:'player',player:1,sport:'tennis'},PeerConnection:PC});
+  cleanup.push(input.dispose);
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(socket.sent).toEqual([]);expect(input.sendSwing(swing())).toBe(null);
+  socket.io.engine.transport.name='websocket';await vi.advanceTimersByTimeAsync(250);
+  expect(socket.sent.some(event=>event.name==='direct:register')).toBe(true);
+});
+
+test('a transport downgrade closes direct input without putting cleanup traffic ahead of polling swings',async()=>{
+  const f=await fixture(), before=f.phoneSocket.sent.length;
+  f.phoneSocket.io.engine.transport.name='polling';
+  expect(f.phone.sendSwing(swing())).toBe(null);
+  await vi.advanceTimersByTimeAsync(250);f.phone.dispose();
+  expect(PC.all[1].connectionState).toBe('closed');
+  expect(f.phoneSocket.sent).toHaveLength(before);
+});
+
 test('healthy LAN swing is admitted once and receives correlated feedback',async()=>{
   const f = await fixture();
   expect(PC.all[0].config).toEqual({iceServers:[]});
-  expect(PC.all[0].options).toEqual({ordered:false,maxPacketLifeTime:80});
+  expect(PC.all[0].options).toEqual({ordered:false});
   const pending = f.phone.sendSwing(swing());expect(pending).not.toBe(null);await flush();
   expect(await pending).toEqual({ok:true,id:'stroke-one',receivers:1});
   expect(f.onSwing).toHaveBeenCalledExactlyOnceWith({...swing(),player:1});
@@ -79,6 +99,39 @@ test('an emitted swing with a lost acknowledgement never becomes a relay retry',
   expect(await pending).toEqual({ok:false,error:'outcome-unknown',id:'stroke-one'});
   expect(f.phoneSocket.sent.some(event=>event.name==='player:swing')).toBe(false);
   expect(await f.phone.sendSwing(swing())).toMatchObject({ok:false,error:'duplicate-swing'});
+});
+
+test('a brief TV main-thread stall does not silently discard a discrete tennis swing',async()=>{
+  const f=await fixture();f.b.drop=true;
+  const pending=f.phone.sendSwing(swing());
+  const raw=f.b.sent.find(value=>JSON.parse(value).kind==='swing');
+  // The socket relay would still deliver this action. A direct channel must
+  // not turn a short render stall into an invisible missed swing instead.
+  await vi.advanceTimersByTimeAsync(180);
+  f.a.onmessage({data:raw});await flush();
+  expect(f.onSwing).toHaveBeenCalledExactlyOnceWith({...swing(),player:1});
+  expect(await pending).toMatchObject({ok:true});
+});
+
+test.each([250,251,-161])('direct tennis accepts only its bounded input age: %sms',async age=>{
+  const f=await fixture();f.b.drop=true;
+  const pending=f.phone.sendSwing(swing());
+  const packet=JSON.parse(f.b.sent.find(value=>JSON.parse(value).kind==='swing'));
+  if(age<0)packet.at-=age;
+  else await vi.advanceTimersByTimeAsync(age);
+  f.a.onmessage({data:JSON.stringify(packet)});await flush();
+  expect(f.onSwing).toHaveBeenCalledTimes(age===250?1:0);
+  expect(await pending).toMatchObject(age===250?{ok:true}:{ok:false,error:'input-expired'});
+  expect(f.phoneSocket.sent.some(event=>event.name==='player:swing')).toBe(false);
+});
+
+test('fresh tennis result after a brief phone stall still reaches the controller',async()=>{
+  const f=await fixture();const pending=f.phone.sendSwing(swing());await flush();await pending;
+  f.a.drop=true;expect(f.tv.sendStrokeResult(result('stroke-one'))).toBe(true);
+  const raw=f.a.sent.find(value=>JSON.parse(value).kind==='result');
+  await vi.advanceTimersByTimeAsync(180);f.b.onmessage({data:raw});await flush();
+  expect(f.onStrokeResult).toHaveBeenCalledExactlyOnceWith(result('stroke-one'));
+  f.b.onmessage({data:raw});expect(f.onStrokeResult).toHaveBeenCalledTimes(1);
 });
 
 test('congested or closed data channels fall back before sending and never queue input',async()=>{
@@ -102,13 +155,14 @@ test.each(['disconnect','dispose','lease'])('departures invalidate a pending dir
 
 test('table-tennis preserves sample timing and drops duplicates, stale packets and wrong generations',async()=>{
   const f=await fixture('table-tennis');
+  expect(PC.all[0].options).toEqual({ordered:false,maxPacketLifeTime:80});
   expect(f.phone.sendPose(pose(1))).toBe(true);await flush();
   expect(f.onPose).toHaveBeenCalledExactlyOnceWith({...pose(1),player:1});
   const raw=f.b.sent.find(value=>JSON.parse(value).kind==='pose');
   f.a.onmessage({data:raw});
   expect(f.onPose).toHaveBeenCalledTimes(1);
   expect(f.phone.sendPose({...pose(2),generation:1})).toBe(false);
-  await vi.advanceTimersByTimeAsync(300);
+  await vi.advanceTimersByTimeAsync(180);
   const stale=JSON.parse(raw);stale.event.seq=3;
   f.a.onmessage({data:JSON.stringify(stale)});
   expect(f.onPose).toHaveBeenCalledTimes(1);

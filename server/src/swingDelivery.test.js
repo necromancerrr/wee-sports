@@ -7,8 +7,22 @@ import {EVENTS, PROTOCOL_VERSION as v, VOTE_SECONDS} from '../../shared/protocol
 import {sendSwingRequest} from '../../src/network/swingRequest.js';
 import {createGameServer} from './app.js';
 import {RoomStore} from './RoomStore.js';
+import {createDirectInput} from '../../client/src/lib/directInput.js';
 
 const send = (socket, event, data = {}) => socket.timeout(2000).emitWithAck(event, data);
+function transportTrace(transports) {
+  if (process.env.WEE_SWING_TRANSPORT_TRACE !== '1') return {begin() {}, end:()=>null};
+  let active=false,started=0,events=[];
+  const record=(side,kind,value)=>{if(active)events.push({at:+(performance.now()-started).toFixed(2),side,kind,value});};
+  for(const [side,transport] of Object.entries(transports)) {
+    let writable=transport.writable;
+    Object.defineProperty(transport,'writable',{configurable:true,
+      get(){record(side,'read',writable);return writable;},
+      set(value){writable=value;record(side,'set',value);}});
+    for(const event of ['ready','drain','poll','pollComplete'])transport.on(event,()=>record(side,event,writable));
+  }
+  return {begin(){events=[];started=performance.now();active=true;},end(){active=false;return events;}};
+}
 async function fixture(t, transport = 'websocket') {
   let now = 0;
   const store = new RoomStore({now: () => now});
@@ -33,7 +47,8 @@ async function fixture(t, transport = 'websocket') {
   };
   const gameId = await start();
   const stroke = (id, game = gameId) => ({type: 'swing', id, gameId: game, label: 'Forehand', hand: 'Right', power: .5});
-  return {app, store, tv, phone, room, seat, gameId, start, stroke, connect};
+  const trace=transportTrace({phone:phone.io.engine.transport,tv:tv.io.engine.transport,server:app.io.sockets.sockets.get(tv.id).conn.transport});
+  return {app, store, tv, phone, room, seat, gameId, start, stroke, connect, trace};
 }
 
 function onInput(store, id) {
@@ -49,15 +64,18 @@ function onInput(store, id) {
 
 for (const transport of ['websocket', 'polling']) {
   test(`${transport}: sustained healthy swings are delivered once without third-input slowdown`, {timeout: 40000}, async t => {
-    const {tv, phone, gameId, stroke} = await fixture(t, transport);
+    const {tv, phone, gameId, stroke, trace} = await fixture(t, transport);
     const received = [], roundTrips = [];
     tv.on(EVENTS.GAME_SWING, (event, ack) => { received.push(event.id); ack({ok: true}); });
     // Includes a heartbeat interval; normal TV state broadcasts run beside input.
     for (let index = 0; index < 104; index++) {
       await delay(250);
+      trace.begin();
       const status = send(tv, EVENTS.HOST_GAME_STATE, {gameId, phase: index % 2 ? 'rally' : 'serve', server: 1, winner: null});
       const started = performance.now();
       const result = await sendSwingRequest(phone, EVENTS.PLAYER_SWING, stroke(`stroke-${index}`));
+      const events=trace.end();
+      if(!result.ok && events)t.diagnostic(JSON.stringify({swing:index+1,result,events}));
       roundTrips.push(performance.now() - started);
       assert.equal(result.ok, true, `${transport} swing ${index + 1}: ${result.error}`);
       await status;
@@ -79,6 +97,59 @@ test('a blocked TV transport rejects input instead of releasing old swings after
   transport.writable = true;
   assert.equal((await send(phone, EVENTS.PLAYER_SWING, stroke('fresh'))).ok, true);
   assert.deepEqual(received.map(event => event.id), ['fresh']);
+});
+
+test('optional direct leases cannot occupy a slow polling POST and make a fresh swing expire', async t => {
+  const {store,tv,phone,room,stroke}=await fixture(t,'polling');
+  const lobby=store.lobby(room.code),scope={gameId:lobby.gameId,generation:lobby.inputGeneration,hostEpoch:lobby.hostEpoch};
+  const transport=phone.io.engine.transport,write=transport.write;
+  const received=[];tv.on(EVENTS.GAME_SWING,(event,ack)=>{received.push(event.id);ack({ok:true});});
+  let optionalPosts=0;
+  transport.write=function(packets) {
+    if(packets.some(packet=>typeof packet.data==='string'&&packet.data.includes('direct:register'))) {
+      optionalPosts++;this.writable=false;
+      setTimeout(()=>write.call(this,packets),200);return;
+    }
+    return write.call(this,packets);
+  };
+  t.after(()=>{transport.write=write;});
+  // Demonstrate the old failure with an actual delayed polling POST, rather
+  // than assuming it from a mocked transport's writable flag.
+  const oldLease=send(phone,'direct:register',scope);
+  const blocked=await sendSwingRequest(phone,EVENTS.PLAYER_SWING,stroke('behind-lease'));
+  assert.equal(blocked.error,'network-busy');await oldLease;
+  assert.equal(optionalPosts,1);assert.deepEqual(received,[]);
+
+  const input=createDirectInput({socket:phone,context:{...scope,role:'player',player:1,sport:'tennis'},
+    PeerConnection:class{constructor(){throw new Error('Polling should not negotiate a peer');}}});
+  t.after(()=>input.dispose());
+  assert.equal(input.sendSwing(stroke('fresh')),null);
+  const result=await sendSwingRequest(phone,EVENTS.PLAYER_SWING,stroke('fresh'));
+  assert.equal(result.ok,true);assert.deepEqual(received,['fresh']);
+  assert.equal(optionalPosts,1,'No optional register was put ahead of the new swing');
+});
+
+test('a fresh tennis swing crosses a 120ms polling GET handoff once within the shared budget', async t => {
+  const {app,tv,phone,stroke}=await fixture(t,'polling');
+  const transport=app.io.sockets.sockets.get(tv.id).conn.transport, onPoll=transport.onPollRequest;
+  const received=[];tv.on(EVENTS.GAME_SWING,(event,ack)=>{received.push(event.id);ack({ok:true});});
+  const readyBy=performance.now()+2000;
+  while(!transport.writable || !transport.res) {
+    assert.ok(performance.now()<readyBy,'The initial polling GET becomes available');
+    await delay(1);
+  }
+  let timer,held;
+  transport.onPollRequest=function(req,res) {
+    transport.onPollRequest=onPoll;
+    held=res;
+    timer=setTimeout(()=>{held=null;onPoll.call(this,req,res);},120);
+  };
+  t.after(()=>{clearTimeout(timer);held?.destroy();transport.onPollRequest=onPoll;});
+  // Consume the current real GET; the TV's next GET is deliberately held for
+  // 120ms, matching a measured normal handoff that exceeded the old 80ms cap.
+  transport.send([{type:'noop'}]);
+  const result=await sendSwingRequest(phone,EVENTS.PLAYER_SWING,stroke('handoff'));
+  assert.equal(result.ok,true);assert.deepEqual(received,['handoff']);
 });
 
 test('pause and resume during a brief transport wait cancels the old swing', async t => {

@@ -60,7 +60,9 @@ export function createPhoneFeedback({ visual, object, navigator, document, reduc
   let lastMotion = -Infinity;
   let lastHit = -Infinity;
   const reduced = () => reducedMotion?.matches === true;
-  const set = (name, value) => visual.style?.setProperty(name, value);
+  const set = (name, value) => {
+    if (visual.style?.getPropertyValue?.(name) !== value) visual.style?.setProperty(name, value);
+  };
   function reset() {
     animation?.cancel(); animation = null;
     confirmation?.cancel(); confirmation = null;

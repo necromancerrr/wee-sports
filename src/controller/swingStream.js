@@ -44,12 +44,14 @@ function createDetectorStream(hand, fast) {
   let waitingForRest = false;
   let quietSince = null;
   let previousTime = null;
+  let dirty = false;
   function waitForRest() {
     samples = []; latchedStart = null;
     waitingForRest = true; quietSince = null;
   }
   return {
     push(sample) {
+      dirty = true;
       const valid = Number.isFinite(sample.timeMs) &&
         [sample.rotationAlpha, sample.rotationBeta, sample.rotationGamma].every(Number.isFinite);
       const gap = previousTime !== null && (sample.timeMs <= previousTime || sample.timeMs - previousTime > 100);
@@ -70,6 +72,10 @@ function createDetectorStream(hand, fast) {
       if (samples.length > 2800) waitForRest();
     },
     analyze(final = false) {
+      // Web watchdog ticks and sensor callbacks can both request analysis.
+      // A second poll has no new evidence and must not rescan the same buffer.
+      if (!dirty && !final) return [];
+      dirty = false;
       const completed = classifySwings(samples, { hand, final });
       const results = completed.filter(result => result.startMs !== latchedStart);
       if (completed.length) {

@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { ERRORS, EVENTS, PHASES } from '../../shared/protocol.js';
 import { RoomStore } from './RoomStore.js';
-import { waitForSwingTransport } from '../../src/network/swingRequest.js';
+import { waitForSwingTransport, remainingSwingTransportWait } from '../../src/network/swingRequest.js';
 import {createDiagnostics, DIAGNOSTICS_PROBE} from '../../shared/diagnostics.js';
 import {createEventLimiter} from './eventLimits.js';
 import {createDirectInputBroker} from './directInputBroker.js';
@@ -80,7 +80,7 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     }
   };
   const broadcast = code => {
-    directInput.sync();
+    directInput.sync(code);
     const lobby = store.lobby(code);
     if (lobby) for (const socketId of io.sockets.adapter.rooms.get(code) ?? []) {
       io.to(socketId).emit(EVENTS.LOBBY_UPDATE, store.lobbyForSocket(socketId, lobby));
@@ -88,8 +88,8 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
   };
   function publish(result) {
     if (!result) return;
-    directInput.sync();
     if (result.closed) {
+      directInput.sync(result.code);
       if (result.recoverySource && profiles) {
         try {profiles.store.releaseRecovery(result.recoverySource.matchId,result.recoverySource.claimId);} catch { /* lease expiration handles a storage outage */ }
       }
@@ -385,7 +385,8 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       const host = io.sockets.sockets.get(result.hostSocketId);
       if (!host?.connected) return reply(ack, { ok: false, error: 'disconnected' });
       swingWaiting = true;
-      const available = await waitForSwingTransport(() => host.conn.transport.writable, () => host.connected);
+      const available = await waitForSwingTransport(() => host.conn.transport.writable, () => host.connected,
+        () => socket.connected, remainingSwingTransportWait(event));
       swingWaiting = false;
       if (available !== 'ready') {recordRelay(socket, host, 'swing', event?.id, receivedAt, 'transportDropped'); return reply(ack, { ok: false, error: available });}
       // Recheck both authenticated sockets and the match after waiting: resume

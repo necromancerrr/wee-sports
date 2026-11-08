@@ -13,12 +13,18 @@ route and gains the shared table-tennis timing/intent fixes.
 
 No external STUN/TURN service is configured. Unsupported browsers, isolated
 Wi-Fi clients and failed negotiation use the existing server relay. Direct
-input requires a current server lease, matched game/generation/TV epoch and
+negotiation is suspended while Socket.IO uses HTTP polling: optional lease
+POSTs must not occupy its transport ahead of a swing. A later WebSocket upgrade
+enables negotiation automatically. Direct input requires a current server
+lease, matched game/generation/TV epoch and
 healthy peer heartbeat. It stops on pause, background, departure or replacement.
 Failed negotiation retries back off from 5 seconds to 60 seconds; a browser
 that refuses to construct a peer connection disables the attempt for that session.
-Packets expire, channels use bounded retransmission without ordered delivery,
-and both routes share input deduplication. An uncertain sent swing is never
+Tennis uses a reliable unordered channel; the receiver rejects strokes older
+than 250 ms plus measured clock uncertainty and acknowledges expiry explicitly.
+This lets a short TV frame stall delay a stroke without silently losing it.
+Table-tennis poses keep an 80 ms transport lifetime and 160 ms receive-age bound
+because newer poses replace older ones. Both routes share input deduplication. An uncertain sent swing is never
 resent through the fallback. A lost direct connection can lose detailed stroke
 feedback; the ordinary server hit feedback and authoritative game state remain.
 
@@ -27,6 +33,19 @@ Opt-in diagnostics add `direct.roundTripMs`, direct delivery counters and
 They measure local durations and round trips, not physical motion-to-display
 latency. The actual browser/network must support a direct route to gain its
 network benefit.
+
+The signaling broker checks a small authoritative room/seat view instead of
+building public lobby snapshots on every heartbeat. Immediate invalidation is
+limited to the affected room; a periodic sweep still expires all leases.
+
+Tennis relay actions share a 160 ms phone/server queue-wait budget. The phone
+measures and attaches its own wait, which is validated and deducted at the
+server; this is not two separate 160 ms waits. A measured polling handoff took
+about 145 ms before a usable TV GET became available, exceeding the previous
+80 ms server limit. Stale actions still expire, only one stroke may wait per
+socket, and a pause or changed session invalidates the input. Bowling keeps its
+80 ms wait. These limits concern application queueing, not network transit or
+physical motion-to-screen latency.
 
 ## Placement and contact
 

@@ -1,0 +1,114 @@
+{
+  "method": "Local synthetic RoomStore + broker with active 1/30/100 rooms; one host lease renewal. Elapsed time is a single local sample, not production latency.",
+  "before": [
+    {
+      "rooms": 1,
+      "lobbySnapshots": 5,
+      "profileContextSnapshots": 5,
+      "elapsedMs": 0.160057
+    },
+    {
+      "rooms": 30,
+      "lobbySnapshots": 121,
+      "profileContextSnapshots": 121,
+      "elapsedMs": 0.39902
+    },
+    {
+      "rooms": 100,
+      "lobbySnapshots": 401,
+      "profileContextSnapshots": 401,
+      "elapsedMs": 1.289466
+    }
+  ],
+  "after": [
+    {
+      "rooms": 1,
+      "lobbySnapshots": 0,
+      "profileContextSnapshots": 0,
+      "elapsedMs": 0.08225
+    },
+    {
+      "rooms": 30,
+      "lobbySnapshots": 0,
+      "profileContextSnapshots": 0,
+      "elapsedMs": 0.027815
+    },
+    {
+      "rooms": 100,
+      "lobbySnapshots": 0,
+      "profileContextSnapshots": 0,
+      "elapsedMs": 0.068665
+    }
+  ],
+  "directRegression": "A valid tennis swing held in the TV message queue for 180ms was previously dropped by the 160ms age check. New tests deliver it once; 251ms and future-clock inputs are rejected and acknowledged as expired.",
+  "pollingRegression": "Original reproduction: a real Socket.IO polling POST delayed by 120 ms for optional lease traffic made a fresh swing expire under the former 80 ms limit. Optional direct negotiation is now suspended on polling and resumes on WebSocket upgrade. The final regression uses a 200 ms optional POST to verify it cannot consume the new shared budget.",
+  "limits": [
+    "Actual user route unknown",
+    "Real direct RTC delivery remains unverified under enforced browser policy",
+    "Local socket timing is not Seattle/Railway or physical motion-to-screen latency"
+  ],
+  "pollingHandoffDiagnosis": {
+    "initialFullSuite": {
+      "passed": 222,
+      "total": 223,
+      "failed": "polling sustained delivery, swing 35: network-busy",
+      "parallelWork": "Vitest and compile were also running"
+    },
+    "isolatedFullSuiteBeforeBudgetFix": {
+      "passed": 222,
+      "total": 223,
+      "failed": "polling sustained delivery, swing 1: network-busy"
+    },
+    "focusedFailureTrace": {
+      "swing": 41,
+      "serverInputAtMs": 8.3,
+      "priorGetConsumedAtMs": 7.19,
+      "tvRequestedNextGetAtMs": 35.03,
+      "serverProcessedNextGetAtMs": 138.83,
+      "firstUsableGetAtMs": 152.86,
+      "unavailableDurationMs": 144.56
+    },
+    "finding": "No usable server-to-TV polling slot existed before the former 80 ms wait deadline. A queued state acknowledgement and lobby snapshot consumed earlier GETs. This was an actual polling handoff timeout, not a missed writable edge. Resource contention alone did not explain the repeated failures.",
+    "fix": {
+      "tennisCombinedQueueWaitMs": 160,
+      "phoneWaitMetadata": "transportWaitMs",
+      "serverBudget": "160 minus validated phone queue wait",
+      "bowlingQueueWaitMs": 80,
+      "omittedMetadata": "Older senders use zero declared phone wait; server wait never exceeds 160 ms",
+      "invalidMetadata": "Protocol rejects nonfinite, negative or greater-than-160 values; remaining-budget helper also fails closed",
+      "guarantees": [
+        "At most one waiting action per socket",
+        "Expired actions are not buffered or replayed",
+        "Pause and session-generation changes invalidate waiting input"
+      ]
+    },
+    "scope": "The shared cap covers application transport queue waits. It does not measure or cap network transit, motion recognition, rendering, or total input-to-display time."
+  },
+  "focusedValidation": {
+    "directClientTests": 20,
+    "brokerTests": 17,
+    "queueBudgetTests": 10,
+    "nativeControllerTests": 84,
+    "controlledRealPollingTests": 2,
+    "controlledRealPollingChecks": [
+      "A 120 ms TV GET handoff delivers the fresh swing exactly once",
+      "A 200 ms optional lease POST cannot block the normal relay because direct negotiation is suspended on polling"
+    ],
+    "lint": "passed",
+    "diffCheck": "passed"
+  },
+  "finalServerSuite": {
+    "status": "passed",
+    "tests": 224,
+    "passed": 224,
+    "failed": 0,
+    "durationMs": 67388.923032,
+    "command": "npm run test:server",
+    "execution": "Ran after build, browser, and Vitest work completed",
+    "sustainedDelivery": [
+      "websocket: 104/104 once; median=2.32ms, p95=11.68ms; third=6.02ms; last=1.27ms (local relay only)",
+      "polling: 104/104 once; median=17.34ms, p95=28.79ms; third=24.59ms; last=14.50ms (local relay only)"
+    ],
+    "log": "/tmp/wee-responsive-server-final.log"
+  }
+}

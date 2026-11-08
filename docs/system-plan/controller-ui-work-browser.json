@@ -1,0 +1,135 @@
+{
+  "recordedAt": "2026-11-08T20:47:02.626Z",
+  "checks": [
+    "tennis: unchanged play screen has zero DOM mutations across two seconds of live timers",
+    "Tennis: Settings and Back to play update immediately; both touch shots still send exactly once",
+    "table-tennis: unchanged play screen has zero DOM mutations across two seconds of live timers",
+    "Table tennis: touch paddle and accessible value update on movement; Return remains enabled",
+    "Tennis: quiet synthetic motion keeps arriving at sensor cadence without rewriting the unchanged play screen"
+  ],
+  "measurements": [
+    {
+      "version": "before",
+      "sport": "tennis",
+      "durationMs": 2000,
+      "mutations": 263,
+      "targets": {
+        "setup-status:childList": 67,
+        "sensor-status:data-state": 7,
+        "sensor-status:childList": 7,
+        "sensor-detail:childList": 7,
+        "detector-state:childList": 7,
+        "setup-panel:hidden": 7,
+        "controller-options:hidden": 7,
+        "timing-details:hidden": 7,
+        "strength-panel:hidden": 7,
+        "tune-strength:disabled": 7,
+        "tune-strength:childList": 7,
+        "skip-strength:childList": 7,
+        "strength-progress:hidden": 7,
+        "back-to-play:hidden": 7,
+        "toggle-settings:childList": 7,
+        "toggle-settings:aria-expanded": 7,
+        "stop:hidden": 7,
+        "play-panel:data-state": 7,
+        "play-notice:hidden": 7,
+        "record:hidden": 7,
+        "record:disabled": 7,
+        "bowling-controls:hidden": 7,
+        "aim-label:childList": 7,
+        "tilt-help:hidden": 7,
+        "bowling-readout:hidden": 7,
+        "grip-cue:hidden": 7,
+        "use-buttons:hidden": 7,
+        "enable:childList": 7,
+        "latest:hidden": 7
+      }
+    },
+    {
+      "version": "before",
+      "sport": "table-tennis",
+      "durationMs": 2000,
+      "mutations": 32,
+      "targets": {
+        "tt-title:childList": 4,
+        "tt-cue:childList": 4,
+        "tt-phone-status:childList": 4,
+        "tt-enable-motion:hidden": 4,
+        "tt-use-touch:childList": 4,
+        "tt-illustration:hidden": 4,
+        "tt-notice:hidden": 4,
+        "tt-touchpad:aria-valuenow": 4
+      }
+    },
+    {
+      "version": "before",
+      "sport": "tennis",
+      "mode": "quiet-motion",
+      "samples": 125,
+      "durationMs": 2000,
+      "mutations": 315,
+      "targets": {
+        "setup-status:childList": 67,
+        "sensor-status:data-state": 8,
+        "sensor-status:childList": 8,
+        "sensor-detail:childList": 8,
+        "detector-state:childList": 8,
+        "setup-panel:hidden": 8,
+        "controller-options:hidden": 8,
+        "timing-details:hidden": 8,
+        "strength-panel:hidden": 8,
+        "tune-strength:childList": 8,
+        "skip-strength:childList": 8,
+        "strength-progress:hidden": 8,
+        "back-to-play:hidden": 8,
+        "toggle-settings:childList": 8,
+        "toggle-settings:aria-expanded": 8,
+        "stop:hidden": 8,
+        "play-panel:data-state": 8,
+        "play-notice:hidden": 8,
+        "record:hidden": 8,
+        "record:disabled": 8,
+        "bowling-controls:hidden": 8,
+        "shot-adjustments:hidden": 8,
+        "curve-buttons:hidden": 8,
+        "aim-label:childList": 8,
+        "tilt-help:hidden": 8,
+        "bowling-readout:hidden": 8,
+        "grip-cue:hidden": 8,
+        "enable:hidden": 8,
+        "enable:childList": 8,
+        "bowling-buttons:hidden": 8,
+        "manual-controls:hidden": 8,
+        "latest:hidden": 8
+      }
+    },
+    {
+      "version": "after",
+      "sport": "tennis",
+      "durationMs": 2000,
+      "mutations": 0,
+      "targets": {}
+    },
+    {
+      "version": "after",
+      "sport": "table-tennis",
+      "durationMs": 2000,
+      "mutations": 0,
+      "targets": {}
+    },
+    {
+      "version": "after",
+      "sport": "tennis",
+      "mode": "quiet-motion",
+      "samples": 125,
+      "durationMs": 2000,
+      "mutations": 0,
+      "targets": {}
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Local Chromium DOM mutations with idle touch controls and synthetic quiet motion; not physical phone FPS, motion-to-contact latency or deployment network performance.",
+    "Freshness polling, sensor recognition, input dispatch and visible feedback animation cadence are unchanged."
+  ]
+}

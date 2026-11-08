@@ -335,6 +335,21 @@ export class RoomStore {
           profileId: room.profileBindings.has(id) ? room.profileBindings.get(id) : this.#members.get(id)?.profileId ?? null, name: seat.name, slot: seat.slot}))}};
   }
 
+  /** Small authoritative view for transient racket-input leases. Never build
+   * the public lobby/reconnection snapshot in this per-peer heartbeat path. */
+  directInputContext(socketId) {
+    const member = this.#members.get(this.#sockets.get(socketId));
+    const room = member && this.#rooms.get(member.code);
+    if (!room || !['tennis', 'table-tennis'].includes(room.sport) || room.phase !== PHASES.GAME ||
+        room.pausedAt !== null || !room.gameId || room.gameState?.phase === 'complete') return null;
+    const seat = member.role === 'player' && room.players.get(member.id);
+    if (member.role === 'host' ? room.hostId !== member.id :
+      member.role !== 'player' || !seat || seat.slot > 1 || !seat.setup) return null;
+    return {memberId:member.id,role:member.role,code:room.code,sport:room.sport,
+      gameId:room.gameId,generation:room.inputGeneration,hostEpoch:room.hostEpoch,
+      ...(seat ? {player:seat.slot + 1} : {})};
+  }
+
   saveCheckpoint(socketId, event) {
     const context = this.sessionContext(socketId);
     const room = context && this.#rooms.get(context.code);
