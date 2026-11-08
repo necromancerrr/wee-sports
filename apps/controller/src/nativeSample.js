@@ -20,6 +20,31 @@ export function nativeDeviceMotionFields(reading) {
   return result;
 }
 
+/** Raw Accelerometer is present on phones without Android's optional fused
+ * sensors. Expo returns g units (iOS gravity-down, Android support/up). Keep
+ * that total separate: it cannot honestly supply gravity-free shot power.
+ */
+export function nativeAccelerometerFields(reading) {
+  return isVector3(reading) ? {accelerationIncludingGravity:Object.fromEntries(axes.map(axis => [axis,reading[axis] * 9.80665]))} : {};
+}
+
+/** Native timestamps use device uptime, while JS uses its own monotonic clock.
+ * Map capture intervals onto receipt time and reject duplicate sensor frames.
+ */
+export function createNativeSensorClock() {
+  let previous = null, offset = null;
+  return {
+    read(timestamp, receivedMs) {
+      if (!Number.isFinite(timestamp)) return receivedMs;
+      if (previous !== null && timestamp <= previous) return null;
+      previous = timestamp;
+      offset = Math.min(offset ?? Infinity, receivedMs - timestamp * 1000);
+      return Math.min(receivedMs, timestamp * 1000 + offset);
+    },
+    reset() {previous = offset = null;},
+  };
+}
+
 /** Bowling's established screen-up aim consumes a support/up vector. This is
  * an explicit adapter conversion, not a claim that all browser totals agree.
  */

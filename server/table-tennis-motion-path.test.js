@@ -8,8 +8,8 @@ import {TableTennisGame} from '../src/tabletennis/game.js';
  */
 function receive({axis = 'x', sign = 1, hz = 60, fps = 60, screenAngle = 0,
   native = false, peak = 4, idle = false, threshold = .5, jitter = false,
-  renderStall = 0, pulseSeconds = .24, networkDelay = 0} = {}) {
-  let now = 0, sequence = 0, angle = 0, started = null, samples = 0;
+  renderStall = 0, pulseSeconds = .24, networkDelay = 0, onset = null} = {}) {
+  let now = 0, sequence = 0, angle = 0, started = null, samples = 0, fedAt = null;
   const game = new TableTennisGame({now: () => now});
   const messages = [], events = [], packets = [], delivery = [];
   const session = createTableTennisControllerSession({send: message => {
@@ -45,7 +45,8 @@ function receive({axis = 'x', sign = 1, hz = 60, fps = 60, screenAngle = 0,
     if (now + 1e-9 >= nextSensor) {
       session.setPhase(game.snapshot().phase);
       const ball = game.physics.ball;
-      if (started === null && ball.active && ball.velocity.z > 0 && ball.position.z >= threshold) started = now;
+      if (started === null && ball.active && ball.velocity.z > 0 &&
+        (onset === null ? ball.position.z >= threshold : now >= fedAt + onset)) started = now;
       const phase = started === null ? -1 : (now - started) / pulseSeconds;
       const dt = (1 + (jitter ? samples % 2 ? -.16 : .16 : 0)) / hz;
       sample(!idle && phase >= 0 && phase <= 1 ? sign * peak * Math.sin(phase * Math.PI) : 0, dt);
@@ -57,7 +58,7 @@ function receive({axis = 'x', sign = 1, hz = 60, fps = 60, screenAngle = 0,
       game.update(now - previousFrame);
       previousFrame = now; nextFrame = now + 1 / fps;
     }
-    if (!game.physics.ball.active && game.time >= .3 && game.nextFeed === Infinity && !events.length) game.feed();
+    if (!game.physics.ball.active && game.time >= .3 && game.nextFeed === Infinity && !events.length) {game.feed(); fedAt = now;}
     const hit = events.find(event => event.kind === 'hit' && event.player === 1);
     if (hit && events.some(event => event.kind === 'bounce' && event.side === 2 && event.id > hit.id) ||
       game.lastReason.startsWith('Missed')) break;
@@ -152,7 +153,7 @@ test('a complete swing between display frames retains its peak power and capture
 
 test('fresh quiet samples cannot keep an old stroke request alive for a later ball', () => {
   const {game, sample} = pendingSwing();
-  for (let index = 0; index < 55; index++) sample(0);
+  for (let index = 0; index < 85; index++) sample(0);
   game.update(1 / 60);
   expect(game.pendingStroke).toBeNull();
   expect(game.playerStroke.phase).toBe('ready');
@@ -179,4 +180,32 @@ test('gentle strokes survive realistic one-way input delay without moving their 
     expect(result.landing?.side).toBe(2);
     expect(Math.abs(result.landing.position.x)).toBeLessThan(.03);
   }
+});
+
+test('casual early and late reactions have a broad receive window, with no return after the ball is lost', () => {
+  for (const native of [false, true]) for (const onset of [.1, .2, .3, .4, .5, .6, .7]) {
+    const result = receive({native, onset, peak: 2, networkDelay: .04, fps: 30});
+    expect(result.hits, `${native ? 'native' : 'web'} reaction at ${onset}s`).toHaveLength(1);
+    expect(result.landing?.side).toBe(2);
+  }
+  expect(receive({onset: .8, peak: 2, networkDelay: .04}).hits).toHaveLength(0);
+});
+
+test('a fresh swing during paddle resynchronization is buffered until the legal receive', () => {
+  let now = 1, bufferedWhileSettling = false;
+  const game = new TableTennisGame({now: () => now}), events = [];
+  const collision = game.physics.onEvent;
+  game.physics.onEvent = event => {events.push(event); collision(event);};
+  game.feed();
+  for (let frame = 0; frame < 150; frame++) {
+    now = 1 + frame / 60;
+    const elapsed = frame / 60;
+    game.setInput({orientation: [0, 0, 0, 1], reach: {x: 0, y: 0}, calibrationRevision: 3,
+      angularVelocity: {x: elapsed < .24 ? 3 * Math.sin(elapsed / .24 * Math.PI) : 0, y: 0, z: 0}}, {remote: true});
+    bufferedWhileSettling ||= game.settling && Boolean(game.pendingStroke);
+    game.update(1 / 60);
+    if (events.some(event => event.kind === 'hit' && event.player === 1)) break;
+  }
+  expect(bufferedWhileSettling).toBe(true);
+  expect(events.filter(event => event.kind === 'hit' && event.player === 1)).toHaveLength(1);
 });

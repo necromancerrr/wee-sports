@@ -23,6 +23,7 @@ let hostEpoch: number | undefined;
 let lastAimSequence = -1;
 let lastAimPlayer: number | null = null;
 let previousPhase: BowlingState['phase'] | null = null;
+let aimTarget: Pick<BowlingState, 'phase' | 'currentPlayer'> | null = null;
 let lastCheckpoint = '';
 let restored = false;
 let restoring = false;
@@ -87,6 +88,7 @@ function showAim(aim: number, locked = false): void {
 }
 
 function render(state: BowlingState): void {
+  aimTarget = {phase: state.phase, currentPlayer: state.currentPlayer};
   const changedPlayer = state.currentPlayer !== lastAimPlayer;
   if (changedPlayer) { lastAimSequence = -1; lastAimPlayer = state.currentPlayer; }
   if (!restoring && state.phase === 'ready' && (changedPlayer || previousPhase === 'rolling')) {
@@ -248,9 +250,10 @@ function receive(event: MessageEvent): void {
     const aim = data.event;
     const sequence = aim?.seq ?? aim?.sequence;
     const generation = aim?.inputGeneration ?? aim?.generation;
-    // One snapshot per update avoids rebuilding eight scorecards repeatedly
-    // inside the high-frequency live-aim validation path.
-    const target = world?.getState();
+    // World transitions publish synchronously. Live aim needs only the turn;
+    // rebuilding eight ten-frame scorecards on every sensor packet adds work
+    // to the same thread that renders the lane.
+    const target = aimTarget;
     if (!world || paused || !connected || aim?.gameId !== gameId ||
         target?.phase !== 'ready' || aim.player !== target.currentPlayer ||
         !Number.isFinite(aim.aim) || Math.abs(aim.aim) > 1 || typeof aim.locked !== 'boolean' ||

@@ -1,9 +1,8 @@
-import {SportSwitcher} from '../components/SportSwitcher.jsx';
-/** Shared TV lobby: choose the party size, invite phones and watch readiness. */
+/** Shared TV lobby: scan, join and start from the lead player's phone. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { EVENTS, PHASES, playerCapacity } from '@wee/shared/protocol.js';
+import { EVENTS, PHASES } from '@wee/shared/protocol.js';
 import { QrCode } from '../components/QrCode.jsx';
 import { TvCountdown } from '../components/TvCountdown.jsx';
 import { TvGame } from '../components/TvGame.jsx';
@@ -33,7 +32,6 @@ export default function HostStub() {
   // A vote cancelled by someone leaving has nothing to reveal.
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
   const [startError, setStartError] = useState(null);
-  const [changingCount, setChangingCount] = useState(false);
   const [returning, setReturning] = useState(false);
   const returnPending = useRef(false);
   const [pausing, setPausing] = useState(false);
@@ -171,74 +169,28 @@ export default function HostStub() {
   if (lobby.phase === PHASES.VOTE || revealing) return <TvVote lobby={lobby} />;
   if (lobby.phase === PHASES.TUTORIAL) return <TvTutorial lobby={lobby} />;
 
-  const capacity = playerCapacity(lobby.sport);
-  const seats = Array.from(
-    { length: capacity },
-    (_, slot) => lobby.players.find((player) => player.slot === slot) ?? null,
-  );
-
   return (
-    <main className="stub host-lobby" data-party={capacity > 4}>
-      <div className="session-heading"><p className="eyebrow">TV lobby</p>{audio.controls}<ThemeToggle /></div>
-      <h1>{sportName(lobby.sport)} lobby</h1>
-      <p className="stub__muted">{lobby.sport === 'table-tennis' ? 'One or two players. Rally with a friend or play solo. First to 12, win by two.' : lobby.sport === 'bowling' ? 'One to eight players. Take turns rolling through ten frames, with your phone as the controller.' : 'One or two players. Bring a friend for head-to-head tennis, or play solo against the bot.'}</p>
-      <div className="lobby-party-size">
-        <label>Players in this game <select aria-label="Players in this game" value={Math.max(lobby.expectedPlayers ?? 1, lobby.players.length)}
-          disabled={changingCount || reconnecting || lobby.recovery?.ownerRequired}
-          onChange={async event => {
-            setChangingCount(true); setStartError(null);
-            const result = await request(EVENTS.HOST_PLAYER_COUNT, {count: Number(event.target.value)});
-            setChangingCount(false); if (!result?.ok) setStartError(result?.error);
-          }}>
-          {Array.from({length: capacity}, (_, index) => index + 1).map(count =>
-            <option key={count} value={count} disabled={count < lobby.players.length}>{count === 1 ? '1 · Solo' : `${count} players`}</option>)}
-        </select></label>
-        <p role="status">{lobby.players.length < (lobby.expectedPlayers ?? 1)
-          ? `Waiting for ${(lobby.expectedPlayers ?? 1) - lobby.players.length} more ${(lobby.expectedPlayers ?? 1) - lobby.players.length === 1 ? 'player' : 'players'}.`
-          : 'Starts when everyone taps Play on their phone.'}</p>
-      </div>
+    <main className="stub host-lobby" data-party={lobby.players.length > 4} data-empty={!lobby.players.length}>
+      <header className="host-lobby__heading">
+        <h1>{sportName(lobby.sport)}</h1>
+        <div className="host-lobby__utilities">{audio.controls}<ThemeToggle /></div>
+      </header>
       {storageWarning ? <p className="alert">Browser storage is unavailable. Keep this tab open to preserve your session.</p> : null}
-      {url ? <>
-        <p className="stub__muted">Scan with your phone camera, tap Play, and allow motion if asked.</p>
-        <div className="stub__row">
-          <QrCode value={url} className="stub__qr" label={`Scan to join lobby ${code}`} />
-          <div>
+      <div className="host-lobby__content">
+        <section className="host-lobby__invite" aria-label="Join with your phone">
+          <h2>Scan to play</h2>
+          {url ? <QrCode value={url} className="stub__qr" label={`Scan to join lobby ${code}`} /> : null}
+          <div className="host-lobby__room-code">
+            <span className="visually-hidden">Room code</span>
             <p className="stub__code" data-testid="lobby-code">{code}</p>
-            <p className="stub__link">{url}</p>
           </div>
+          {!url ? <p className="stub__muted" role="status">{phoneLinkLoading || phoneLinkStatus === 'connecting' ? 'Preparing phone connection…' : phoneLinkStatus === 'reconnecting' ? 'Reconnecting your phone link…' : 'Phone connection unavailable. Restart the phone session on your computer.'}</p> : null}
+        </section>
+        <div className="host-lobby__players">
+          <TvReady lobby={lobby} />
+          {lobby.phase === PHASES.COUNTDOWN ? <TvCountdown lobby={lobby} onTick={audio.onCountdown} /> : null}
         </div>
-      </> : <div className="stub__row">
-        <div>
-          <p className="stub__code" data-testid="lobby-code">{code}</p>
-          <p className="stub__muted" role="status">{phoneLinkLoading || phoneLinkStatus === 'connecting' ? 'Preparing phone connection…' : phoneLinkStatus === 'reconnecting' ? 'Phone connection is reconnecting. Your QR code will return here automatically.' : 'Secure phone link is not running. Start a phone session on the laptop, then reload.'}</p>
-          {!phoneLinkLoading && ['local', 'unavailable'].includes(phoneLinkStatus) ? <details><summary>Start a phone session</summary><p>On the laptop, run <code>npm run dev:phone</code> in the project, then reload this page.</p></details> : null}
-        </div>
-      </div>}
-
-      {/* The ready check happens right here in the lobby, in place of the seat list. */}
-      {lobby.phase === PHASES.LOBBY ? (
-        <>
-          <h2>
-            Players {lobby.players.length}/{capacity}
-          </h2>
-          <ul className="seats" aria-live="polite">
-            {seats.map((player, slot) => (
-              <li key={slot} className="seat" data-empty={player === null}>
-                <span
-                  className="seat__badge"
-                  data-slot={slot}
-                  style={player ? { '--player': `var(--p${slot + 1})` } : undefined}
-                >
-                  P{slot + 1}
-                </span>
-                {player ? player.name : 'Join to play'}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <TvReady lobby={lobby} />
-      )}
+      </div>
 
       {startError ? (
         <p className="alert" role="alert">
@@ -247,9 +199,6 @@ export default function HostStub() {
       ) : null}
 
       {lobby.recovery?.ownerRequired ? <p className="alert">Continuing a saved solo game. Sign in to the same profile on your phone, then join this room.</p> : null}
-      <SportSwitcher lobby={lobby} disabled={reconnecting} />
-      <TvCountdown lobby={lobby} onTick={audio.onCountdown} />
-
       <div className="stub__actions">
         <button type="button" className="btn btn--ghost" onClick={async () => { if (await leave()) navigate('/home'); else setStartError('disconnected'); }}>
           Close lobby

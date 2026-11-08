@@ -2,6 +2,10 @@
 
 Implemented on `feat/sports-platform`, November 7, 2026 (America/Los_Angeles).
 
+The player-count selector described below has since been replaced by
+[phone-led startup](phone-led-lobby-repair.md). That follow-up also fixes
+continuous table-tennis motion and the iPhone sensor startup timeout.
+
 ## What players see
 
 - Table Tennis has a quiet court with no avatars. Tennis keeps its avatars and

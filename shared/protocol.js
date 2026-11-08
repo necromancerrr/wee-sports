@@ -102,7 +102,7 @@ export const PHASES = {
 export const EVENTS = {
   /** TV -> server: open a lobby. Ack: { ok, ...snapshot }. */
   HOST_CREATE: 'host:create',
-  HOST_PLAYER_COUNT: 'host:player-count',
+  PLAYER_START: 'player:start',
   HOST_SWITCH_SPORT: 'host:switch-sport',
   PLAYER_SWITCH_SPORT: 'player:switch-sport',
   PLAYER_POSE: 'player:pose',

@@ -2,9 +2,9 @@ import {
   createAutomaticMotionSetup, createPaddleIntentController,
   normalizeNativeGyroscope, toLegacyMotionSample,
 } from '../../../shared/motion.js';
-import { bowlingTiltAim, createBowlingDeliveryGate } from '../../../src/controller/motionGestures.js';
-import { nativeBowlingSupportVector, nativeDeviceMotionFields } from './nativeSample.js';
-import { createBowlingAimFilter } from '../../../src/controller/bowlingAim.js';
+import { createBowlingDeliveryGate } from '../../../src/controller/motionGestures.js';
+import { nativeDeviceMotionFields, nativeAccelerometerFields, createNativeSensorClock } from './nativeSample.js';
+import { createBowlingAimController } from '../../../src/controller/bowlingAim.js';
 import { createSwingStream } from '../../../src/controller/swingStream.js';
 import { createSimpleSwingStream } from '../../../src/controller/motionGestures.js';
 import { tennisPower } from '../../../src/controller/tennisPower.js';
@@ -14,6 +14,7 @@ export class MotionController {
   constructor({ session, sensors, onStatus = () => {}, onRelease = () => {}, onSwing = () => {}, hand = 'Right', sensitivity = 1, strokeMode = 'auto', now = () => performance.now() }) {
     this.Gyroscope = sensors.Gyroscope;
     this.DeviceMotion = sensors.DeviceMotion;
+    this.Accelerometer = sensors.Accelerometer;
     this.session = session;
     this.onStatus = onStatus;
     this.onRelease = onRelease;
@@ -27,7 +28,9 @@ export class MotionController {
     this.revision = 0;
     this.aim = 0;
     this.active = false;
-    this.filter = createBowlingAimFilter();
+    this.filter = createBowlingAimController();
+    this.deviceClock = createNativeSensorClock();
+    this.accelerometerClock = createNativeSensorClock();
     this.paddle = createPaddleIntentController({ hand, sensitivity });
     this.automatic = createAutomaticMotionSetup();
     this.delivery = createBowlingDeliveryGate();
@@ -41,13 +44,12 @@ export class MotionController {
     if (this.attempt !== attempt) return;
     const available = permission.granted && await this.Gyroscope.isAvailableAsync();
     if (this.attempt !== attempt) return;
-    if (!available) throw new Error('Motion is unavailable. You can still use touch controls.');
+    if (!available) throw Object.assign(new Error('This phone could not start motion. Touch controls still work.'), {code:'motion-unavailable'});
     this.active = true;
     this.calibration = null;
     this.automatic.reset();
     this.paddle.reset();
     this.filter.reset(0);
-    this.started = this.now();
     this.samples = 0;
     this.lastUi = -Infinity;
     this.lastTime = null;
@@ -61,30 +63,56 @@ export class MotionController {
       const permission = await this.DeviceMotion.requestPermissionsAsync().catch(() => ({granted:false}));
       if (!this.active || this.attempt !== attempt) return;
       gravityAvailable = permission.granted;
+      if (!gravityAvailable && this.session.seat?.sport === 'bowling') {
+        this.stop();
+        throw Object.assign(new Error('Allow Motion & Fitness in Settings to use motion bowling.'), {code:'permission-denied'});
+      }
     }
-    if (!gravityAvailable && this.session.seat?.sport === 'bowling') {
+    const accelerometerAvailable = this.session.seat?.sport === 'bowling' &&
+      Boolean(await this.Accelerometer?.isAvailableAsync().catch(() => false));
+    if (!this.active || this.attempt !== attempt) return;
+    if (!gravityAvailable && !accelerometerAvailable && this.session.seat?.sport === 'bowling') {
       this.stop();
-      throw new Error('Motion aiming is unavailable. Use touch controls.');
+      throw Object.assign(new Error('Motion aiming is unavailable on this phone. Touch controls still work.'), {code:'aim-unavailable'});
     }
+    // Time spent reading a system permission sheet is not sensor silence.
+    // Start the watchdog only after permissions resolve and listeners attach.
+    this.started = this.now();
     if (gravityAvailable) {
       this.DeviceMotion.setUpdateInterval(1000 / 60);
       this.deviceSubscription = this.DeviceMotion.addListener(reading => {
-        this.device = reading;
-        this.deviceReceived = this.now();
+        if (nativeDeviceMotionFields(reading).gravity) {
+          const captured = this.deviceClock.read(reading.accelerationIncludingGravity?.timestamp, this.now());
+          if (captured !== null) {this.device = reading; this.deviceReceived = captured;}
+        }
+      });
+    }
+    if (accelerometerAvailable) {
+      this.Accelerometer.setUpdateInterval(1000 / 60);
+      this.accelerometerSubscription = this.Accelerometer.addListener(reading => {
+        const fields = nativeAccelerometerFields(reading);
+        if (fields.accelerationIncludingGravity) {
+          const captured = this.accelerometerClock.read(reading.timestamp, this.now());
+          if (captured !== null) {this.rawAcceleration = fields; this.accelerometerReceived = captured;}
+        }
       });
     }
     this.gyroSubscription = this.Gyroscope.addListener(reading => this.sample(reading));
-    this.noDataTimer = setInterval(() => {
-      if (!this.active) return;
-      const silence = this.now() - (this.lastTime ?? this.started);
-      const missingAim = this.session.seat?.sport === 'bowling' &&
-        this.now() - (this.deviceReceived ?? this.started) > 2000;
-      if (silence > 2000 || missingAim) this.onStatus({state:'no-readings'});
-      else if (!this.automatic.read(this.now() / 1000).ready) {
-        this.delivery.suspend(); this.paddle.reset(); this.resetSwing();
-        this.onStatus({state:'warming'});
-      }
-    }, 250);
+    this.noDataTimer = setInterval(() => this.checkReadings(), 250);
+  }
+
+  checkReadings() {
+    if (!this.active) return;
+    if (this.session.inputActive === false) {this.started = this.now(); return;}
+    const silence = this.now() - Math.max(this.lastTime ?? this.started, this.started);
+    const missingAim = this.session.seat?.sport === 'bowling' &&
+      this.now() - Math.max(this.deviceReceived ?? this.started, this.accelerometerReceived ?? this.started, this.started) > 2000;
+    if (silence > 2000 || missingAim) this.onStatus({state:'no-readings',reason:missingAim ? 'aim-no-readings' : 'motion-no-readings'});
+    else if (!this.automatic.read(this.now() / 1000).ready) {
+      this.readyNotified = false;
+      this.delivery.suspend(); this.paddle.reset(); this.resetSwing();
+      this.onStatus({state:'warming'});
+    }
   }
 
   sample(reading) {
@@ -98,8 +126,11 @@ export class MotionController {
     this.samples++;
     if (this.lastTime !== null) this.largestGap = Math.max(this.largestGap, time - this.lastTime);
     this.lastTime = time;
-    if (this.device && time - this.deviceReceived < 100) {
-      Object.assign(sample, nativeDeviceMotionFields(this.device));
+    const deviceFields = nativeDeviceMotionFields(this.device);
+    if (deviceFields.gravity && this.deviceReceived !== null && time - this.deviceReceived < 250) {
+      Object.assign(sample, deviceFields);
+    } else if (this.rawAcceleration && time - this.accelerometerReceived < 250) {
+      Object.assign(sample, this.rawAcceleration);
     }
     const seat = this.session.seat;
     const safeBoundary = !this.session.playing() ||
@@ -107,12 +138,14 @@ export class MotionController {
       (seat?.sport === 'table-tennis' && seat.gameState?.phase !== 'rally');
     const status = this.automatic.push(sample, {safeBoundary,recenter:safeBoundary});
     this.calibration = status.calibration;
-    if (!status.ready) {
+    const aimReady = seat?.sport !== 'bowling' || Boolean(sample.gravity || sample.accelerationIncludingGravity);
+    if (!status.ready || !aimReady) {
+      this.readyNotified = false;
       this.delivery.suspend(); this.paddle.reset(); this.resetSwing();
       if (time - this.lastUi > 100) {this.lastUi = time; this.onStatus({state:'warming'});}
       return;
     }
-    if (status.justReady) this.onStatus({state:'ready'});
+    if (!this.readyNotified) {this.readyNotified = true; this.onStatus({state:'ready'});}
     const corrected = status.sample;
     if (this.session.inputSetup !== 'motion') return;
     if (!this.session.playing()) {
@@ -123,14 +156,15 @@ export class MotionController {
     this.wasPlaying = true;
     if (this.session.seat?.sport === 'bowling') {
       const legacy = toLegacyMotionSample(corrected);
-      if (this.delivery.lockedAim === null) {
-        const tilt = bowlingTiltAim(nativeBowlingSupportVector(corrected.gravity), Math.hypot(legacy.rotationAlpha, legacy.rotationBeta, legacy.rotationGamma));
-        if (tilt !== null) this.aim = this.filter.push(tilt, corrected.timeSeconds);
-      }
       const turnKey = this.session.bowlingTurnKey;
       const active = this.session.playing() && seat.gameState?.phase === 'ready' &&
         seat.gameState?.currentPlayer === seat.slot + 1 && this.session.bowlingReleasedTurn !== turnKey;
       const release = this.delivery.push(legacy, {active,turnKey,aim:this.aim});
+      if (this.delivery.lockedAim === null) {
+        const gravityTime = sample.gravity ? this.deviceReceived : this.accelerometerReceived;
+        const nextAim = this.filter.push(corrected, {gravityTimeSeconds:gravityTime / 1000, sensitivity:this.sensitivity});
+        if (nextAim !== null) this.aim = nextAim;
+      }
       if (active) this.session.latest('aim', {aim:this.delivery.lockedAim ?? this.aim,locked:this.delivery.lockedAim !== null});
       if (release) {this.session.bowlingReleasedTurn = turnKey; this.onRelease(release);}
     } else if (this.session.seat?.sport === 'tennis') {
@@ -170,10 +204,16 @@ export class MotionController {
     this.active = false;
     this.delivery.suspend();
     this.deviceSubscription?.remove(); this.deviceSubscription = null;
+    this.accelerometerSubscription?.remove(); this.accelerometerSubscription = null;
     this.gyroSubscription?.remove(); this.gyroSubscription = null;
     clearInterval(this.noDataTimer);
     this.device = null;
     this.deviceReceived = null;
+    this.deviceClock.reset();
+    this.accelerometerClock.reset();
+    this.rawAcceleration = null;
+    this.accelerometerReceived = null;
+    this.readyNotified = false;
     this.wasPlaying = false;
     this.automatic.reset();
     this.paddle.reset();

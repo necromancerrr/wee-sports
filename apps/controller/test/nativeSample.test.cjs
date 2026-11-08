@@ -31,3 +31,30 @@ test('native gravity requires real linear and total acceleration and strips time
   assert.deepEqual(nativeDeviceMotionFields({acceleration:{x:1,y:2,z:3,timestamp:999}}), {acceleration:{x:1,y:2,z:3}});
   assert.equal(nativeBowlingSupportVector(undefined), undefined);
 });
+
+test('raw iPhone and Android Accelerometer g units give the same tilt without inventing linear acceleration', async () => {
+  const {nativeAccelerometerFields}=await import('../src/nativeSample.js');
+  const {createBowlingAimController}=await import('../../../src/controller/bowlingAim.js');
+  const aims=[];
+  for(const sign of [-1,1]) {
+    const fields=nativeAccelerometerFields({x:sign*.3,y:0,z:sign*Math.sqrt(1-.3**2),timestamp:42});
+    assert.equal(fields.acceleration,undefined);
+    assert.equal(fields.gravity,undefined);
+    assert.ok(Math.abs(Math.hypot(...Object.values(fields.accelerationIncludingGravity))-9.80665)<1e-9);
+    aims.push(createBowlingAimController().push({...fields,timeSeconds:1,angularVelocity:{x:0,y:0,z:0}}));
+  }
+  assert.ok(Math.abs(aims[0])>.2);
+  assert.equal(aims[0],aims[1]);
+});
+
+test('native capture timestamps reject duplicate gravity and retain callback delay without mixing clock origins', async () => {
+  const {createNativeSensorClock}=await import('../src/nativeSample.js');
+  const clock=createNativeSensorClock();
+  assert.equal(clock.read(12345,1000),1000);
+  assert.equal(clock.read(12345,1017),null,'a repeated fused frame is not fresh gravity');
+  assert.ok(Math.abs(clock.read(12345.033,1050)-1033)<1e-6,'callback delay does not relabel old gravity as current');
+  assert.equal(clock.read(12344,1067),null,'out-of-order data is discarded');
+  clock.reset();
+  assert.equal(clock.read(12350,2000),2000);
+  assert.equal(clock.read(undefined,2017),2017,'sources without timestamps still use monotonic receipt time');
+});

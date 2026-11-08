@@ -85,3 +85,18 @@ test('sensor jitter and duplicate timestamps do not create extra strokes or muta
   requests[0].aim.x = 1;
   expect(detector.active).toBeNull();
 });
+
+test('continuous casual wrist swings rearm at their valleys without requiring stillness', () => {
+  for (const hz of [30, 60, 100]) for (const carry of [0, .6, .8]) {
+    const detector = createStrokeIntentDetector(), requests = [];
+    for (let index = 0; index < hz * 4; index++) {
+      const time = index / hz;
+      const sample = input('y', 3 * Math.sin(time * Math.PI * 2 / .7));
+      sample.angularVelocity.z = carry;
+      const gesture = detector.push(sample, time);
+      if (gesture) requests.push(gesture);
+    }
+    expect(requests.length, `${hz}Hz with ${carry}rad/s wrist carry`).toBeGreaterThanOrEqual(10);
+    expect(requests.length).toBeLessThanOrEqual(12);
+  }
+});

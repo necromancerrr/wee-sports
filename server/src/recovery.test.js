@@ -66,6 +66,7 @@ async function startRecovered(instance, host, phone, restored) {
   assert.equal(seat.ok, true);
   assert.equal((await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'})).ok, true);
   assert.equal((await send(phone, EVENTS.PLAYER_READY, {ready: true})).ok, true);
+  await send(phone, EVENTS.PLAYER_START, {});
   instance.finishCountdown(restored.code);
   const view = instance.store.lobby(restored.code);
   assert.equal(view.phase, PHASES.GAME);
@@ -91,7 +92,7 @@ test('archived solo recovery survives closing and reopening SQLite and all live 
   assert.equal(room.ok, true);
   const joined = await send(originalPhone, EVENTS.PLAYER_JOIN, {v, code: room.code, name: 'Saved Player', capabilities});
   await send(originalPhone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
-  await send(originalPhone, EVENTS.PLAYER_READY, {ready: true}); first.finishCountdown(room.code);
+  await send(originalPhone, EVENTS.PLAYER_READY, {ready: true}); await send(originalPhone, EVENTS.PLAYER_START, {}); first.finishCountdown(room.code);
   const oldView = first.store.lobby(room.code), savedState = tableState();
   assert.equal((await send(originalHost, EVENTS.HOST_CHECKPOINT, checkpointEvent(oldView, savedState))).saved, true);
   const sourceId = `${oldView.gameId}:round:0`;
@@ -178,7 +179,7 @@ test('guest games and in-memory recovery remain playable when durable checkpoint
   const room = await send(host, EVENTS.HOST_CREATE, {v, sport: 'table-tennis', capabilities});
   assert.equal((await send(phone, EVENTS.PLAYER_JOIN, {v, code: room.code, name: 'Guest', capabilities})).ok, true);
   await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
-  await send(phone, EVENTS.PLAYER_READY, {ready: true}); instance.finishCountdown(room.code);
+  await send(phone, EVENTS.PLAYER_READY, {ready: true}); await send(phone, EVENTS.PLAYER_START, {}); instance.finishCountdown(room.code);
   const view = instance.store.lobby(room.code), state = tableState();
   const original = f.profileStore.saveCheckpoint;
   f.profileStore.saveCheckpoint = () => {throw new Error('simulated disk write failure');};
@@ -202,6 +203,7 @@ test('leaving a recovery countdown and rejoining cannot consume the archived sta
   assert.equal((await send(phone, EVENTS.PLAYER_JOIN, {v, code: restored.code, name: 'Player 1', capabilities})).ok, true);
   await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
   await send(phone, EVENTS.PLAYER_READY, {ready: true});
+  await send(phone, EVENTS.PLAYER_START, {});
   assert.equal(instance.store.lobby(restored.code).phase, PHASES.COUNTDOWN);
   await send(phone, EVENTS.PLAYER_LEAVE, {});
   assert.equal(instance.store.lobby(restored.code).players.length, 0);
@@ -221,6 +223,7 @@ test('profile authentication storage failure does not crash or block ordinary gu
     assert.equal((await send(phone, EVENTS.PLAYER_JOIN, {v, code: room.code, name: 'Guest', capabilities})).ok, true);
     assert.equal((await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'})).ok, true);
     assert.equal((await send(phone, EVENTS.PLAYER_READY, {ready: true})).ok, true);
+    await send(phone, EVENTS.PLAYER_START, {});
     assert.equal((await send(host, EVENTS.HOST_RESTORE, {matchId: 'source-match', capabilities})).error, 'not-signed-in');
     assert.equal(await (await fetch(instance.origin + '/health')).text(), 'ok');
   } finally { f.profileStore.authenticate = authenticate; }

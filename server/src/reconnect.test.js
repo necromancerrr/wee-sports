@@ -123,9 +123,9 @@ test('expiration frees the reserved seat and invalidates the old token', () => {
   // Expired tokens are rejected even before the background sweep runs.
   assert.equal(restore(store, 'late', players[0]).error, 'bad-session');
   store.expireDisconnected();
-  assert.equal(store.lobby(code).phase, PHASES.LOBBY);
+  assert.equal(store.lobby(code).phase, PHASES.READY);
   assert.equal(store.lobby(code).players.length, 1);
-  assert.equal(store.join('replacement', { v, code, name: 'Replacement' }).slot, 0);
+  assert.equal(store.join('replacement', { v, code, name: 'Replacement' }).slot, 1);
   assert.equal(restore(store, 'late', players[0]).ok, false);
 });
 

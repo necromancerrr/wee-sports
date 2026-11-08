@@ -602,7 +602,7 @@ test('bowling presents the other player, natural swing, delivery and completion 
   expect(elements.get('bowling-controls').hidden).toBe(true);
   bowlingState({ currentPlayer: 1 });
   expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
-  expect(elements.get('play-help').textContent).toBe('Turn your wrist to curve');
+  expect(elements.get('play-help').textContent).toBe('Screen up. Tilt to aim, then swing gently forward.');
   expect(elements.get('shot-adjustments').hidden).toBe(true);
   expect(elements.has('arm-roll')).toBe(false);
   for (let i = 0; i < 16; i++) tick();
@@ -791,6 +791,35 @@ test('losing usable gravity preserves the last line and keeps touch controls ava
   expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
 });
 
+test('web bowling follows fast side tilts on every jittered sensor frame while the hand also translates', async () => {
+  location.search += '&sport=bowling';
+  await import('../src/controller/main.js');
+  await calibrate();
+  state({playing: true, paused: false});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', canRoll: true, currentPlayer: 1, phase: 'ready'}});
+  for (let index = 0; index < 20; index++) tick(16, undefined, {
+    acceleration: {x: 0, y: 0, z: 0}, accelerationIncludingGravity: {x: 0, y: 0, z: 9.80665},
+  });
+  messages.length = 0;
+  let previous = 0, previousAngle = 0;
+  for (const [index, angle] of [2, 7, 12, 17, 22, 27].entries()) {
+    const milliseconds = [15, 17, 16, 18][index % 4];
+    const radians = angle * Math.PI / 180;
+    tick(milliseconds, {alpha: .1, beta: (angle - previousAngle) * 1000 / milliseconds - .1, gamma: .2}, {
+      acceleration: {x: 8, y: 0, z: 0},
+      accelerationIncludingGravity: {x: 8 - Math.sin(radians) * 9.80665, y: 0, z: Math.cos(radians) * 9.80665},
+    });
+    const latest = messages.filter(message => message.type === 'wee:player-aim').at(-1)?.event;
+    expect(latest?.locked).toBe(false);
+    expect(latest.aim).toBeGreaterThan(previous);
+    expect((angle - 1) / 34 - latest.aim).toBeLessThan(.09);
+    previous = latest.aim; previousAngle = angle;
+  }
+  expect(messages.filter(message => message.type === 'wee:player-aim')).toHaveLength(6);
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
+});
+
 const teamRecordings = [
   ['two-forehands-one-backhand', 'Right', ['Forehand', 'Forehand', 'Backhand']],
   ['four-backhands', 'Right', Array(4).fill('Backhand')],
@@ -916,4 +945,27 @@ test('natural motion sends one roll, never retries after ACK or timeout, and wai
   bowlingState('rolling'); bowlingState('ready'); rest(); bowl(); expect(rolls()).toHaveLength(2);
   tick(4500, null); rest(); bowl(); expect(rolls()).toHaveLength(2);
   expect(permission).not.toHaveBeenCalled();
+});
+
+
+test('returning a pending bowling roll to the lobby clears waiting and settings for the next match', async () => {
+  location.search += '&sport=bowling';
+  await import('../src/controller/main.js');
+  elements.get('use-buttons').onclick();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'old', generation: 1});
+  const lane = () => emit('message', {source: parent, origin: location.origin, data: {
+    type: 'wee:bowling-state', phase: 'ready', currentPlayer: 1, canRoll: true,
+  }});
+  lane();
+  elements.get('roll').onclick();
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
+  elements.get('toggle-settings').onclick();
+  state({playing: false, paused: true, sport: 'bowling', gameId: null, generation: 2});
+  expect(elements.get('play-title').textContent).toBe('You’re in');
+  expect(elements.get('controller-options').hidden).toBe(true);
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1).setup).toBe('buttons');
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'next', generation: 3});
+  lane();
+  expect(elements.get('roll').disabled).toBe(false);
+  expect(elements.get('play-title').textContent).toBe('Choose your line');
 });

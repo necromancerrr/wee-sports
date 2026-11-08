@@ -133,3 +133,21 @@ test('high-rate sensor bursts coalesce to the newest pose and never replay skipp
   expect(f.session.frame(.26)).toBeNull();
   expect(f.messages.filter(message => message.type === 'wee:player-pose')).toHaveLength(before + 1);
 });
+
+
+test.each(['touch', 'motion'])('returning to the lobby clears the completed %s match and preserves verified controls', mode => {
+  const f = create();
+  f.session.select(mode);
+  if (mode === 'motion') f.warm();
+  f.acknowledge();
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'first', generation: 1});
+  f.session.setPhase('complete');
+  const setupRequests = f.messages.filter(message => message.type === 'wee:controller-setup').length;
+  f.session.lobby({connected: true, playing: false, paused: true, gameId: null, generation: 2});
+  expect(f.session.state).toMatchObject({phase: 'ready', connected: true, playing: false, setup: mode === 'motion' ? 'motion' : 'buttons'});
+  expect(f.session.canSend).toBe(false);
+  expect(f.messages.filter(message => message.type === 'wee:controller-setup')).toHaveLength(setupRequests);
+  f.session.lobby({connected: true, playing: true, paused: false, gameId: 'next', generation: 3});
+  const pose = mode === 'motion' ? f.session.sample(sample(.22, 11, {x: 12, y: 0, z: 0})) : f.session.frame(.22);
+  expect(pose.angularVelocity).toEqual({x: 0, y: 0, z: 0});
+});

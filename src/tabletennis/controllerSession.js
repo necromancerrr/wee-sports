@@ -72,9 +72,11 @@ export function createTableTennisControllerSession({send = () => {}, onChange = 
     lobby(value) {
       const reconnected = !connected && value.connected;
       const interrupted = connected && !value.connected;
-      const newBoundary = gameId !== value.gameId || generation !== value.generation || paused !== Boolean(value.paused);
+      const newGame = gameId !== value.gameId;
+      const newBoundary = newGame || generation !== value.generation || paused !== Boolean(value.paused);
       gameId = value.gameId; generation = value.generation;
       connected = value.connected === true; playing = value.playing === true; paused = value.paused === true;
+      if (newGame || !playing) phase = 'ready';
       if (newBoundary) {latest = null; paddle.reset(); strokeUntil = 0; neutralPose = true; sentSampleSequence = null;}
       if (interrupted && mode === 'motion') clearMotion();
       if (reconnected && mode) setup(suspended ? null : expected(), true);

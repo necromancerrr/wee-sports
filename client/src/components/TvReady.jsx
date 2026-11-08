@@ -1,6 +1,5 @@
 /**
- * The ready check, shown inside the TV lobby in place of the seat list. Read
- * from across a room, so the type is big.
+ * Only people who have joined appear on the TV. Read from across a room.
  *
  * Seat colors (--p1..--p8) are identity only. P2 is red, P3 green and P4
  * yellow, so ready state never uses color: it is the border style (dashed or
@@ -18,23 +17,13 @@ import { CheckIcon } from './icons.jsx';
 export function TvReady({ lobby }) {
   const counting = lobby.phase === PHASES.COUNTDOWN;
   const { players } = lobby;
-  const readyCount = players.filter((player) => player.ready).length;
-  const expectedCount = Math.max(lobby.expectedPlayers ?? players.length, players.length);
-  const title = counting ? 'Everyone’s ready!' : 'Pick up your controller';
+  const leader = players.find(player => player.slot === lobby.leaderSlot);
+  if (!players.length) return <p className="host-lobby__waiting" role="status">Waiting for players…</p>;
+  const cue = counting ? 'Starting…' : lobby.canStart && leader ? `Start from ${leader.name}’s phone` : 'Get ready on your phone';
 
   return (
-    <section className="ready" data-counting={counting}>
-      <div className="ready__head">
-        <h2 className="ready__title">{title}</h2>
-        <p className="ready__count" aria-hidden="true">
-          <span className="ready__number">
-            {readyCount}/{expectedCount}
-          </span>{' '}
-          ready
-        </p>
-      </div>
-
-      <ul className="ready__cards">
+    <section className="ready" data-counting={counting} aria-label="Lobby players">
+      <ul className="ready__cards" aria-label="Joined players" aria-live="polite">
         {players.map(({ slot, name, ready, setup }) => (
           <li
             key={slot}
@@ -54,9 +43,7 @@ export function TvReady({ lobby }) {
         ))}
       </ul>
 
-      <p className="visually-hidden" role="status" aria-live="polite">
-        {counting ? title : `${readyCount} of ${expectedCount} players ready.`}
-      </p>
+      <p className="host-lobby__start-cue" role="status">{cue}</p>
     </section>
   );
 }

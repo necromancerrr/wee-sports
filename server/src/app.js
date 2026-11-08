@@ -39,7 +39,12 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
     } catch {return null;}
   };
   const reply = (ack, value) => { if (typeof ack === 'function') ack(value); };
-  const broadcast = code => { const lobby = store.lobby(code); if (lobby) io.to(code).emit(EVENTS.LOBBY_UPDATE, lobby); };
+  const broadcast = code => {
+    const lobby = store.lobby(code);
+    if (lobby) for (const socketId of io.sockets.adapter.rooms.get(code) ?? []) {
+      io.to(socketId).emit(EVENTS.LOBBY_UPDATE, store.lobbyForSocket(socketId, lobby));
+    }
+  };
   function publish(result) {
     if (!result) return;
     if (result.closed) {
@@ -142,8 +147,8 @@ export function createGameServer({ store = new RoomStore(), origins = [], tickMs
       const code = payload?.code;
       reply(ack, code && store.hostedBy(socket.id) === code ? { ok: true, ...store.lobby(code) } : { ok: false, error: ERRORS.NO_ROOM });
     });
-    socket.on(EVENTS.HOST_PLAYER_COUNT, (payload, ack) => {
-      const result = store.setPlayerCount(socket.id, payload);
+    socket.on(EVENTS.PLAYER_START, (_payload, ack) => {
+      const result = store.startGame(socket.id);
       reply(ack, result);
       if (result.ok) broadcast(result.code);
     });

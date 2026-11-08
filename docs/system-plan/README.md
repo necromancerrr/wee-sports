@@ -81,9 +81,10 @@ Run browser checks separately from CPU-heavy physics suites on shared machines.
 
 ## Owner trial: bowling
 
-1. Create a Bowling room on the display, choose the party size (up to eight), scan its QR with the normal phone
+1. Create a Bowling room on the display and scan its QR with the normal phone
    camera, and join as a guest. No account or native app is required.
-2. Tap Play and allow motion if asked. No name, grip checklist, Ready button or
+2. Tap Play to join and allow motion if asked. The first phone chooses Start game
+   when everyone has joined; a full eight-player room starts automatically. No name, grip checklist, Ready button or
    per-roll Arm button is required. Confirm left/center/right aim on the display;
    the line freezes when the forward swing begins.
 3. Try several backswing-only preparations: none should release. Compare gentle,
@@ -110,8 +111,8 @@ oracles complement a real game; neither substitutes for the other.
    without waiting for a completed tennis swing animation.
 4. Pause and recenter between points. Neither action should cause an invisible
    high-speed strike. Test a short interruption and confirm stale input is frozen.
-5. Set the TV party size to two before joining a second phone and play head to
-   head. Both paddles must respond to their own phone. Finish a game at 12 with
+5. Join a second phone to play head to head. A fresh full two-player room starts
+   when both controllers are ready. Both paddles must respond to their own phone. Finish a game at 12 with
    a two-point lead, rematch, and switch back to bowling. Verify deuce,
    alternating service at deuce, and serve lets through the automated rule cases.
 

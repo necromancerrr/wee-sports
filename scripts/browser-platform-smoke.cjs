@@ -21,6 +21,7 @@ async function joinPhone(page, code, name) {
         await page.getByLabel('Your name (optional)', { exact: true }).fill(name);
     }
     await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Start game', exact: true }).click();
 }
 async function returnToLobby(host) {
     await host.getByLabel('TV display controls').click();
@@ -95,13 +96,14 @@ async function waitForRoll(controller, host) {
         await host.getByLabel('TV display controls').click();
         await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
         await host.getByRole('button', { name: 'End match and return', exact: true }).click();
-        await host.getByRole('heading', { name: 'Bowling lobby', exact: true }).waitFor();
-        await host.getByLabel('Next sport', { exact: true }).selectOption('table-tennis');
-        await host.getByRole('heading', { name: 'Table Tennis lobby', exact: true }).waitFor();
+        await host.locator('.host-lobby').getByRole('heading', { name: 'Bowling', exact: true }).waitFor();
+        await phone.getByLabel('Next sport', { exact: true }).selectOption('table-tennis');
+        await host.locator('.host-lobby').getByRole('heading', { name: 'Table Tennis', exact: true }).waitFor();
         assert.equal(await host.getByTestId('lobby-code').innerText(), code);
         await host.getByText('Player', { exact: true }).waitFor();
         const tc = phone.frameLocator('iframe[title="Table Tennis phone controller"]');
         await tc.locator('#tt-touchpad').waitFor();
+        await phone.getByRole('button', { name: 'Start game', exact: true }).click();
         await host.getByRole('heading', { name: 'Table Tennis', exact: true }).waitFor({ timeout: 15000 });
         const tg = host.frameLocator('iframe[title="Table Tennis game"]');
         await tg.locator('canvas').waitFor();
@@ -119,8 +121,8 @@ async function waitForRoll(controller, host) {
         await host.getByLabel('TV display controls').click();
         await host.getByRole('button', { name: 'Return to lobby', exact: true }).click();
         await host.getByRole('button', { name: 'End match and return', exact: true }).click();
-        await host.getByLabel('Next sport', { exact: true }).selectOption('tennis');
-        await host.getByRole('heading', { name: 'Tennis lobby', exact: true }).waitFor();
+        await phone.getByLabel('Next sport', { exact: true }).selectOption('tennis');
+        await host.locator('.host-lobby').getByRole('heading', { name: 'Tennis', exact: true }).waitFor();
         assert.equal(await host.getByTestId('lobby-code').innerText(), code);
         await host.getByText('Player', { exact: true }).waitFor();
         pass('Existing Tennis remains available in the same room');
@@ -190,7 +192,7 @@ async function waitForRoll(controller, host) {
         await host.goto(base + '/profile');
         await host.getByRole('heading', { name: 'Continue a solo game', exact: true }).waitFor();
         await host.getByRole('button', { name: 'Continue on this screen', exact: true }).click();
-        await host.getByRole('heading', { name: 'Bowling lobby', exact: true }).waitFor();
+        await host.locator('.host-lobby').getByRole('heading', { name: 'Bowling', exact: true }).waitFor();
         const restoredCode = await host.getByTestId('lobby-code').innerText();
         assert.notEqual(restoredCode, savedCode);
         await joinPhone(resumePhone, restoredCode, 'Changed Name');

@@ -7,7 +7,7 @@ import {SportSwitcher} from '../components/SportSwitcher.jsx';
  * (leave), with every failure said in plain words.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   CODE_LENGTH,
@@ -61,8 +61,6 @@ export default function JoinStub() {
   const [name, setName] = useState(loadName);
   const [controllerIntent, setControllerIntent] = useState(rememberedControllerIntent);
   const [prefersTouch, setPrefersTouch] = useState(false);
-  const [autoStart, setAutoStart] = useState(true);
-  const activeSport = useRef(null);
   const controllerMode = useCallback(mode => {
     const intent = {mode, permission: mode === 'motion' ? 'granted' : 'unavailable'};
     rememberControllerIntent(intent);
@@ -85,14 +83,6 @@ export default function JoinStub() {
   }, [needsSecurePage, phoneLinkLoading, secureUrl]);
   const { snapshot: seat, reconnecting, ended, storageWarning, accept, leave: leaveSession } = useReconnect('player', code);
   const lobby = seat;
-  useEffect(() => {
-    if (!seat) { activeSport.current = null; return; }
-    const changed = activeSport.current !== null && activeSport.current !== seat.sport;
-    activeSport.current = seat.sport;
-    // Returning to the lobby is a deliberate pause to choose the next game.
-    if (seat.phase === PHASES.GAME) setAutoStart(false);
-    else if (changed) setAutoStart(true);
-  }, [seat?.sport, seat?.phase]);
   // Holds the vote's reveal on screen for a moment; a cancelled vote has none.
   const revealing = useRevealHold(lobby?.phase) && Boolean(lobby?.vote?.picks);
   const [error, setError] = useState(null);
@@ -119,20 +109,12 @@ export default function JoinStub() {
     }
     saveName(playerName);
     rememberControllerIntent(intent); setControllerIntent(intent);
-    setAutoStart(true);
     accept(result);
     setParams({ code }, { replace: true });
   }
 
   async function leave() {
     if (!(await leaveSession())) setError('disconnected');
-  }
-
-  async function waitForFriends() {
-    setAutoStart(false);
-    const result = await request(EVENTS.PLAYER_READY, {ready: false});
-    if (!result.ok) setAutoStart(true);
-    return result;
   }
 
   if (openingSecurePage) return <main className="stub"><p className="eyebrow">Wee Sports · phone controller</p><h1>Opening your controller…</h1><p className="stub__muted" role="status">Connecting your phone for motion play.</p></main>;
@@ -143,7 +125,6 @@ export default function JoinStub() {
     const playing = phase === PHASES.GAME && !revealing;
     const lobbyOptions = (
       <>
-        {seat.slot === 0 ? <SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /> : null}
         <GuestResultClaim lobby={lobby} />
         <PhoneSoundToggle lobby={lobby} disabled={reconnecting} />
         <a className="btn btn--ghost" href="/profile">Profile & history</a>
@@ -165,7 +146,7 @@ export default function JoinStub() {
         </ul>
         <div className="stub__actions">
           <button type="button" className="btn btn--ghost" onClick={leave}>
-            Leave game
+            Leave lobby
           </button>
         </div>
       </>
@@ -191,17 +172,17 @@ export default function JoinStub() {
           <PhoneGameOptions lobby={lobby} slot={seat.slot} disabled={reconnecting} />
         </div>
         {playing ? null : phase === PHASES.LOBBY ? (
-          <p className="stub__status">Waiting for a player to join the P1 controller seat…</p>
+          <p className="stub__status">Getting your lobby ready…</p>
         ) : phase === PHASES.VOTE || revealing ? (
           // Keyed by game, so a fresh vote forgets this phone's last pick.
           <PhoneVote key={lobby.gameId} lobby={lobby} slot={seat.slot} automatic />
         ) : phase === PHASES.TUTORIAL ? (
           <PhoneTutorial key={lobby.tutorial.step} lobby={lobby} slot={seat.slot} />
         ) : (
-          <PhoneReady lobby={lobby} slot={seat.slot} automatic allowStart={autoStart}
-            onStart={() => setAutoStart(true)} onHold={waitForFriends} disabled={reconnecting || lobby.paused} />
+          <PhoneReady lobby={lobby} slot={seat.slot} disabled={reconnecting || lobby.paused} />
         )}
 
+        {!playing && seat.slot === (lobby.leaderSlot ?? 0) ? <SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /> : null}
         {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} compact /> : null}
         {isController(seat.sport, seat.slot) ? (
           <>

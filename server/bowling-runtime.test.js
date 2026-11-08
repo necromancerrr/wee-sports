@@ -50,6 +50,7 @@ test('live aim accepts only fresh authenticated current-turn state and never cha
   expect(runtime.world.setAim).toHaveBeenCalledExactlyOnceWith(0);
   expect(document.getElementById('aim-hud').hidden).toBe(false);
   runtime.world.setAim.mockClear();
+  const snapshots = vi.spyOn(runtime.world, 'getState');
   const aim = (overrides = {}, source = parent) => receive({type: 'wee:game-aim', event: {
     gameId: 'bowl-one', player: 1, generation: 3, hostEpoch: 2, seq: 4, aim: .4, locked: true, ...overrides,
   }}, source);
@@ -57,14 +58,17 @@ test('live aim accepts only fresh authenticated current-turn state and never cha
   expect(runtime.world.setAim).toHaveBeenCalledExactlyOnceWith(.4, true);
   expect(document.getElementById('aim-label').textContent).toBe('Aim · right');
   expect(document.getElementById('aim-state').textContent).toBe('Locked');
+  expect(snapshots).not.toHaveBeenCalled();
   for (const overrides of [{seq: 3}, {gameId: 'old'}, {player: 2}, {generation: 2}, {hostEpoch: 1}, {seq: 5, aim: NaN}, {seq: 5, aim: 2}]) aim(overrides);
   aim({seq: 5}, {});
   expect(runtime.world.setAim).toHaveBeenCalledTimes(1);
   expect(document.getElementById('aim-label').textContent).toBe('Aim · right');
   runtime.world.rolling = true;
+  runtime.world.onState(runtime.world.getState());
   aim({seq: 5});
   expect(runtime.world.setAim).toHaveBeenCalledTimes(1);
   runtime.world.rolling = false;
+  runtime.world.onState(runtime.world.getState());
   state({generation: 4, hostEpoch: 2});
   aim({generation: 4, seq: 1, locked: false});
   expect(runtime.world.setAim).toHaveBeenLastCalledWith(.4, false);
@@ -72,7 +76,7 @@ test('live aim accepts only fresh authenticated current-turn state and never cha
   state({generation: 4, hostEpoch: 2, paused: true});
   expect(document.getElementById('aim-hud').hidden).toBe(true);
   aim({generation: 4, seq: 2});
-  expect(runtime.world.setAim).toHaveBeenCalledTimes(2);
+  expect(runtime.world.setAim).toHaveBeenCalledTimes(3); // Centre on turn boundary, then the new aim.
 });
 
 test('eight-player standings remain complete and move the turn marker without opening the full scorecard', async () => {

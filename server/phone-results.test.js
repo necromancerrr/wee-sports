@@ -162,7 +162,7 @@ test('P1 pause is explicit, coalesced and remains resumable while shared play is
   finish({ ok: true, manuallyPaused: true, paused: true }); await first;
   f.render({ lobby: { ...tennis(), manuallyPaused: true, paused: true } });
   expect(f.button('Resume game').props.disabled).toBe(false);
-  expect(f.text()).toContain('Game paused. Player 1 or the TV can resume.');
+  expect(f.text()).toContain('Game paused. The first player or the TV can resume.');
   h.request.mockResolvedValue({ ok: true, manuallyPaused: false, paused: true });
   await f.button('Resume game').props.onClick();
   f.render({ lobby: { ...tennis(), manuallyPaused: false, paused: true } });

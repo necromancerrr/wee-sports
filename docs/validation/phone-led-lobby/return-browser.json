@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-11-08T03:12:46.147Z",
+  "base": "http://127.0.0.1:5206",
+  "checks": [
+    "Bowling: solo starts from the phone and its controller works after return and restart",
+    "Bowling: leaving during play promotes the remaining phone, which can start and control a new game",
+    "Bowling: sport selection stays on the phone; closing the room releases the controller",
+    "Table Tennis: solo starts from the phone and its controller works after return and restart",
+    "Table Tennis: leaving during play promotes the remaining phone, which can start and control a new game",
+    "Table Tennis: sport selection stays on the phone; closing the room releases the controller",
+    "Tennis: solo starts from the phone and its controller works after return and restart",
+    "Tennis: leaving during play promotes the remaining phone, which can start and control a new game",
+    "Tennis: sport selection stays on the phone; closing the room releases the controller",
+    "No uncaught browser errors"
+  ],
+  "errors": [],
+  "limitations": [
+    "Touch controls in generated browser contexts; does not measure physical phone motion or latency."
+  ]
+}

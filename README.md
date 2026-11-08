@@ -14,9 +14,11 @@ tap. The island fills wider displays with extra ocean, without cropping the
 resort. `/home` follows the same device roles; QR join links still go straight
 to the controller. Resizing a computer window does not turn it into a phone.
 
-For a party, set **Players in this game** on the TV before friends scan: up to
-eight for Bowling, or two for Tennis and Table Tennis. Each person taps **Play**
-once; the TV waits until the selected group has joined and is ready.
+Each person scans and taps **Play** to join. The first phone gets **Start game**
+and **Next sport**; the TV shows the code and people who have joined. Start solo
+or with the friends already there. A full ready room starts automatically:
+eight for Bowling, two for Tennis or Table Tennis. Returning from a match waits
+for another **Start game**, so there is time to change sports or leave.
 
 See the [island implementation and checks](docs/island/README.md) for the
 reference artwork, responsive behavior and validation evidence.
@@ -46,7 +48,7 @@ Tennis keyboard controls:
 ## Features
 
 - Browser guest pairing, readiness, shared pause and private reconnect tokens.
-- Scan, tap Play, and allow motion if asked. Setup and readiness are automatic;
+- Scan, tap Play to join, and allow motion if asked. Setup and readiness are automatic;
   no grip checklist or per-roll Arm button. Touch controls remain one tap away.
 - Same-room sport switching preserves player identities and the selected control
   mode; fresh sensor samples establish the next sport’s neutral position.
@@ -59,6 +61,7 @@ Tennis keyboard controls:
   never promise exact mid-flight recovery.
 
 See [consistent shots and TV feedback](docs/game-quality.md),
+[phone-led lobbies and continuous-motion repair](docs/phone-led-lobby-repair.md),
 [the party and controller repair](docs/party-controller-repair.md),
 [the table-tennis motion and physics repair](docs/table-tennis-research.md),
 [the simple-controller design and research](docs/system-plan/controller-simplicity.md),

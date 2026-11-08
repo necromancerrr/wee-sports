@@ -26,8 +26,9 @@ async function sensorContext(browser) {
       const rate = {alpha: 0, beta: 0, gamma: 0};
       if (window.__sensor.pattern) {
         const elapsed = (now - window.__sensor.started) / 1000;
-        const cycle = Math.floor(elapsed / .83), phase = (elapsed % .83) / .22;
-        const value = phase <= 1 ? (cycle % 2 ? -1 : 1) * 5 * Math.sin(phase * Math.PI) : 0;
+        // Keep moving between strokes. The old detector silently stopped
+        // recognizing gestures unless the phone rested for at least 60 ms.
+        const value = 3 * Math.sin(elapsed * 2 * Math.PI / .7);
         rate[window.__sensor.pattern] = value * 180 / Math.PI;
         const orientationAxis = {alpha: 'beta', beta: 'gamma', gamma: 'alpha'}[window.__sensor.pattern];
         window.__sensor.angle[orientationAxis] += rate[window.__sensor.pattern] * dt;
@@ -75,6 +76,7 @@ async function visibility(frame, hidden) {
     await host.goto(base + '/home'); await host.getByRole('button', {name: 'Play: Table Tennis', exact: true}).click();
     const code = await host.getByTestId('lobby-code').innerText();
     await phone.goto(`${base}/join?code=${code}`); await phone.getByRole('button', {name: 'Play', exact: true}).click();
+    await phone.getByRole('button', {name: 'Start game', exact: true}).click();
     await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout: 20000});
     const controller = phone.frames().find(frame => frame.url().includes('/table-tennis-controller.html'));
     const game = host.frames().find(frame => frame.url().includes('/table-tennis.html'));
@@ -85,7 +87,7 @@ async function visibility(frame, hidden) {
     assert.deepEqual(await controller.evaluate(() => window.__permissionCalls), []);
     assert.equal(await phone.getByRole('button', {name: 'Ready', exact: true}).count(), 0);
     await game.getByText('First to 12 · win by 2', {exact: true}).waitFor();
-    pass('One Play tap starts a scored table-tennis motion game without another setup or Ready step');
+    pass('Play joins and the leader starts a scored table-tennis motion game without a calibration checklist');
     await controller.locator('details summary').click();
     await controller.locator('#tt-practice-phone').click();
     await game.getByText('Friendly practice', {exact: true}).waitFor();
@@ -107,12 +109,12 @@ async function visibility(frame, hidden) {
       const beforeHits = await playerHits();
       const started = Date.now();
       await setPattern(controller, axis);
-      await game.waitForFunction(() => Number(document.getElementById('tt-you').textContent) > 0, null, {timeout: 45000});
+      await game.waitForFunction(() => Number(document.getElementById('tt-you').textContent) >= 3, null, {timeout: 45000});
       await setPattern(controller);
       const afterHits = await playerHits();
-      assert.ok(afterHits > beforeHits, 'legal return must follow a real host contact');
+      assert.ok(afterHits - beforeHits >= 3, 'successive legal returns must follow real host contacts');
       axisResults.push({axis: name, hostHits: afterHits - beforeHits, legalReturns: Number(await game.locator('#tt-you').innerText()), elapsedMs: Date.now() - started});
-      pass(`${name} generated swings cause a real host contact and legal opponent-table return`);
+      pass(`${name} continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset`);
     }
 
     const poseCount = () => phone.evaluate(() => window.__bridge.filter(message => message.type === 'wee:player-pose').length);
@@ -137,9 +139,9 @@ async function visibility(frame, hidden) {
     if (process.env.WEE_SMOKE_SCREENSHOT) await host.screenshot({path: process.env.WEE_SMOKE_SCREENSHOT});
     const report = {recordedAt: new Date().toISOString(), base, runtime: process.version, browser: browser.version(),
       rendering: 'headless Chromium software WebGL; 960x640 functional viewport',
-      sensorSource: 'Generated DeviceMotion and matching DeviceOrientation at 16 ms; alternating 220 ms angular pulses',
+      sensorSource: 'Generated DeviceMotion and matching DeviceOrientation at 16 ms; continuous 3 rad/s sine gestures with a 700 ms period and no rest interval',
       checks, axisResults, errors,
-      limitations: ['Pulse cycling validates real software routing/contact/return; it is not a recognition-accuracy or latency benchmark.',
+      limitations: ['Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.',
         'No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established.']};
     if (process.env.WEE_SMOKE_REPORT) writeFileSync(process.env.WEE_SMOKE_REPORT, JSON.stringify(report, null, 2) + '\n', {flag: 'wx'});
     console.log(JSON.stringify(report));

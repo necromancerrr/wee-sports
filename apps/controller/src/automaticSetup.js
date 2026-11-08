@@ -10,6 +10,8 @@ export class AutomaticControllerSetup {
     this.changed = changed;
     this.notice = notice;
     this.mode = 'motion';
+    this.requestedMode = 'motion';
+    this.motionIssue = null;
     this.attempt = 0;
     this.online = false;
     this.setup = null;
@@ -19,16 +21,20 @@ export class AutomaticControllerSetup {
   }
 
   update(seat, connection) {
+    const returningToLobby = this.phase === 'game' && ['lobby','vote','ready'].includes(seat?.phase);
+    this.phase = seat?.phase;
     const scope = seat && Number.isInteger(seat.slot) ? `${seat.code}:${seat.slot}:${seat.sport}` : null;
     const changedScope = scope !== this.scope;
     this.scope = scope;
-    if (changedScope && scope) this.playIntent = true;
+    if ((changedScope && scope) || returningToLobby) {this.playIntent = true; this.readyKey = null;}
     if (seat?.phase === 'game') this.playIntent = false;
+    const wasOnline = this.online;
     this.online = connection === 'online' && Boolean(scope);
     if (!this.online) { this.stop(); return; }
+    if ((changedScope || !wasOnline) && this.requestedMode === 'motion') {this.mode = 'motion'; this.motionIssue = null;}
     const player = seat.players?.find(value => value.slot === seat.slot);
     if (changedScope || (this.setup && player?.setup === null)) this.stop();
-    this.changed({mode:this.setup === 'buttons' ? 'touch' : this.mode,setup:this.setup,playIntent:this.playIntent});
+    this.changed({mode:this.setup === 'buttons' ? 'touch' : this.mode,setup:this.setup,playIntent:this.playIntent,motionIssue:this.motionIssue});
     if (!this.running) this.start();
     else this.ready();
   }
@@ -39,7 +45,7 @@ export class AutomaticControllerSetup {
     const attempt = ++this.attempt;
     this.setup = null;
     const mode = this.mode;
-    this.changed({mode,setup:null,state:'starting'});
+    this.changed({mode,setup:null,state:'starting',motionIssue:this.motionIssue});
     this.session.inputSetup = null;
     const player = this.session.seat?.players?.find(value => value.slot === this.session.seat.slot);
     if (player?.setup) {
@@ -57,10 +63,10 @@ export class AutomaticControllerSetup {
         this.setup = null; this.session.inputSetup = null; this.readyKey = null;
         this.session.request(EVENTS.PLAYER_SETUP, {setup:null});
       }
-      if (status.state === 'no-readings') this.fallback(attempt);
+      if (status.state === 'no-readings') this.fallback(attempt, {code:status.reason || 'motion-no-readings',message:'Motion did not start. Try motion again, or keep playing with touch.'});
     });
     try { await this.motion.calibrate(); }
-    catch { this.fallback(attempt); }
+    catch (error) { this.fallback(attempt, error); }
   }
 
   async accept(setup, attempt) {
@@ -80,7 +86,7 @@ export class AutomaticControllerSetup {
     }
     this.setup = setup;
     this.session.inputSetup = setup;
-    this.changed({mode:setup === 'buttons' ? 'touch' : 'motion',setup,state:'ready'});
+    this.changed({mode:setup === 'buttons' ? 'touch' : 'motion',setup,state:'ready',motionIssue:this.motionIssue});
     this.ready();
   }
 
@@ -101,10 +107,12 @@ export class AutomaticControllerSetup {
     if (response?.ok) this.readyKey = key;
   }
 
-  fallback(attempt) {
+  fallback(attempt, error = {}) {
     if (attempt !== this.attempt) return;
-    this.notice('Touch controls are ready.');
-    this.select('touch');
+    this.motionIssue = {code:error.code || 'motion-unavailable',message:error.message || 'Motion is unavailable. Try again or use touch controls.'};
+    this.mode = 'touch';
+    this.stop();
+    if (this.online) this.start();
   }
 
   play() {
@@ -124,9 +132,15 @@ export class AutomaticControllerSetup {
   }
 
   select(mode) {
+    this.requestedMode = mode;
+    this.motionIssue = null;
     this.mode = mode;
     this.stop();
     if (this.online) this.start();
+  }
+
+  startGame() {
+    return this.session.request(EVENTS.PLAYER_START, {});
   }
 
   stop() {

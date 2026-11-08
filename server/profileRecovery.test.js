@@ -63,6 +63,7 @@ test('a persisted solo game survives service restart and restores only to its si
       .toMatchObject({ok: true, slot: 0, name: 'Original'});
     expect(await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'})).toMatchObject({ok: true});
     expect(await send(phone, EVENTS.PLAYER_READY, {ready: true})).toMatchObject({ok: true});
+    await send(phone, EVENTS.PLAYER_START, {});
     clock += 5000; rooms.finishCountdown(restored.code);
     const lobby = rooms.lobby(restored.code);
     const recovery = await send(host, EVENTS.HOST_RECOVERY, {gameId: lobby.gameId, hostEpoch: lobby.hostEpoch});

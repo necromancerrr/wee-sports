@@ -24,7 +24,9 @@ async function client() {
     if(['wee:game-hit','wee:table-tennis-state'].includes(e.data?.type))window.__party.push({...e.data,duringPhase:window.__ttPhase});
   });});
   await host.goto(base+'/home'); await host.getByRole('button',{name:'Play: Bowling',exact:true}).click();
-  await host.getByLabel('Players in this game',{exact:true}).selectOption('8');
+  assert.equal(await host.getByLabel('Players in this game',{exact:true}).count(),0);
+  assert.equal(await host.getByLabel('Next sport',{exact:true}).count(),0);
+  assert.equal(await host.getByText('Join to play',{exact:true}).count(),0);
   let code=await host.getByTestId('lobby-code').innerText();
   const members=[];
   for(let index=0;index<8;index++) {
@@ -44,7 +46,7 @@ async function client() {
   assert.equal(await bowling.locator('#score-body tr').count(),8);
   await bowling.locator('#close-scorecard').click();
   assert.ok(await bowling.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  pass('Eight ready controllers join their chosen party, the first waits for friends, and a ninth is rejected');
+  pass('The lobby grows as friends join; eight ready controllers start automatically and a ninth is rejected');
   pass('The real bowling renderer shows all eight names without horizontal page overflow');
   if(process.env.WEE_PARTY_SCREENSHOT)await host.screenshot({path:process.env.WEE_PARTY_SCREENSHOT});
   members[7].socket.disconnect();
@@ -59,7 +61,6 @@ async function client() {
   await host.waitForURL('**/home');
   for(const socket of sockets)socket.disconnect();
   await host.getByRole('button',{name:'Play: Table Tennis',exact:true}).click();
-  await host.getByLabel('Players in this game',{exact:true}).selectOption('2');
   code=await host.getByTestId('lobby-code').innerText();
   const phones=[];
   for(let i=0;i<2;i++) {

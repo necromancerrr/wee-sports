@@ -4,14 +4,14 @@ const aimOf = input => ({x: clamp(input.reach?.x || 0, -1, 1), y: clamp(input.re
 
 /** A phone supplies a short rotational gesture, not tracked hand position.
  * Use all three axes so portrait, landscape and screen-up grips can swing.
- * Movement plus a peak rejects tiny spikes; quiet rearming prevents one swing
- * and its follow-through from producing several queued returns. This runs on
+ * Movement plus a peak rejects tiny spikes; a new acceleration or quiet rest
+ * rearms the next swing without counting a held rate as repeated hits. This runs on
  * input receipt, independently of the TV's render/physics frame rate.
  */
 export function createStrokeIntentDetector() {
-  let previous = null, candidate = null, current = null, quiet = 0;
+  let previous = null, candidate = null, current = null, quiet = 0, valley = null;
   let stableAim = {x: 0, y: 0}, armed = true, identity = 0;
-  const reset = () => {previous = candidate = current = null; quiet = 0; armed = true; stableAim = {x: 0, y: 0};};
+  const reset = () => {previous = candidate = current = valley = null; quiet = 0; armed = true; stableAim = {x: 0, y: 0};};
   const copy = value => value ? {...value, aim: {...value.aim}, spin: {...value.spin}} : null;
   return {
     reset,
@@ -38,7 +38,20 @@ export function createStrokeIntentDetector() {
       }
       quiet = 0;
       if (current) current.strength = Math.max(current.strength, Math.min(rate, 30));
-      if (!armed) return null;
+      if (!armed) {
+        // Players keep moving between shots. A genuine deceleration followed
+        // by another acceleration can rearm without asking them to hold still.
+        // Constant rotation and a direction reversal at the same speed remain
+        // one gesture; a minimum separation rejects the same stroke's recoil.
+        const relaxed = Math.max(.9, (current?.strength || 0) * .45);
+        if (rate <= relaxed) {
+          if (!valley) valley = {startedAt: now, rate, aim: aimOf(input)};
+          if (rate < valley.rate) {valley.rate = rate; valley.aim = aimOf(input);}
+        }
+        if (!valley || now - valley.startedAt < .025 ||
+          now - current.startedAt < .24 || rate < Math.max(1.1, valley.rate + .4)) return null;
+        armed = true; stableAim = {...valley.aim}; candidate = null; valley = null;
+      }
       if (!candidate || now - candidate.startedAt > .24) {
         candidate = {startedAt: now - dt, travel: 0, peak: 0, aim: {...stableAim}};
       }
@@ -49,7 +62,7 @@ export function createStrokeIntentDetector() {
       if (candidate.peak < 1.1 || candidate.travel < .06) return null;
       current = {id: ++identity, strength: Math.min(candidate.peak, 30),
         aim: {...candidate.aim}, spin: {...input.angularVelocity}, startedAt: candidate.startedAt};
-      candidate = null; armed = false;
+      candidate = null; armed = false; valley = null;
       return copy(current);
     },
   };

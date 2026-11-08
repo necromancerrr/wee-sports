@@ -33,7 +33,8 @@ npm run expo
 
 1. Scan the **terminal's Expo QR** with Expo Go to open Wee Sports Controller.
 2. Inside the controller, tap **Scan to play** and scan the **TV's room QR**.
-3. Allow camera/motion if asked, then play. Keep both terminals running.
+3. Allow camera/motion if asked. The first phone taps **Start game** when the
+   group is ready. Keep both terminals running.
 
 The first QR opens the app; the second joins your game. The TV QR still opens
 the browser controller when scanned with your phone's normal camera.
@@ -138,21 +139,26 @@ documentation on 7 November 2026.
 
 ## Try the controller
 
-1. Create a Tennis, Bowling or Table Tennis lobby on the TV and scan from the app.
+1. Open the lobby on the TV and scan from the app. The group leader picks Tennis,
+   Bowling or Table Tennis on their phone and taps **Start game** when everyone
+   has joined. A full, ready room can also start automatically.
 2. Allow motion if the operating system asks. The controller checks fresh
    samples and automatically readies after the server accepts its setup.
-   Denied or unavailable sensors select touch controls automatically.
+   Denied or unavailable sensors select touch controls with a visible reason and
+   **Try motion again**. A denied permission also offers **Open Settings**.
 3. Bowl with a gentle forward swing, or make compact table-tennis strokes.
-   Bowling waits for a quiet start, locks aim at forward onset, and releases
+   Keep the screen facing up to aim. Bowling waits for a quiet start, locks aim at forward onset, and releases
    at most once until the TV reports the next delivery. No Arm button is needed.
    Table-tennis serves are automatic. Tennis uses the browser's fast forehand /
    backhand recognizer and strength mapping. Options also offers simple
    forehand/backhand motion and touch buttons.
 4. **Options** contains touch/motion choice, centering, profile preferences,
-   playing hand, sensitivity, solo practice mode and P1's pause/lobby/sport choices. Switching sports checks
+   playing hand, sensitivity, solo practice mode and the leader's pause control. Switching sports checks
    fresh samples automatically, without another QR or setup confirmation.
-   Returning to the lobby waits for **Play** before another match; **Wait for
-   friends** can stop a countdown without restarting it automatically.
+   **Back to lobby**, sport selection and **Start game** are on the phone's main
+   screen. Returning readies the controllers again, but the next match waits for
+   the leader's **Start game**. **Back to lobby** also cancels a countdown or
+   tutorial without introducing a separate readiness button.
 5. Background the app and reopen it. Motion stops immediately, the seat
    reconnects with its private token, and fresh samples restore play automatically.
    Buffered motion is discarded. An unresolved roll is queried by its original
@@ -169,9 +175,17 @@ The main screen clearly says whether motion or touch is active. Guest players
 can change hand and sensitivity in Options without registering a profile.
 
 DeviceMotion's own Motion & Fitness permission is requested independently of
-Gyroscope. It supplies bowling tilt and acceleration; a missing or denied tilt
-sensor selects touch bowling instead of presenting an unresponsive aim. Gyro-only
+Gyroscope. The startup timeout begins after permission resolves, so reading the
+iPhone permission sheet does not incorrectly force touch mode. Temporary inactive
+overlays do not count as sensor failure. DeviceMotion supplies bowling tilt and
+acceleration; raw Accelerometer readings also support aim on devices missing the
+optional fused sensors, without inventing gravity-free acceleration for power.
+Denied permission still selects touch; the app never bypasses that decision. Gyro-only
 tennis and table tennis remain available when this optional sensor is denied.
+An automatic touch fallback keeps the preference for motion, so returning to the
+app can recover when permission or sensors become available. Choosing Touch
+controls explicitly preserves that choice. Upright phone posture keeps motion
+enabled; turn the screen upward to control bowling aim.
 Run `npm run expo:install` after pulling this update. The keep-awake dependency
 matches Expo SDK 58; rebuild a development client if it lacks that native module.
 
@@ -208,9 +222,15 @@ cannot replay old poses or feedback.
 
 Verified in this cloud workspace:
 
-- 39 native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture, touch-paddle and guest-claim tests, including cancellation
+- 54 native transport/scanner/automatic-setup/sensor-lifecycle, gravity fixture, touch-paddle and guest-claim tests, including cancellation
   while either sensor permission request is unresolved, native tennis forehand /
   backhand traces and transient inactivity without sequence replay or reconnect.
+- An iPhone source-based fixture with a 12-second permission prompt and delayed
+  first sensor callback reaches automatic readiness, phone-led Start and one
+  actual `ControllerSession` roll. Additional fixtures cover raw sensor fallback,
+  upright-to-screen-up play, and 30 Hz gravity with 60 Hz gyro during fast aiming.
+- Delayed roll acknowledgements and outcome checks cannot revive an abandoned
+  match or unlock a newer delivery; pause generations preserve unresolved rolls.
 - The 60 Hz pose and bowling-aim streams, burst bounds and congestion drops
   through the real native session class.
 - Metro/Hermes export for Android and iOS, using the pinned SDK dependencies.

@@ -88,7 +88,7 @@ test('samples lost while setup acknowledgement is pending cannot auto-ready stal
   flow.stop();
 });
 
-test('returning to the lobby waits for Play while a new sport starts automatically', async () => {
+test('returning to the lobby readies fresh input but only an explicit leader action starts the next match', async () => {
   const {flow,session,calls,motions} = await fixture();
   flow.update(session.seat,'online'); motions[0].status({state:'ready'}); await tick();
   session.seat.players[0].setup = 'motion';
@@ -97,15 +97,32 @@ test('returning to the lobby waits for Play while a new sport starts automatical
   session.seat.phase = 'ready'; session.seat.inputGeneration++;
   const before = calls.filter(call=>call.event === 'player:ready').length;
   flow.update(session.seat,'online'); await tick();
-  assert.equal(calls.filter(call=>call.event === 'player:ready').length,before,'returning to lobby does not immediately restart');
-  flow.play(); await tick();
   assert.equal(calls.filter(call=>call.event === 'player:ready').length,before+1);
+  assert.equal(calls.some(call=>call.event === 'player:start'),false,'readiness is not a request to restart the match');
+  await flow.startGame();
+  assert.deepEqual(calls.at(-1),{event:'player:start',payload:{}});
   session.seat.phase = 'game'; flow.update(session.seat,'online');
   session.seat = {...session.seat,phase:'ready',sport:'table-tennis',players:[{slot:0,setup:null,ready:false}]};
   flow.update(session.seat,'online'); await tick();
   assert.equal(flow.playIntent,true,'a deliberate sport change is fresh Play intent');
   motions.at(-1).status({state:'ready'}); await tick();
   assert.equal(calls.filter(call=>call.event === 'player:ready').length,before+2);
+  flow.stop();
+});
+
+test('a failed motion attempt offers retry and does not silently become the permanent preference', async () => {
+  const {flow,session,motions} = await fixture({sensorError:true});
+  flow.update(session.seat,'online'); await tick();
+  assert.equal(flow.mode,'touch');assert.equal(flow.requestedMode,'motion');
+  assert.equal(flow.motionIssue.message,'denied');
+  flow.select('motion');await tick();
+  assert.equal(motions.length,2,'Try motion starts a real new sensor attempt');
+  flow.update(session.seat,'suspended');flow.update(session.seat,'online');await tick();
+  assert.equal(motions.length,3,'returning can recover after a temporary sensor failure');
+  flow.select('touch');await tick();
+  flow.update(session.seat,'suspended');flow.update(session.seat,'online');await tick();
+  assert.equal(motions.length,3,'explicit touch preference survives reconnect');
+  assert.equal(flow.motionIssue,null);
   flow.stop();
 });
 

@@ -17,6 +17,7 @@ function fixture(sport = 'tennis', count = 2) {
   });
   function start(countdown = false) {
     for (let i = 0; i < count; i++) assert.equal(store.setReady(`p${i + 1}`, { ready: true }).ok, true);
+    store.startGame('p1');
     if (!countdown) {
       clock.now += 5000; store.finishCountdown(room.code);
       clock.now += VOTE_SECONDS * 1000; store.expireVote(room.code);
@@ -163,6 +164,7 @@ test('real sockets: both return events broadcast to their room, survive TV recon
   }
   async function start(host = tv) {
     await send(p1, EVENTS.PLAYER_READY, { ready: true }); await send(p2, EVENTS.PLAYER_READY, { ready: true });
+    await send(p1, EVENTS.PLAYER_START, {});
     now += 5000; store.finishCountdown(room.code);
     now += VOTE_SECONDS * 1000; store.expireVote(room.code);
     return store.lobby(room.code).gameId;

@@ -21,7 +21,7 @@ export function SportSwitcher({lobby, role = 'host', disabled = false}) {
       {SPORTS.filter(sport => sport.open).map(sport => <option key={sport.id} value={sport.id}
         disabled={lobby.players.some(player => player.slot >= playerCapacity(sport.id))}>{sport.name}</option>)}
     </select></label>
-    <p className="stub__muted">Same room. Same players. Your controller changes with the game.</p>
+    <p className="stub__muted">Everyone stays in this lobby.</p>
     {error ? <p role="alert">{error}</p> : null}
   </div>;
 }

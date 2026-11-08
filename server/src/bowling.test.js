@@ -18,6 +18,7 @@ function readyBowling(count = 4) {
       assert.equal(store.setSetup(`p${index + 1}`, { setup: index % 2 ? 'motion' : 'buttons' }).ok, true);
       assert.equal(store.setReady(`p${index + 1}`, { ready: true }).ok, true);
     }
+    store.startGame('p1');
     clock.now += 5000;
     assert.deepEqual(store.finishCountdown(room.code), { code: room.code });
     return store.lobby(room.code).gameId;
@@ -187,6 +188,7 @@ async function socketFixture(t) {
       assert.equal((await send(phone, EVENTS.PLAYER_SETUP, { setup: 'buttons' })).ok, true);
       assert.equal((await send(phone, EVENTS.PLAYER_READY, { ready: true })).ok, true);
     }
+    await send(phones[0], EVENTS.PLAYER_START, {});
     clock.now += 5000; store.finishCountdown(created.code);
     const gameId = store.lobby(created.code).gameId;
     const state = (currentPlayer = 1, phase = 'ready') => send(host, EVENTS.HOST_GAME_STATE, { gameId, phase, currentPlayer, frame: 1 });

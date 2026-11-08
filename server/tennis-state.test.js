@@ -8,7 +8,7 @@ test('only the current host can publish validated tennis serve/match status', ()
   const { code } = store.createRoom('tv', { v, sport: 'tennis' });
   store.join('phone', { v, code, name: 'Player' });
   store.setSetup('phone', { setup: 'motion' });
-  store.setReady('phone', { ready: true });
+  store.setReady('phone', { ready: true }); store.startGame('phone');
   now += COUNTDOWN_SECONDS * 1000;
   store.finishCountdown(code);
   now += VOTE_SECONDS * 1000;

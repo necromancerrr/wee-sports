@@ -94,9 +94,23 @@ test('bowling aim keeps 60 Hz fresh updates while rejecting same-tick bursts', a
   for (let index = 0; index < 60; index++) {
     assert.equal(session.latest('aim', {aim: index / 60}), true);
     assert.equal(session.latest('aim', {aim: -1}), false);
-    advance(1000 / 60);
+    advance(index % 2 ? 18 : 15);
   }
   assert.equal(socket.sent.length, 60);
+  session.dispose();
+});
+
+test('personalized lobby updates move a remaining native player into the new leader seat', async () => {
+  const {session,socket,EVENTS}=await fixture();
+  session.seat.slot=1;
+  session.token='private-reconnect-token';
+  socket.emit(EVENTS.LOBBY_UPDATE,{code:'K7PM',slot:0,name:'Riley',leaderSlot:0,canStart:true,phase:'ready',
+    gameId:null,inputGeneration:4,players:[{slot:0,name:'Riley',setup:'motion',ready:true}]});
+  assert.equal(session.seat.slot,0);
+  assert.equal(session.seat.leaderSlot,session.seat.slot);
+  assert.equal(session.seat.canStart,true);
+  assert.equal(session.token,'private-reconnect-token','a personalized snapshot does not replace the private room token');
+  assert.equal(session.playing(),false);
   session.dispose();
 });
 

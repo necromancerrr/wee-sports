@@ -5,8 +5,9 @@ import { errorText } from '../lib/errors.js';
 import { createInputId } from '../../../src/network/inputId.js';
 import { sportName } from '../lib/sports.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
+import {SportSwitcher} from './SportSwitcher.jsx';
 
-/** Shared match changes belong to P1; appearance remains local to each phone. */
+/** Shared match changes belong to the first joined phone; appearance remains local to each phone. */
 export function PhoneGameOptions({ lobby, slot, disabled }) {
   const dialog = useRef(null);
   const pending = useRef(false);
@@ -20,6 +21,7 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
   const resultShown = useRef(null);
   const [stroke, setStroke] = useState('alternate');
   const [hand, setHand] = useState('Right');
+  const isLeader = slot === (lobby.leaderSlot ?? 0);
   const options = lobby.gameOptions;
   const available = options?.gameId === lobby.gameId && isGameOptions(options, lobby.sport);
   const playing = lobby.phase === PHASES.GAME;
@@ -32,11 +34,11 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
   const winnerNames = winners.map(player => lobby.players?.find(seat => seat.slot + 1 === player)?.name ??
     ((tennis || tableTennis) && player === 2 ? 'Bot' : `Player ${player}`));
   const resultTitle = winnerNames.length > 1 ? 'A shared victory!' : winnerNames.length ? `${winnerNames[0]} wins!` : 'Game complete';
-  const locked = disabled || lobby.paused || !playing || !available || slot !== 0 || busy;
+  const locked = disabled || lobby.paused || !playing || !available || !isLeader || busy;
   // P1 can end the match from the countdown, the tutorial vote and the tutorial too.
   const active = playing || [PHASES.COUNTDOWN, PHASES.VOTE, PHASES.TUTORIAL].includes(lobby.phase);
-  const returnLocked = disabled || !active || !lobby.gameId || slot !== 0 || busy;
-  const pauseLocked = disabled || !playing || !lobby.gameId || slot !== 0 || busy || (completed && !lobby.manuallyPaused);
+  const returnLocked = disabled || !active || !lobby.gameId || !isLeader || busy;
+  const pauseLocked = disabled || !playing || !lobby.gameId || !isLeader || busy || (completed && !lobby.manuallyPaused);
   // Another controller or the TV may change pause after this action succeeds.
   // Keep errors, but only show a pause acknowledgement for its current state.
   const statusMessage = typeof message === 'string' ? message :
@@ -108,21 +110,21 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
           <h3>{resultTitle}</h3>
           {winnerNames.length > 1 ? <p>{winnerNames.join(' & ')}</p> : null}
           {!tennis && Number.isInteger(lobby.gameState?.winnerScore) ? <p className="phone-match-result__score">{lobby.gameState.winnerScore}<span>points</span></p> : null}
-          <p>{slot === 0 ? 'Another round?' : 'Player 1 can start the next game.'}</p>
+          <p>{isLeader ? 'Another round?' : 'The first player can start the next game.'}</p>
           {lobby.paused || disabled ? <p role="status">{lobby.manuallyPaused ? 'Resume the game to play again.' : 'Reconnect everyone to play again.'}</p> : null}
-          {slot === 0 ? <button type="button" className="btn btn--primary" disabled={locked}
+          {isLeader ? <button type="button" className="btn btn--primary" disabled={locked}
             onClick={() => command('new-match', tennis ? { format: 'full' } : {})}>{busy ? 'Starting…' : 'Play again'}</button> : null}
           <p className="phone-options-message" role="status">{statusMessage}</p>
-          <button type="button" className="btn btn--ghost" onClick={() => dialog.current?.close()}>{slot === 0 ? 'Not now' : 'Keep watching'}</button>
+          <button type="button" className="btn btn--ghost" onClick={() => dialog.current?.close()}>{isLeader ? 'Not now' : 'Keep watching'}</button>
         </div> : <>
         <div className="phone-game-options__appearance"><span>Light / dark mode</span><ThemeToggle /></div>
         {playing && (!completed || lobby.manuallyPaused) ? <div className="phone-options-pause">
-          {slot === 0 ? <button type="button" className="btn btn--secondary" disabled={pauseLocked}
+          {isLeader ? <button type="button" className="btn btn--secondary" disabled={pauseLocked}
             onClick={togglePause}>{lobby.manuallyPaused ? 'Resume game' : 'Pause game'}</button> : null}
-          {lobby.manuallyPaused ? <p role="status">Game paused. Player 1 or the TV can resume.</p> : null}
+          {lobby.manuallyPaused ? <p role="status">Game paused. The first player or the TV can resume.</p> : null}
         </div> : null}
         {!playing ? <p className="stub__muted">Match options will be ready when play starts.</p>
-          : slot !== 0 ? <p className="stub__muted">Player 1 manages shared match settings. Your sound button still controls the TV sound.</p>
+          : !isLeader ? <p className="stub__muted">The first player manages shared match settings. Your sound button still controls the TV sound.</p>
           : !available ? <p role="status">Waiting for the TV’s game settings…</p> : <>
             {lobby.paused || disabled ? <p role="status">{lobby.manuallyPaused ? 'Resume play to change match settings.' : 'Settings resume when everyone is connected and ready.'}</p> : null}
             <fieldset disabled={locked}>
@@ -170,11 +172,12 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
             </fieldset>
           </>}
         <p className="phone-options-message" role="status">{busy ? 'Updating the game…' : statusMessage}</p>
-        <button type="button" className="btn btn--primary phone-options-done" onClick={() => dialog.current?.close()}>Back to play</button>
+        <button type="button" className="btn btn--primary phone-options-done" onClick={() => dialog.current?.close()}>{playing ? 'Back to play' : 'Back to lobby'}</button>
         </>}
-        {resultMode && lobby.manuallyPaused && slot === 0 ? <button type="button" className="btn btn--secondary"
+        {completed && isLeader ? <SportSwitcher lobby={lobby} role="player" disabled={disabled || busy} /> : null}
+        {resultMode && lobby.manuallyPaused && isLeader ? <button type="button" className="btn btn--secondary"
           disabled={pauseLocked} onClick={togglePause}>Resume game</button> : null}
-        {slot === 0 && active ? <section className="phone-options-section phone-options-return" aria-label="Return to lobby">
+        {isLeader && active ? <section className="phone-options-section phone-options-return" aria-label="Return to lobby">
           <button type="button" className="btn btn--secondary" disabled={returnLocked}
             aria-describedby={confirmReturn ? 'phone-return-explanation' : undefined} onClick={returnToLobby}>
             {confirmReturn ? busy ? 'Returning…' : 'End match and return' : 'Return to lobby'}

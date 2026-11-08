@@ -155,17 +155,18 @@ test('wrist curve and power remain close at common sensor sampling rates', () =>
   }
 });
 
-test('tilt follows ordinary screen-up positioning but rejects vigorous swings and invalid gravity', () => {
+test('tilt follows quick side positioning and rejects invalid gravity', () => {
   expect(bowlingTiltAim({ x: 0, y: 0, z: 9.8 }, 0)).toBe(0);
   expect(bowlingTiltAim({ x: -3, y: 0, z: 9.3 }, 10)).toBeGreaterThan(.3);
   expect(bowlingTiltAim({ x: 3, y: 0, z: 9.3 }, 10)).toBeLessThan(-.3);
-  expect(bowlingTiltAim({ x: -.5, y: 0, z: 9.79 }, 10)).toBe(0);
+  expect(bowlingTiltAim({ x: -.1, y: 0, z: 9.79 }, 10)).toBe(0);
+  expect(bowlingTiltAim({ x: -.5, y: 0, z: 9.79 }, 10)).toBeGreaterThan(0);
   expect(bowlingTiltAim({ x: -7, y: 0, z: 7 }, 10)).toBe(1);
   for (const gravity of [null, { x: null, y: 0, z: 9.8 }, { x: 0, y: 9.8, z: 0 }, { x: 0, y: 0, z: 30 }]) {
     expect(bowlingTiltAim(gravity, 0)).toBeNull();
   }
   expect(bowlingTiltAim({ x: -3, y: 0, z: 9.3 }, 120)).toBeGreaterThan(.3);
-  expect(bowlingTiltAim({ x: 0, y: 0, z: 9.8 }, 220)).toBeNull();
+  expect(bowlingTiltAim({ x: -3, y: 0, z: 9.3 }, 360)).toBeGreaterThan(.3);
 });
 
 test('opposite gravity and support-acceleration conventions keep the same bowling aim', () => {

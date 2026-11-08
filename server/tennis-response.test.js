@@ -49,7 +49,7 @@ test('the lobby forwards bounded strength only from the authenticated playing se
   const { code } = store.createRoom('tv', { v: PROTOCOL_VERSION, sport: 'tennis' });
   store.join('phone', { v: PROTOCOL_VERSION, code, name: 'Player' });
   store.setSetup('phone', { setup: 'motion' });
-  store.setReady('phone', { ready: true });
+  store.setReady('phone', { ready: true }); store.startGame('phone');
   now += COUNTDOWN_SECONDS * 1000;
   store.finishCountdown(code);
   now += VOTE_SECONDS * 1000;

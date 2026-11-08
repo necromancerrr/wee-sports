@@ -62,6 +62,7 @@ test('logout and account changes affect future rounds without reassigning the ac
   const seat = await send(player, EVENTS.PLAYER_JOIN, {v,code:room.code,name:'Owner'});
   await send(player, EVENTS.PLAYER_SETUP, {setup:'buttons'});
   await send(player, EVENTS.PLAYER_READY, {ready:true});
+  await send(player, EVENTS.PLAYER_START, {});
   f.advance(5000); f.store.finishCountdown(room.code);
   const gameId = f.store.lobby(room.code).gameId;
   assert.equal(f.store.sessionContext(player.id).room.players[0].profileId, f.owner.profile.id);

@@ -11,6 +11,9 @@ const approach = (a, b, maxDistance) => {
 const newStroke = () => ({phase: 'ready', offset: 0, speed: 0, power: 0, started: 0,
   until: 0, rearmed: true, lowFor: 0, intent: null});
 const INPUT_GRACE = .5;
+// Friendly play buffers one deliberate swing through a normal incoming flight.
+// It is still consumed once, and wall-clock expiry prevents delayed replay.
+const FRIENDLY_STROKE_BUFFER = .8;
 const newPlayer = () => ({input: {reach: {x: 0, y: 0}, orientation: [0, 0, 0, 1], angularVelocity: v3()},
   inputAt: -Infinity, remote: false, remoteStale: false, settling: false, settleUntil: 0,
   strokeDetector: createStrokeIntentDetector(), pendingStroke: null, stroke: newStroke(),
@@ -55,14 +58,14 @@ export function receivePlane(ball, player, alreadyBounced) {
 
 /** Angular rate requests forward velocity in a short virtual workspace.
  * Deceleration never pulls the active paddle backwards. Recovery has no
- * collision, and a quiet interval is required before a new burst can arm. */
+ * collision; the input detector supplies one-shot human stroke requests. */
 export function advanceStroke(stroke, {rate = 0, dt, time, trigger = false, nearBall = false, friendly = true, allowRateTrigger = true}) {
   const previousOffset = stroke.offset;
   const magnitude = Math.abs(rate);
   stroke.lowFor = magnitude < .65 ? stroke.lowFor + dt : 0;
   if (stroke.lowFor >= .04) stroke.rearmed = true;
   if (stroke.phase === 'ready' && (trigger || allowRateTrigger && stroke.rearmed && magnitude >= 1.1)) {
-    stroke.phase = 'queued'; stroke.power = clamp(magnitude, 1.5, 9); stroke.until = time + (friendly ? .45 : .18);
+    stroke.phase = 'queued'; stroke.power = clamp(magnitude, 1.5, 9); stroke.until = time + (friendly ? FRIENDLY_STROKE_BUFFER : .18);
     stroke.rearmed = false;
   }
   if (stroke.phase === 'queued') {
@@ -205,8 +208,10 @@ export class TableTennisGame {
     if (active && controller.stroke.gestureId === active.id && ['queued', 'forward'].includes(controller.stroke.phase)) {
       controller.stroke.power = Math.max(controller.stroke.power, Math.min(active.strength, 9));
     }
-    if (gesture && !this.paused && !controller.settling && this.physics.ball.active &&
-      this.physics.ball.velocity.z * (player === 1 ? 1 : -1) > .1 && !this.serveMotion && controller.stroke.phase === 'ready') {
+    if (gesture && !this.paused && this.physics.ball.active && this.serveMotion?.player !== player) {
+      // A short swing may finish while the paddle is recovering, the input is
+      // settling, or the opponent is making contact. Keep the latest action
+      // until this player's next legal receive instead of silently losing it.
       controller.pendingStroke = {...gesture, receivedAt: now,
         intent: shotIntent({reach: gesture.aim, angularVelocity: gesture.spin}, player)};
     }
@@ -308,8 +313,11 @@ export class TableTennisGame {
     for (const [index, controller] of humans.entries()) {
       controller.remoteStale = controller.remote && this.now() - controller.inputAt > INPUT_GRACE;
       if (controller.remoteStale) this.clearStrokeInput(index + 1);
-      if (controller.pendingStroke && this.now() - controller.pendingStroke.receivedAt > .5) controller.pendingStroke = null;
-      if (controller.stroke.receivedAt !== undefined && this.now() - controller.stroke.receivedAt > .65) controller.stroke = newStroke();
+      const expiry = this.settings.assistance === 'friendly' ? FRIENDLY_STROKE_BUFFER : .5;
+      if (controller.pendingStroke && this.now() - controller.pendingStroke.receivedAt > expiry) controller.pendingStroke = null;
+      const strokeExpiry = controller.stroke.phase === 'forward' ? .3 : expiry;
+      const strokeStarted = controller.stroke.phase === 'forward' ? controller.stroke.forwardAt : controller.stroke.receivedAt;
+      if (strokeStarted !== undefined && this.now() - strokeStarted > strokeExpiry) controller.stroke = newStroke();
     }
     const stale = humans.some(controller => controller.remoteStale);
     this.physics.advance(seconds, dt => {
@@ -328,26 +336,40 @@ export class TableTennisGame {
     const ball = this.physics.ball, sign = player === 1 ? 1 : -1;
     const friendly = this.settings.assistance === 'friendly';
     const assist = friendly ? 1 : .65;
-    const plane = friendly ? receivePlane(ball, player, this.lastBounceSide === player) : sign * 1.1;
+    const incoming = ball.active && ball.velocity.z * sign > .1;
+    let plane = friendly ? receivePlane(ball, player, this.lastBounceSide === player) : sign * 1.1;
+    if (friendly && incoming) {
+      // A slightly late reaction can still reach behind the table. Move the
+      // visible paddle there first; never collect a ball behind its collider.
+      plane = controller.stroke.phase === 'forward' && controller.stroke.plane !== undefined
+        ? controller.stroke.plane : sign * clamp(Math.max(plane * sign, ball.position.z * sign + .1), .56, 1.8);
+    }
     const baseZ = plane + sign * .1;
     const intercept = ball.active ? predictInterception(ball, plane) : v3(0, 1.02, sign * 1.1);
     const reach = controller.input.reach;
     if (stale) controller.stroke = newStroke();
     const wasReady = controller.stroke.phase === 'ready';
-    const request = controller.pendingStroke;
+    const request = incoming && !controller.settling ? controller.pendingStroke : null;
+    const oldPhase = controller.stroke.phase;
     const active = controller.strokeDetector.active;
     const strength = request ? Math.max(request.strength, active?.id === request.id ? active.strength : 0)
       : active && active.id === controller.stroke.gestureId ? active.strength : 0;
     advanceStroke(controller.stroke, {rate: stale ? 0 : strength, dt, time: this.time,
-      trigger: !stale && (controller.localStrokeRequested || Boolean(request)), friendly, allowRateTrigger: false,
-      nearBall: ball.active && ball.velocity.z * sign > .1 && this.lastBounceSide === player &&
+      trigger: !stale && !controller.settling && incoming && (controller.localStrokeRequested || Boolean(request)), friendly, allowRateTrigger: false,
+      nearBall: incoming && this.lastBounceSide === player && (!friendly || (paddle.position.z - ball.position.z) * sign > .035) &&
         (baseZ - ball.position.z) * sign / (ball.velocity.z * sign + 1.3) <= .14});
     if (wasReady && controller.stroke.phase !== 'ready') {
       controller.stroke.intent = request?.intent || shotIntent(controller.input, player);
       controller.stroke.receivedAt = request?.receivedAt ?? this.now();
       controller.stroke.gestureId = request?.id;
+      controller.pendingStroke = null;
     }
-    controller.pendingStroke = null;
+    if (oldPhase !== 'forward' && controller.stroke.phase === 'forward') {
+      controller.stroke.plane = plane;
+      // Once a buffered action visibly starts, finish this bounded physical
+      // stroke instead of canceling it halfway through its contact window.
+      controller.stroke.forwardAt = this.now();
+    }
     controller.aimTarget = {...(controller.stroke.intent && ['queued', 'forward'].includes(controller.stroke.phase)
       ? controller.stroke.intent.target : shotIntent(controller.input, player).target)};
     controller.localStrokeRequested = false;
@@ -355,7 +377,9 @@ export class TableTennisGame {
     // The paddle must reach the low post-bounce ball as well as deep returns.
     const target = v3(clamp(intercept.x * assist + (friendly ? 0 : reach.x * .4), -.9, .9),
       clamp(intercept.y + (friendly ? 0 : reach.y * .18), .81, 1.42), baseZ - sign * controller.stroke.offset);
-    if (!stale) paddle.position = approach(paddle.position, target, dt * (friendly ? 4.5 : 3));
+    if (!stale) paddle.position = approach(paddle.position, target, dt * (friendly ? 6 : 3));
+    paddle.radiusX = friendly ? .13 : .095;
+    paddle.radiusY = friendly ? .16 : .12;
     if (controller.settling && this.time >= controller.settleUntil && length(sub(target, paddle.position)) < .025) controller.settling = false;
     paddle.enabled = !stale && !controller.settling && (friendly ? controller.stroke.phase === 'forward' : controller.stroke.phase !== 'recovery') &&
       (!friendly || this.lastBounceSide === player);
@@ -369,6 +393,7 @@ export class TableTennisGame {
     const ball = this.physics.ball, p2 = this.physics.paddles[1];
     if (this.mode === 'versus') this.updateHumanPaddle(2, dt, stale);
     else {
+      p2.radiusX = .095; p2.radiusY = .12;
       const botPlane = receivePlane(ball, 2, this.lastBounceSide === 2);
       const botBaseZ = botPlane - .1;
       const botIntercept = ball.active ? predictInterception(ball, botPlane) : v3(0, 1.02, -1.1);
@@ -420,6 +445,7 @@ export class TableTennisGame {
       if (this.serveMotion?.player === event.player) this.serveMotion = null;
       const stroke = event.player === 1 ? this.playerStroke : this.botStroke;
       stroke.phase = 'recovery'; stroke.offset = Math.max(stroke.offset, .12);
+      this.players[event.player - 1].pendingStroke = null;
       this.physics.paddles[event.player - 1].enabled = false;
       this.onEvent({type: 'hit', player: event.player, id: event.id});
       this.lastReason = event.player === 1 ? 'Contact' : this.mode === 'versus' ? 'Player 2 returned' : 'Bot returned';

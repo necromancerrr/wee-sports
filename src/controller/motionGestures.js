@@ -154,14 +154,10 @@ export function createBowlingDeliveryGate({quietMs = 250, quietSpeed = 45} = {})
   };
 }
 
-/** Screen-up tilt aim uses gravity only while positioning, never during a roll.
- * Reject vigorous movement/near-vertical grips rather than letting them aim.
- */
+/** Screen-up tilt aim consumes gravity only while positioning. The delivery
+ * gate locks the line; speed alone must not freeze a legitimate side tilt. */
 export function bowlingTiltAim(gravity, rotationSpeed) {
-  // Ordinary aiming tilts often exceed 65°/s. Freezing there made the TV guide
-  // wait for the hand to stop. Reject only vigorous swing motion; the delivery
-  // gate independently freezes aim as soon as the forward swing starts.
-  if (!gravity || !['x', 'y', 'z'].every(axis => Number.isFinite(gravity[axis])) || !Number.isFinite(rotationSpeed) || rotationSpeed > 180) return null;
+  if (!gravity || !['x', 'y', 'z'].every(axis => Number.isFinite(gravity[axis])) || !Number.isFinite(rotationSpeed)) return null;
   const magnitude = Math.hypot(gravity.x, gravity.y, gravity.z);
   if (magnitude < 7.5 || magnitude > 12 || Math.abs(gravity.z) < 5) return null;
   // Engines expose either support acceleration or downward gravity. For the
@@ -169,5 +165,7 @@ export function bowlingTiltAim(gravity, rotationSpeed) {
   // must produce the same lane direction, without browser-name detection.
   const supportSign = Math.sign(gravity.z);
   const angle = -Math.atan2(gravity.x * supportSign, Math.abs(gravity.z)) * 180 / Math.PI;
-  return Math.sign(angle) * clamp((Math.abs(angle) - 4) / 31, 0, 1) || 0;
+  // A small center band removes hand tremor without hiding the first four
+  // degrees of every aiming movement. Full travel still takes 35 degrees.
+  return Math.sign(angle) * clamp((Math.abs(angle) - 1) / 34, 0, 1) || 0;
 }

@@ -222,14 +222,14 @@ async function noOverflow(page) {
       const before = creates.length;
       if (name === 'Tennis') await button.evaluate(el => {el.click(); el.click();});
       else await button.click();
-      await page.getByRole('heading', {name: `${name} lobby`, exact: true}).waitFor();
+      await page.locator('.host-lobby').getByRole('heading', {name, exact: true}).waitFor();
       const code = await page.getByTestId('lobby-code').innerText();
       assert.equal(creates.length, before + 1, 'one activation opens exactly one room');
       assert.equal(creates.at(-1).sport, ids[name]);
       assert.ok(creates.at(-1).capabilities, 'room creation preserves negotiated host capabilities');
       assert.match(new URL(page.url()).pathname, new RegExp(`/host/${code}$`));
       await page.reload();
-      await page.getByRole('heading', {name: `${name} lobby`, exact: true}).waitFor();
+      await page.locator('.host-lobby').getByRole('heading', {name, exact: true}).waitFor();
       assert.equal(await page.getByTestId('lobby-code').innerText(), code);
       assert.equal(creates.length, before + 1, 'refresh resumes the existing room');
       if (name === 'Tennis') {
@@ -291,7 +291,7 @@ async function noOverflow(page) {
     await retry.getByRole('status').filter({hasText: 'The server is busy. Try again in a moment.'}).first().waitFor();
     assert.equal(new URL(retry.url()).pathname, '/home');
     await retry.getByRole('button', {name: 'Try again: Bowling', exact: true}).click();
-    await retry.getByRole('heading', {name: 'Bowling lobby', exact: true}).waitFor();
+    await retry.locator('.host-lobby').getByRole('heading', {name: 'Bowling', exact: true}).waitFor();
     assert.equal(rejected, 1); assert.equal(forwarded, 1);
     await retry.getByRole('button', {name: 'Close lobby', exact: true}).click();
     await retryContext.close();

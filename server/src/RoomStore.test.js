@@ -112,8 +112,8 @@ test('leaving frees the seat for the next player', () => {
   store.join('a', { v, code, name: 'Ada' });
   store.join('b', { v, code, name: 'Bo' });
   assert.deepEqual(store.remove('a'), { code, closed: false });
-  assert.equal(store.join('c', { v, code, name: 'Cy' }).slot, 0);
-  assert.deepEqual(store.lobby(code).players.map((p) => p.name), ['Cy', 'Bo']);
+  assert.equal(store.join('c', { v, code, name: 'Cy' }).slot, 1);
+  assert.deepEqual(store.lobby(code).players.map((p) => p.name), ['Bo', 'Cy']);
 });
 
 test('the host leaving closes the room and lists who to tell', () => {
@@ -149,6 +149,7 @@ function startReadyCheck(sport = 'bowling') {
 
 function everyoneReady(store) {
   for (let i = 0; i < MAX_PLAYERS; i += 1) store.setReady(`p${i}`, { ready: true });
+  store.startGame('p0');
 }
 
 const readyFlags = (store, code) => store.lobby(code).players.map((player) => player.ready);
@@ -235,7 +236,7 @@ test('a replacement player joins the renewed ready check', () => {
   store.setReady('p0', { ready: true });
   store.remove('p3');
   const back = store.join('new', { v, code, name: 'New' });
-  assert.equal(back.slot, 3);
+  assert.equal(back.slot, MAX_PLAYERS - 1);
   assert.equal(back.phase, PHASES.READY);
   assert.ok(back.players.every((player) => player.ready === false));
 });
@@ -329,6 +330,7 @@ test('nobody can join during the countdown', () => {
   store.join('p0', { v, code, name: 'P0' });
   store.setSetup('p0', { setup: 'buttons' });
   store.setReady('p0', { ready: true });
+  store.startGame('p0');
   assert.equal(store.lobby(code).phase, PHASES.COUNTDOWN);
   assert.deepEqual(store.join('late', { v, code, name: 'Late' }), { ok: false, error: ERRORS.IN_PROGRESS });
 });
@@ -470,7 +472,7 @@ test('nobody can join during the vote', () => {
   const { store, code } = openRoom(new RoomStore({ now: () => clock.t }));
   store.join('solo', { v, code, name: 'Solo' });
   store.setSetup('solo', { setup: 'buttons' });
-  store.setReady('solo', { ready: true });
+  store.setReady('solo', { ready: true }); store.startGame('solo');
   clock.t += COUNTDOWN_MS;
   store.finishCountdown(code);
   assert.equal(store.lobby(code).phase, PHASES.VOTE);
@@ -537,9 +539,9 @@ test('a player leaving during the tutorial ends the match back to the lobby', ()
   const { store, code } = openTutorial();
   store.remove('p0');
   const lobby = store.lobby(code);
-  assert.equal(lobby.phase, PHASES.LOBBY);
+  assert.equal(lobby.phase, PHASES.READY);
   assert.equal(lobby.tutorial, null);
-  assert.equal(store.join('replacement', { v, code, name: 'Replacement' }).slot, 0);
+  assert.equal(store.join('replacement', { v, code, name: 'Replacement' }).slot, 1);
 });
 
 test('the TV or P1 can return to the lobby from the vote or the tutorial', () => {
@@ -582,7 +584,7 @@ test('an active tennis game rejects mid-game joining', () => {
   assert.deepEqual(store.join('late', { v, code, name: 'Late' }), { ok: false, error: ERRORS.IN_PROGRESS });
 });
 
-test('the tennis controller leaving returns everyone to the lobby to refill P1', () => {
+test('the tennis leader leaving promotes the remaining controller in the lobby', () => {
   const { store, code, clock } = startReadyCheck('tennis');
   everyoneReady(store);
   clock.t += COUNTDOWN_MS;
@@ -590,8 +592,8 @@ test('the tennis controller leaving returns everyone to the lobby to refill P1',
   clock.t += VOTE_MS;
   store.expireVote(code);
   assert.deepEqual(store.remove('p0'), { code, closed: false });
-  assert.equal(store.lobby(code).phase, PHASES.LOBBY);
-  assert.equal(store.join('replacement', { v, code, name: 'Replacement' }).slot, 0);
+  assert.equal(store.lobby(code).phase, PHASES.READY);
+  assert.equal(store.join('replacement', { v, code, name: 'Replacement' }).slot, 1);
 });
 
 test('one phone can ready, start tennis, and reconnect without extra players', () => {
@@ -600,7 +602,8 @@ test('one phone can ready, start tennis, and reconnect without extra players', (
   const seat = store.join('solo', { v, code, name: 'Solo' });
   assert.equal(seat.phase, PHASES.READY);
   store.setSetup('solo', { setup: 'buttons' });
-  assert.equal(store.setReady('solo', { ready: true }).countdownStarted, true);
+  assert.equal(store.setReady('solo', { ready: true }).countdownStarted, undefined);
+  assert.equal(store.startGame('solo').countdownStarted, true);
   assert.equal(store.join('late', { v, code, name: 'Late' }).error, ERRORS.IN_PROGRESS);
   clock.t += COUNTDOWN_MS;
   store.finishCountdown(code);

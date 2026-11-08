@@ -71,7 +71,7 @@ test('DeviceMotion permission is requested separately and bowling cannot silentl
   let asked = 0;
   sensors.DeviceMotion.requestPermissionsAsync = async () => {asked++; return {granted:false};};
   controller.session.seat.sport = 'bowling';
-  await assert.rejects(controller.calibrate(), /aiming is unavailable/);
+  await assert.rejects(controller.calibrate(), {code:'permission-denied'});
   assert.equal(asked, 1);
   assert.equal(sensors.Gyroscope.listeners.size, 0);
   assert.equal(sensors.DeviceMotion.listeners.size, 0);

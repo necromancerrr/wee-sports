@@ -24,6 +24,7 @@ function fixture(sport = 'table-tennis', {count = 1, setup = 'motion', playing =
   const view = () => store.lobby(room.code);
   const start = () => {
     for (let index = 0; index < count; index++) assert.equal(store.setReady(`p${index + 1}`, {ready: true}).ok, true);
+    store.startGame('p1');
     now += 5000;
     store.finishCountdown(room.code);
     assert.equal(view().phase, PHASES.GAME);
@@ -243,7 +244,7 @@ test('negotiated modern tennis swings cannot bypass generation checks with a leg
   const room = store.createRoom('tv', {v, sport: 'tennis', capabilities});
   store.join('phone', {v, code: room.code, name: 'Player', capabilities});
   store.setSetup('phone', {setup: 'buttons'});
-  store.setReady('phone', {ready: true});
+  store.setReady('phone', {ready: true}); store.startGame('phone');
   now = 5000; store.finishCountdown(room.code);
   store.vote('phone', {watch: false});
   const state = store.lobby(room.code);
@@ -338,6 +339,7 @@ test('real sockets deliver sanitized pose to one room, drop replay, and publish 
   await send(phone, EVENTS.PLAYER_JOIN, {v, code: room.code, name: 'Player', capabilities});
   await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
   await send(phone, EVENTS.PLAYER_READY, {ready: true});
+  await send(phone, EVENTS.PLAYER_START, {});
   f.advance(); f.store.finishCountdown(room.code);
   const state = f.store.lobby(room.code);
   const pose = {gameId: state.gameId, generation: state.inputGeneration, hostEpoch: state.hostEpoch, seq: 1,
@@ -375,6 +377,7 @@ test('real sockets retain an unknown lost acknowledgement outcome and never repl
   await send(phone, EVENTS.PLAYER_JOIN, {v, code: room.code, name: 'Player', capabilities});
   await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
   await send(phone, EVENTS.PLAYER_READY, {ready: true});
+  await send(phone, EVENTS.PLAYER_START, {});
   f.advance(); f.store.finishCountdown(room.code);
   const state = f.store.lobby(room.code);
   await send(tv, EVENTS.HOST_GAME_STATE, {gameId: state.gameId, phase: 'ready', currentPlayer: 1, frame: 1});
@@ -395,6 +398,7 @@ test('real sockets cannot accept a late roll reply from a replaced host epoch', 
   await send(phone, EVENTS.PLAYER_JOIN, {v, code: room.code, name: 'Player', capabilities});
   await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
   await send(phone, EVENTS.PLAYER_READY, {ready: true});
+  await send(phone, EVENTS.PLAYER_START, {});
   f.advance(); f.store.finishCountdown(room.code);
   const state = f.store.lobby(room.code);
   await send(tv, EVENTS.HOST_GAME_STATE, {gameId: state.gameId, phase: 'ready', currentPlayer: 1, frame: 1});

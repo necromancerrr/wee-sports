@@ -26,6 +26,7 @@ async function fixture(t, transport = 'websocket') {
   await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
   const start = async () => {
     await send(phone, EVENTS.PLAYER_READY, {ready: true});
+    await send(phone, EVENTS.PLAYER_START, {});
     now += 5000; store.finishCountdown(room.code);
     now += VOTE_SECONDS * 1000; store.expireVote(room.code);
     return store.lobby(room.code).gameId;

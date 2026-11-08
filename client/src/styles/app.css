@@ -1599,3 +1599,8 @@
 html:has(.phone-session), body:has(.phone-session) { overscroll-behavior-y: none; }
 .phone-reconnect-notice { display: grid; gap: 4px; margin: 10px 0; padding: 12px 16px; border-radius: 14px; background: var(--warn-soft); color: var(--warn-ink); font-size: .875rem; }
 .phone-reconnect-notice span { font-size: .95em; }
+
+.phone-session > .sport-switcher { margin: 0 0 16px; }
+.phone-session .sport-switcher label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 800; }
+.phone-session .sport-switcher select { min-height: 44px; max-width: 68%; margin: 0; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 10px; font: inherit; color: var(--text); background: var(--surface); }
+.phone-session .sport-switcher .stub__muted { margin-top: 6px; font-size: .85rem; }

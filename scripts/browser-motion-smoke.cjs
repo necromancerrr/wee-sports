@@ -11,7 +11,7 @@ async function sensorContext(browser, permission = 'granted', samples = true) {
     window.__permissionCalls = [];
     window.__bridge = [];
     window.__sensor = {running: samples, hidden: false, rate: {alpha: 0, beta: 0, gamma: 0},
-      orientation: {alpha: 0, beta: 0, gamma: 0}};
+      orientation: {alpha: 0, beta: 0, gamma: 0}, gravity:{x:0,y:0,z:9.80665}, acceleration:{x:0,y:0,z:0}};
     window.__sensorSamples = [];
     const ask = name => {
       window.__permissionCalls.push({name, active: navigator.userActivation.isActive});
@@ -36,8 +36,9 @@ async function sensorContext(browser, permission = 'granted', samples = true) {
       window.__sensorSamples.push({at: performance.now(), hidden: document.hidden, ...window.__sensor.rate});
       if (window.__sensorSamples.length > 100) window.__sensorSamples.shift();
       const motion = new Event('devicemotion');
-      Object.assign(motion, {rotationRate: {...window.__sensor.rate}, acceleration: {x: 0, y: 0, z: 0},
-        accelerationIncludingGravity: {x: 0, y: 0, z: 9.80665}, interval: 16});
+      const {gravity, acceleration} = window.__sensor;
+      Object.assign(motion, {rotationRate: {...window.__sensor.rate}, acceleration:{...acceleration},
+        accelerationIncludingGravity:{x:gravity.x+acceleration.x,y:gravity.y+acceleration.y,z:gravity.z+acceleration.z}, interval:16});
       window.dispatchEvent(motion);
       const orientation = new Event('deviceorientation');
       Object.assign(orientation, window.__sensor.orientation);
@@ -78,12 +79,11 @@ async function createGame(browser, permission, sport = 'Bowling', errors = [], s
   await phone.goto(`${base}/join?code=${code}`);
   await phone.getByRole('button', {name: 'Play', exact: true}).click();
   if (hold) {
-    await phone.getByRole('button', {name: 'Wait for friends', exact: true}).click();
-    await phone.getByRole('button', {name: 'Play', exact: true}).waitFor();
+    await phone.getByRole('button', {name: 'Start game', exact: true}).waitFor();
     await phone.waitForTimeout(5500);
-    await host.getByRole('heading', {name: `${sport} lobby`, exact: true}).waitFor();
-    await phone.getByRole('button', {name: 'Play', exact: true}).click();
+    await host.locator('.host-lobby').getByRole('heading', {name: sport, exact: true}).waitFor();
   }
+  await phone.getByRole('button', {name: 'Start game', exact: true}).click();
   await host.locator(`iframe[title="${sport} game"]`).waitFor({timeout: 20000});
   const frame = phone.frames().find(frame => frame.url().includes(sport === 'Bowling' ? '/controller.html' : '/table-tennis-controller.html'));
   assert.ok(frame, 'controller iframe has loaded');
@@ -108,12 +108,30 @@ async function returnToLobby(host) {
     assert.deepEqual(await frame.evaluate(() => window.__permissionCalls), [], 'iframe reuses granted access');
     assert.equal(await phone.getByRole('button', {name: 'Ready', exact: true}).count(), 0);
     await frame.getByText('Swing forward to bowl', {exact: true}).waitFor();
-    pass('One Play tap requests sensors during user activation and starts bowling without setup, Ready or Arm buttons');
+    pass('Play requests sensors during user activation, then the leader starts bowling without setup, Ready or Arm buttons');
     const game = host.frames().find(frame => frame.url().includes('/bowling.html'));
     await game.evaluate(() => {
       window.__rollInputs = [];
       window.addEventListener('message', event => {if (event.data?.type === 'wee:game-roll') window.__rollInputs.push(event.data.event);});
     });
+    for (const direction of [1, -1]) {
+      await frame.evaluate(direction => {
+        window.__sensor.gravity = {x:-direction * 4.903325,y:0,z:8.492808};
+        window.__sensor.acceleration = {x:8,y:0,z:0};
+        window.__sensor.rate = {alpha:0,beta:direction*300,gamma:0};
+      }, direction);
+      await game.waitForFunction(direction => {
+        const aim = Number(document.getElementById('aim').value);
+        return aim * direction > .72 && document.getElementById('aim-state').textContent === 'Live';
+      }, direction);
+    }
+    assert.equal((await rolls(phone)).length, 0, 'sideways aiming must not bowl');
+    await frame.evaluate(() => {
+      window.__sensor.gravity = {x:0,y:0,z:9.80665}; window.__sensor.acceleration = {x:0,y:0,z:0};
+      window.__sensor.rate = {alpha:0,beta:0,gamma:0};
+    });
+    await game.waitForFunction(() => Math.abs(Number(document.getElementById('aim').value)) < .08);
+    pass('Fast sideways aim reaches the real TV guide in both directions despite hand acceleration, without releasing a ball');
     await segment(phone, frame, 600);
     await segment(phone, frame, 160, 400, 150);
     await hidden(frame, true);
@@ -168,7 +186,8 @@ async function returnToLobby(host) {
     pass('Sensor gaps discard partial deliveries; a fresh opposite wrist turn produces the opposite curve');
     await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 60000});
     await returnToLobby(host);
-    await host.getByLabel('Next sport', {exact: true}).selectOption('table-tennis');
+    await phone.getByLabel('Next sport', {exact: true}).selectOption('table-tennis');
+    await phone.getByRole('button', {name: 'Start game', exact: true}).click();
     await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout: 20000});
     const paddle = phone.frames().find(frame => frame.url().includes('/table-tennis-controller.html'));
     assert.ok(paddle);
@@ -182,7 +201,7 @@ async function returnToLobby(host) {
     assert.equal(await poseCount(), held, 'hidden paddle sends no poses');
     await hidden(paddle, false);
     await phone.waitForFunction(count => window.__bridge.filter(message => message.type === 'wee:player-pose').length > count, held);
-    pass('Same-room table tennis starts automatically, routes fresh synthetic sensor samples and stops/restarts safely on visibility changes');
+    pass('The phone switches sports, starts table tennis and routes fresh sensors across visibility changes');
     await paddle.locator('#tt-use-touch').click();
     await paddle.locator('#tt-touchpad').waitFor();
     await paddle.locator('#tt-touch-stroke').click();
@@ -197,7 +216,7 @@ async function returnToLobby(host) {
     assert.equal(await denied.phone.getByRole('button', {name: 'Ready', exact: true}).count(), 0);
     assert.equal((await denied.phone.evaluate(() => window.__permissionCalls)).length, 2);
     pass('Denied sensor access falls back automatically to playable touch controls');
-    pass('Wait for friends cancels automatic entry until the player taps Play again');
+    pass('The lobby waits for the first phone to choose Start game');
     await returnToLobby(denied.host);
     await denied.host.getByRole('button', {name: 'Close lobby', exact: true}).click();
     await denied.hostContext.close();

@@ -126,7 +126,7 @@ export class RoomStore {
     }
     if (!code) return { ok: false, error: ERRORS.SERVER_BUSY };
 
-    this.#rooms.set(code, { code, sport, hostId, expectedPlayers: 1, phase: PHASES.LOBBY, players: new Map(), deadline: null, pausedAt: null, manuallyPaused: false,
+    this.#rooms.set(code, { code, sport, hostId, autoStart: true, phase: PHASES.LOBBY, players: new Map(), deadline: null, pausedAt: null, manuallyPaused: false,
       gameId: null, matchRound: 0, inputGeneration: 0, hostEpoch: 1, profileBindings: new Map(), streams: new Map(), actionResults: new Map(), checkpoint: null, gameState: null, pendingRoll: null, seenRolls: new Set(),
       seenHits: new Set(), lastHitAt: new Map(), pendingStrokes: new Map(), soundMuted: null,
       gameOptions: null, seenCommands: new Set(), pendingGameCommand: null, vote: null, tutorial: null });
@@ -155,7 +155,7 @@ export class RoomStore {
 
     const slot = this.#freeSlot(room);
     if (slot === null) return { ok: false, error: ERRORS.ROOM_FULL };
-    // More friends can join until the host starts the countdown.
+    // More friends can join until the leader starts or a full roster is ready.
     if (!BEFORE_PLAY.has(room.phase)) return { ok: false, error: ERRORS.IN_PROGRESS };
 
     const negotiation = negotiateControllerCapabilities(payload.capabilities);
@@ -172,7 +172,7 @@ export class RoomStore {
 
   /**
    * Ready or not ready, during the ready check and the countdown. When the
-   * last player readies up the countdown starts by itself; anyone un-readying
+   * full roster readies up the countdown starts by itself; anyone un-readying
    * during it cancels it. The result says which happened.
    */
   setReady(playerId, payload) {
@@ -203,31 +203,29 @@ export class RoomStore {
     return { ok: true, code: room.code };
   }
 
-  /** The TV chooses the party size before phones tap Play. It is a minimum
-   * roster, never an invitation to evict an already joined participant. */
-  setPlayerCount(socketId, payload) {
+  /** The current leader starts the joined roster; larger parties need no TV configuration. */
+  startGame(socketId) {
     const member = this.#members.get(this.#sockets.get(socketId));
     const room = member && this.#rooms.get(member.code);
-    if (member?.role !== 'host' || room?.hostId !== member.id) return {ok: false, error: ERRORS.NOT_HOST};
-    if (!BEFORE_PLAY.has(room.phase) && room.phase !== PHASES.COUNTDOWN) return {ok: false, error: 'in-progress'};
-    const count = payload?.count;
-    if (!Number.isInteger(count) || count < 1 || count > playerCapacity(room.sport)) return {ok: false, error: 'bad-player-count'};
-    if (count < room.players.size) return {ok: false, error: 'players-already-joined'};
-    if (room.recoverySource && count !== 1) return {ok: false, error: 'solo-only'};
-    room.expectedPlayers = count;
-    if (room.phase === PHASES.COUNTDOWN && room.players.size < count) {
-      room.phase = PHASES.READY;
-      room.deadline = null;
-      room.gameId = null;
-      room.inputGeneration++;
-      room.streams.clear();
-    }
-    return this.#startWhenReady(room);
+    if (member?.role !== 'player' || room?.players.get(member.id)?.slot !== this.#leaderSlot(room)) return {ok: false, error: 'not-game-leader'};
+    if (room.phase === PHASES.COUNTDOWN) return {ok: true, code: room.code};
+    if (room.phase !== PHASES.READY) return {ok: false, error: ERRORS.NO_READY_CHECK};
+    if (room.pausedAt !== null) return {ok: false, error: ERRORS.PAUSED};
+    if (!this.#canStart(room)) return {ok: false, error: 'players-not-ready'};
+    return this.#startWhenReady(room, true);
   }
 
-  #startWhenReady(room) {
-    if (room.phase !== PHASES.READY || room.pausedAt !== null ||
-        room.players.size < room.expectedPlayers || ![...room.players.values()].every(seat => seat.ready)) return {ok: true, code: room.code};
+  #leaderSlot(room) {
+    return room?.players.size ? Math.min(...[...room.players.values()].map(player => player.slot)) : null;
+  }
+
+  #canStart(room) {
+    return room.phase === PHASES.READY && room.pausedAt === null && room.players.size > 0 &&
+      [...room.players.values()].every(player => player.ready && (!isController(room.sport, player.slot) || player.setup));
+  }
+
+  #startWhenReady(room, explicit = false) {
+    if (!this.#canStart(room) || !explicit && (!room.autoStart || room.players.size < playerCapacity(room.sport))) return {ok: true, code: room.code};
     room.phase = PHASES.COUNTDOWN;
     room.gameId = randomUUID();
     room.profileBindings = new Map([...room.players.keys()].map(id => [id, this.#members.get(id)?.profileId ?? null]));
@@ -375,7 +373,6 @@ export class RoomStore {
     if (room.sport === payload.sport) return {ok: true, code: room.code};
     room.recoverySource = null;
     room.sport = payload.sport;
-    room.expectedPlayers = Math.min(room.expectedPlayers, playerCapacity(room.sport));
     // Motion grips are sport-specific. Touch setup remains valid across sports.
     for (const player of room.players.values()) if (player.setup === 'motion') player.setup = null;
     room.deadline = null;
@@ -516,6 +513,7 @@ export class RoomStore {
       return { ok: false, error: 'not-playing' };
     }
     room.deadline = null;
+    room.autoStart = false;
     this.#resetReady(room);
     // Keep genuine reconnect pauses, but a missing setup no longer pauses a lobby.
     this.#updatePause(room);
@@ -745,12 +743,20 @@ export class RoomStore {
       .filter(member => member.code === code && member.disconnectedAt !== null)
       .map(member => ({ name: member.role === 'host' ? 'TV' : room.players.get(member.id)?.name,
         msLeft: Math.max(0, this.#graceMs - (this.#now() - member.disconnectedAt)) }));
-    return { code: room.code, sport: room.sport, phase: room.phase, players, countdown, expectedPlayers: room.expectedPlayers,
+    return { code: room.code, sport: room.sport, phase: room.phase, players, countdown, leaderSlot: this.#leaderSlot(room), canStart: this.#canStart(room),
       vote: this.#voteView(room), tutorial: this.#tutorialView(room),
       paused: room.pausedAt !== null, manuallyPaused: room.manuallyPaused, reconnecting,
       setupPending: players.filter(player => isController(room.sport, player.slot) && !player.setup).map(player => player.name),
       recovery: {ownerRequired: Boolean(room.recoverySource), available: Boolean(room.checkpoint), saved: room.checkpoint?.saved ?? false, revision: room.checkpoint?.revision ?? 0},
       gameId: room.gameId, matchRound: room.matchRound, inputGeneration: room.inputGeneration, hostEpoch: room.hostEpoch, gameState: room.gameState, soundMuted: room.soundMuted, gameOptions: room.gameOptions };
+  }
+
+  /** A lobby broadcast includes only this socket's own changing seat identity. */
+  lobbyForSocket(socketId, snapshot) {
+    const member = this.#members.get(this.#sockets.get(socketId));
+    if (!member || member.code !== snapshot?.code) return snapshot;
+    const seat = this.#rooms.get(member.code)?.players.get(member.id);
+    return seat ? {...snapshot, slot: seat.slot, name: seat.name} : snapshot;
   }
 
   /** The code this id is hosting, or null. */
@@ -800,10 +806,14 @@ export class RoomStore {
       this.#advanceTutorial(room);
     }
     // Any seat change before play cancels the countdown and asks the remaining
-    // players to confirm again. Tennis needs P1 before a new match can start.
+    // players to confirm again. Seat compaction preserves a playable first controller.
     if (BEFORE_PLAY.has(room.phase) || room.phase === PHASES.COUNTDOWN) {
       const countdownCancelled = room.phase === PHASES.COUNTDOWN;
       room.deadline = null;
+      // Departures release seats; unlike a temporary disconnect they cannot strand
+      // a lone racket player at P2, or keep a smaller sport blocked by old slot IDs.
+      [...room.players.values()].sort((a, b) => a.slot - b.slot).forEach((player, slot) => {player.slot = slot;});
+      room.autoStart = false;
       this.#resetReady(room);
       this.#updatePause(room);
       if (countdownCancelled) return { code: room.code, closed: false, countdownCancelled };
@@ -926,8 +936,7 @@ export class RoomStore {
     room.pendingStrokes.clear();
     room.gameOptions = null; room.seenCommands.clear(); room.pendingGameCommand = null;
     room.vote = null; room.tutorial = null;
-    room.phase = room.players.size >= READY_AT_PLAYERS &&
-      (room.sport === 'bowling' || [...room.players.values()].some(player => player.slot === 0)) ? PHASES.READY : PHASES.LOBBY;
+    room.phase = room.players.size >= READY_AT_PLAYERS ? PHASES.READY : PHASES.LOBBY;
   }
 
   /** Any Yes means the tutorial. Picks are frozen by slot for the reveal. */

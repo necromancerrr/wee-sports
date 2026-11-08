@@ -1,7 +1,7 @@
 import { createSwingStream } from './swingStream.js';
-import { createSimpleSwingStream, createBowlingDeliveryGate, bowlingTiltAim } from './motionGestures.js';
+import { createSimpleSwingStream, createBowlingDeliveryGate } from './motionGestures.js';
 import { createAutomaticMotionSetup, toLegacyMotionSample } from '../../shared/motion.js';
-import { createBowlingAimStream, createBowlingAimFilter } from './bowlingAim.js';
+import { createBowlingAimStream, createBowlingAimController } from './bowlingAim.js';
 import { readLegacyWebMotion } from './webMotionAdapter.js';
 import { createControllerPreferences } from './preferences.js';
 import { tennisPower, tennisStrength } from './tennisPower.js';
@@ -95,7 +95,7 @@ let setupError = '';
 let feedbackUntil = 0;
 let lastTiltReading = null;
 let liveAim = 0;
-const aimFilter = createBowlingAimFilter();
+const aimMotion = createBowlingAimController();
 const aimStream = createBowlingAimStream(event => post({ type: 'wee:player-aim', event }));
 let lockedAim = null;
 let bowlingReadout = null;
@@ -203,8 +203,8 @@ function renderPlayState() {
     help = manuallyPaused ? 'Player 1 or the TV can resume the match from game options.'
       : 'Waiting for everyone to reconnect and finish setup.';
   } else if (setupError) {
-    state = 'paused'; status = 'Setup needed'; title = 'Setup not saved';
-    help = 'Reconnect, or choose touch controls.';
+    state = 'paused'; status = 'Reconnecting'; title = 'Reconnecting your controls…';
+    help = 'Keep this page open. We’ll retry automatically.';
   } else if (gameActive && bowling && (bowlingPhase === 'complete' || bowlingPhase === 'finished')) {
     state = 'finished'; status = 'Match complete'; title = 'Nice bowling!'; help = 'See the final scores on the TV.';
   } else if (gameActive && !bowling && tennisState?.phase === 'complete') {
@@ -239,7 +239,7 @@ function renderPlayState() {
       } else if (turnReady()) {
         status = 'Your turn';
         title = buttonMode ? 'Choose your line' : bowlingGate.phase === 'finished' ? 'Watch the lane' : 'Swing forward to bowl';
-        help = buttonMode ? 'Aim, then tap Roll.' : bowlingGate.phase === 'finished' ? 'Waiting for the next ball.' : 'Turn your wrist to curve';
+        help = buttonMode ? 'Aim, then tap Roll.' : bowlingGate.phase === 'finished' ? 'Waiting for the next ball.' : 'Screen up. Tilt to aim, then swing gently forward.';
       } else {
         state = 'waiting'; title = currentPlayer ? `P${currentPlayer} is bowling` : 'Waiting for the lane';
         help = 'Watch the TV. Your turn will appear here.';
@@ -531,7 +531,7 @@ window.addEventListener('message', event => {
     bowling = data.sport === 'bowling';
     canRoll = false; currentPlayer = null; bowlingPhase = 'waiting';
     pendingRoll = null; bowlingReadout = null; liveAim = 0;
-    aimStream.reset(); aimFilter.reset(0, performance.now() / 1000);
+    aimStream.reset(); aimMotion.reset(0);
     element('aim').value = '0'; element('aim').oninput();
     element('strength-panel').open = false;
     settingsOpen = false; playNotice = ''; feedbackUntil = 0;
@@ -540,6 +540,13 @@ window.addEventListener('message', event => {
     // The lobby may have reset readiness for its new sport. Re-publish the
     // already verified controller mode without dropping it to an unset state.
     lastSetup = undefined;
+  }
+  if (data.gameId !== tennisGameId || gameActive && !data.playing) {
+    // A returned match cannot keep a pending roll or an open tuning panel
+    // attached to the next game. Verified controller setup stays available.
+    pendingRoll = null; canRoll = false; currentPlayer = null; bowlingPhase = 'waiting';
+    bowlingReadout = null; settingsOpen = false; playNotice = ''; feedbackUntil = 0;
+    if (rehearsal) finishRehearsal('Your controller is ready for the next game.');
   }
   if (data.gameId !== tennisGameId || !data.playing) {
     tennisState = null; tennisGameId = data.gameId; pendingTimings.clear(); strokeNoticeUntil = 0;
@@ -603,20 +610,21 @@ function motion(event) {
   }
   phoneFeedback.motion(sample, now);
   if (bowling) {
+    // Capture the last positioning line before the first forward-pitch sample
+    // can move its gravity vector. Delivery recognition owns the aim lock.
+    const result = bowlingGate.push(sample, {active: turnReady(), turnKey: bowlingTurn, aim: Number(element('aim').value)});
     if (bowlingGate.lockedAim === null && turnReady()) {
-      const tilt = bowlingTiltAim(event.accelerationIncludingGravity, Math.hypot(sample.rotationAlpha, sample.rotationBeta, sample.rotationGamma));
+      const degrees = Math.PI / 180;
+      const tilt = aimMotion.push({...reading.sample, angularVelocity: {
+        x: sample.rotationAlpha * degrees, y: sample.rotationBeta * degrees, z: sample.rotationGamma * degrees,
+      }}, {sensitivity: motionSensitivity});
       if (tilt !== null) {
-        if (lastTiltReading === null || now - lastTiltReading >= 500) {
-          liveAim = Number(element('aim').value);
-          aimFilter.reset(liveAim, now / 1000);
-        }
         lastTiltReading = now;
-        liveAim = aimFilter.push(Math.max(-1, Math.min(1, tilt * motionSensitivity)), now / 1000);
+        liveAim = tilt;
         element('aim').value = String(Math.round(liveAim * 100) / 100);
         element('aim').oninput();
       }
     }
-    const result = bowlingGate.push(sample, {active: turnReady(), turnKey: bowlingTurn, aim: Number(element('aim').value)});
     bowlingDetector = bowlingGate.phase === 'forward' ? bowlingGate : null;
     const previousAim = lockedAim;
     lockedAim = bowlingGate.lockedAim;
