@@ -13,6 +13,22 @@ export function playerName(seat, number) {
   return seat?.players?.find(player=>player.slot+1===number)?.name ||
     (number===2 && seat?.sport!=='bowling' ? 'Bot' : `Player ${number}`);
 }
+
+/** One primary play message, with connection/pause taking priority over turns. */
+export function controllerPlayState(seat, status, setup) {
+  if (seat?.gameState?.phase === 'complete') return {title:'Match complete', hint:'See the result on your TV.', active:false};
+  if (status !== 'online') return {title:'Reconnecting', hint:'Your place is saved. Keep the app open.', active:false};
+  if (seat?.paused) return {title:'Game paused', hint:'Your controller is ready when play resumes.', active:false};
+  if (!setup) return {title:'Getting ready', hint:'Connecting your controls…', active:false};
+  if (seat?.phase !== 'game') return {title:'Watch the TV', hint:'Your game is about to begin.', active:false};
+  if (!seat.gameState) return {title:'Get ready', hint:'Your game is loading on the TV.', active:false};
+  if (seat.sport === 'bowling') {
+    if (seat.gameState?.currentPlayer !== seat.slot + 1) return {title:'Watch the TV', hint:`${playerName(seat,seat.gameState?.currentPlayer)} is bowling.`, active:false};
+    if (seat.gameState?.phase !== 'ready') return {title:'Nice roll', hint:'Watch your ball on the TV.', active:false};
+    return {title:'Your turn', hint:'Tilt to aim. Swing gently forward.', active:true};
+  }
+  return {title:'Swing to play', hint:'Small swings. Watch the ball on your TV.', active:true};
+}
 export function matchSummary(seat) {
   const state=seat?.gameState;
   if (!state || seat.phase!=='game') return null;

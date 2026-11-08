@@ -6,11 +6,11 @@ export function shotIntent(input, player = 1, stroke = null) {
   const sign = player === 1 ? -1 : 1;
   const aim = clamp(input.reach?.x || 0, -1, 1);
   const direction = stroke?.direction || 0;
-  // A comfortable un-aimed forehand goes left and a backhand right on the TV.
+  // Forehand goes left and backhand right in the player's own camera view.
   // Deliberate pointing remains stronger than this gentle stroke tendency.
   const placement = clamp(aim * .55 + direction * .20 * (1 - Math.abs(aim) * .65), -.58, .58);
   return {
-    target: v3(placement, TABLE.height + BALL.radius, sign * .9),
+    target: v3(-sign * placement || 0, TABLE.height + BALL.radius, sign * .9),
     kind: stroke?.kind || 'drive', hand: stroke?.hand || (input.hand === 'Left' ? 'Left' : 'Right'), direction,
     // Deliberate wrist rotation shapes the flight slightly. Swing pitch is
     // power, not an accidental source of alternating top/backspin.

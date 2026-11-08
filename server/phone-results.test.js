@@ -234,3 +234,13 @@ test('a failed pause reports why and a stale pause reply does not update the nex
   finish({ ok: false, error: 'timeout' }); await first; f.render();
   expect(f.text()).not.toContain("Couldn't reach");
 });
+
+test('table-tennis completion leaves attention on the TV and keeps replay in phone options', () => {
+  const lobby={...tennis(),sport:'table-tennis',gameState:{phase:'complete',winner:1,score:[12,8]},gameOptions:{gameId:'game-1',sport:'table-tennis',settings:{assistance:'friendly',sensitivity:1},practice:{active:false}}};
+  const f=mount(lobby);f.render();
+  expect(f.dialog.showModal).not.toHaveBeenCalled();
+  // The existing game-options entry is still available; completion never
+  // pushes a phone dialog over the controller by itself.
+  f.render({lobby:{...lobby,paused:true}});
+  expect(f.dialog.showModal).not.toHaveBeenCalled();
+});

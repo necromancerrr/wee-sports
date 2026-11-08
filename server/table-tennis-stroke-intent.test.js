@@ -100,3 +100,16 @@ test('continuous casual wrist swings rearm at their valleys without requiring st
     expect(requests.length).toBeLessThanOrEqual(12);
   }
 });
+
+test('classification follows the accumulated swing rather than a reversed final sample', () => {
+  for(const hand of ['Right','Left']) for(const direction of [-1,1]) {
+    const detector=createStrokeIntentDetector();
+    const factor=hand==='Right'?1:-1;
+    detector.push({...input('y',0),hand},0);
+    expect(detector.push({...input('y',direction*factor*2),hand},.02)).toBeNull();
+    expect(detector.push({...input('y',direction*factor*2),hand},.035)).toBeNull();
+    const swing=detector.push({...input('y',-direction*factor),hand},.045);
+    expect(swing).toMatchObject({kind:direction===-1?'forehand':'backhand',direction,hand});
+    expect(Math.sign(swing.spin.y)).toBe(direction*factor);
+  }
+});

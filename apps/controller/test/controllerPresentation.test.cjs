@@ -33,3 +33,23 @@ test('native results use real opponents and shared bowling winners without inven
   const bowling=matchSummary({phase:'game',sport:'bowling',players:[{slot:0,name:'Riley'},{slot:7,name:'Sam'}],gameState:{phase:'complete',frame:10,winners:[1,8],winnerScore:180}});
   assert.equal(bowling.result,'Riley & Sam share first place');assert.equal(bowling.detail,'180 points');
 });
+
+test('play cues never ask a paused or disconnected bowler to swing, and final results remain TV first',async()=>{
+  const {controllerPlayState}=await import('../src/controllerPresentation.js');
+  const seat={sport:'bowling',slot:0,phase:'game',players:[{slot:0,name:'Sam'},{slot:1,name:'Ari'}],gameState:{phase:'ready',currentPlayer:1}};
+  assert.equal(controllerPlayState(seat,'online','motion').active,true);
+  assert.deepEqual(controllerPlayState({...seat,paused:true},'online','motion'),{title:'Game paused',hint:'Your controller is ready when play resumes.',active:false});
+  assert.equal(controllerPlayState(seat,'offline','motion').active,false);
+  assert.equal(controllerPlayState(seat,'online',null).title,'Getting ready');
+  assert.equal(controllerPlayState({...seat,gameState:{phase:'ready',currentPlayer:2}},'online','motion').hint,'Ari is bowling.');
+  assert.equal(controllerPlayState({...seat,paused:true,gameState:{phase:'complete'}},'offline',null).title,'Match complete');
+});
+
+test('native start confirmation is tied to the ready roster, sport and connection generation',async()=>{
+  const {startConfirmationKey}=await import('../../../shared/startConfirmation.js');
+  const seat={code:'ABCD',sport:'bowling',phase:'ready',canStart:true,leaderSlot:0,inputGeneration:1,players:[{id:'sam',slot:0,ready:true,setup:'motion'}]};
+  const key=startConfirmationKey(seat);assert.ok(key);
+  assert.equal(startConfirmationKey({...seat,countdown:null}),key);
+  for(const change of [{sport:'tennis'},{inputGeneration:2},{players:[...seat.players,{id:'ari',slot:1,ready:true,setup:'buttons'}]}])assert.notEqual(startConfirmationKey({...seat,...change}),key);
+  for(const change of [{paused:true},{canStart:false},{phase:'countdown'}])assert.equal(startConfirmationKey({...seat,...change}),null);
+});

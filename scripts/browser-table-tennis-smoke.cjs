@@ -77,6 +77,7 @@ async function visibility(frame, hidden) {
     const code = await host.getByTestId('lobby-code').innerText();
     await phone.goto(`${base}/join?code=${code}`); await phone.getByRole('button', {name: 'Play', exact: true}).click();
     await phone.getByRole('button', {name: 'Start game', exact: true}).click();
+    await phone.getByRole('button', {name:'Start now', exact:true}).click();
     await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout: 20000});
     const controller = phone.frames().find(frame => frame.url().includes('/table-tennis-controller.html'));
     const game = host.frames().find(frame => frame.url().includes('/table-tennis.html'));

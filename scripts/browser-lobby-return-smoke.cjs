@@ -29,7 +29,7 @@ async function returnFromPhone(phone) {
 }
 async function leavePhone(phone) {
   const more = phone.locator('.phone-session__options');
-  if (!await more.evaluate(node => node.open)) await more.locator('summary').click();
+  if (!await more.evaluate(node => node.open)) await more.locator(':scope > summary').click();
   await phone.getByRole('button', {name:'Leave lobby', exact:true}).click();
   await phone.getByRole('button', {name:'Play', exact:true}).waitFor();
 }
@@ -47,6 +47,7 @@ async function controllerReady(phone, sport) {
   const pass = message => {checks.push(message); console.log('PASS:', message);};
   try {
     for (const sport of games) {
+      if (process.env.WEE_SMOKE_SPORT && process.env.WEE_SMOKE_SPORT!==sport) continue;
       const host = await browser.newPage({viewport:{width:1280,height:800}});
       const context = await phoneContext(browser), secondContext = await phoneContext(browser);
       const phone = await context.newPage(), second = await secondContext.newPage();
@@ -68,11 +69,13 @@ async function controllerReady(phone, sport) {
       await phone.waitForTimeout(5500);
       assert.equal(await host.locator('iframe').count(), 0, 'one joined player must choose when to start');
       await start.click();
+      await phone.getByRole('button', {name:'Start now', exact:true}).click();
       await host.locator(`iframe[title="${sport} game"]`).waitFor();
       await controllerReady(phone, sport);
       await returnFromPhone(phone);
       await host.locator('.host-lobby').getByRole('heading', {name:sport, exact:true}).waitFor();
       await start.click();
+      await phone.getByRole('button', {name:'Start now', exact:true}).click();
       await host.locator(`iframe[title="${sport} game"]`).waitFor();
       await controllerReady(phone, sport);
       pass(`${sport}: solo starts from the phone and its controller works after return and restart`);
@@ -83,10 +86,17 @@ async function controllerReady(phone, sport) {
       await second.waitForTimeout(1000);
       assert.equal(await second.getByRole('button', {name:'Start game', exact:true}).count(), 0);
       await start.click();
+      await phone.getByRole('button', {name:'Start now', exact:true}).click();
       await host.locator(`iframe[title="${sport} game"]`).waitFor();
+      if (sport==='Table Tennis') {
+        await host.frameLocator('iframe[title="Table Tennis game"]').locator('#table-court[data-views="2"]').waitFor();
+        if (process.env.WEE_SMOKE_SCREENSHOTS) {await host.waitForTimeout(250);await host.screenshot({path:join(process.env.WEE_SMOKE_SCREENSHOTS,'table-tennis-split.png')});}
+      }
+      if (sport==='Tennis') await host.frameLocator('iframe[title="Tennis game"]').locator('html[data-views="2"]').waitFor();
       await leavePhone(phone);
       await host.locator('.host-lobby').getByRole('heading', {name:sport, exact:true}).waitFor();
       await second.getByRole('button', {name:'Start game', exact:true}).click();
+      await second.getByRole('button', {name:'Start now', exact:true}).click();
       await host.locator(`iframe[title="${sport} game"]`).waitFor();
       await controllerReady(second, sport);
       assert.match(await second.locator('.you .seat__badge').innerText(), /P1/);
@@ -94,6 +104,8 @@ async function controllerReady(phone, sport) {
 
       await returnFromPhone(second);
       const next = sport === 'Bowling' ? 'table-tennis' : 'bowling';
+      if (!await second.locator('.phone-session__options').evaluate(node=>node.open)) await second.locator('.phone-session__options > summary').click();
+      if (!await second.getByLabel('Next sport',{exact:true}).isVisible()) await second.getByText('Change sport',{exact:true}).click();
       await second.getByLabel('Next sport', {exact:true}).selectOption(next);
       await host.locator('.host-lobby').getByRole('heading', {name:next === 'bowling' ? 'Bowling' : 'Table Tennis', exact:true}).waitFor();
       assert.equal(await host.getByLabel('Next sport', {exact:true}).count(), 0);

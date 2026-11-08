@@ -75,16 +75,22 @@ export function createStrokeIntentDetector() {
         armed = true; stableAim = {...valley.aim}; candidate = null; valley = null;
       }
       if (!candidate || now - candidate.startedAt > .24) {
-        candidate = {startedAt: now - dt, travel: 0, peak: 0, aim: {...stableAim}};
+        candidate = {startedAt: now - dt, travel: 0, peak: 0, duration: 0,
+          rotation: {x: 0, y: 0, z: 0}, aim: {...stableAim}};
       }
       candidate.travel += travel;
       candidate.peak = Math.max(candidate.peak, rate);
+      candidate.duration += dt;
+      for (const axis of ['x', 'y', 'z']) candidate.rotation[axis] += input.angularVelocity[axis] * dt;
       // Recognize a compact wrist movement promptly, while requiring travel
       // as well as a peak so single-sample noise and slow aiming stay quiet.
       if (candidate.peak < 1.1 || candidate.travel < .06) return null;
+      // Classify the accumulated swing, not the last noisy sensor sample.
+      // This uses the existing recognition window: no extra input delay.
+      const motion = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, candidate.rotation[axis] / candidate.duration]));
       current = {id: ++identity, strength: Math.min(candidate.peak, 30),
-        aim: {...candidate.aim}, spin: {...input.angularVelocity}, startedAt: candidate.startedAt,
-        ...classifyStroke(input)};
+        aim: {...candidate.aim}, spin: motion, startedAt: candidate.startedAt,
+        ...classifyStroke({...input, angularVelocity: motion})};
       candidate = null; armed = false; valley = null;
       return copy(current);
     },

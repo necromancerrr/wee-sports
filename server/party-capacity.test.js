@@ -26,13 +26,14 @@ function fixture(sport = 'bowling', count = 8) {
   return {store, host, phones, ready, start, advance: ms => {now += ms;}};
 }
 
-test('eight bowling phones have unique seats, a ninth is rejected, and the last ready phone starts play', () => {
+test('eight bowling phones have unique seats, a ninth is rejected, and the leader confirms play', () => {
   const {store, host, phones, ready, advance} = fixture();
   expect(phones.map(phone => phone.slot)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   expect(store.join('p9', {v, code: host.code, name: 'Ninth'}).error).toBe('room-full');
   for (let i = 1; i <= 7; i++) expect(ready(i).countdownStarted).toBeUndefined();
   expect(store.lobby(host.code).phase).toBe(PHASES.READY);
-  expect(ready(8).countdownStarted).toBe(true);
+  expect(ready(8).countdownStarted).toBeUndefined();
+  expect(store.startGame('p1').countdownStarted).toBe(true);
   advance(5000); store.finishCountdown(host.code);
   expect(store.lobby(host.code).phase).toBe(PHASES.GAME);
   expect(store.lobby(host.code).leaderSlot).toBe(0);
@@ -122,7 +123,7 @@ test('eight friends can scan and tap Play one at a time without unreadying earli
     expect(store.lobby(host.code).players.slice(0, -1).every(seat => seat.ready)).toBe(true);
     store.setSetup(`p${player}`, {setup: 'buttons'});
     const result = store.setReady(`p${player}`, {ready: true});
-    expect(Boolean(result.countdownStarted)).toBe(player === 8);
+    expect(result.countdownStarted).toBeUndefined();
   }
   expect(store.lobby(host.code).players.every(seat => seat.ready)).toBe(true);
 });
@@ -160,10 +161,11 @@ for (const sport of ['tennis', 'table-tennis', 'bowling']) {
     expect(next.inputGeneration).toBeGreaterThan(game.inputGeneration);
     expect(f.store.returnToLobby('p1', {gameId: game.gameId}, 'player').error).toBe('not-playing');
   });
-  test(`${sport}: a full roster starts automatically once, then waits in the returned lobby`, () => {
+  test(`${sport}: a full roster waits for confirmation on initial play and on return`, () => {
     const f = fixture(sport, playerCapacity(sport));
     for (let i = 1; i < playerCapacity(sport); i++) expect(f.ready(i).countdownStarted).toBeUndefined();
-    expect(f.ready(playerCapacity(sport)).countdownStarted).toBe(true);
+    expect(f.ready(playerCapacity(sport)).countdownStarted).toBeUndefined();
+    expect(f.store.startGame('p1').countdownStarted).toBe(true);
     const gameId = f.store.lobby(f.host.code).gameId;
     expect(f.store.returnToLobby('p1', {gameId}, 'player').ok).toBe(true);
     for (let i = 1; i <= playerCapacity(sport); i++) expect(f.ready(i).countdownStarted).toBeUndefined();
@@ -205,6 +207,7 @@ test('real sockets promote the remaining phone and let it restart without rejoin
       await send(phone, EVENTS.PLAYER_SETUP, {setup: 'buttons'});
       await send(phone, EVENTS.PLAYER_READY, {ready: true});
     }
+    expect((await send(p1, EVENTS.PLAYER_START)).countdownStarted).toBe(true);
     now += 5000; store.finishCountdown(room.code);
     const old = store.lobby(room.code);
     expect(old.phase).toBe(PHASES.GAME);

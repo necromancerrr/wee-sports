@@ -142,14 +142,19 @@ documentation on 7 November 2026.
 
 ## Try the controller
 
-1. Open the lobby on the TV and scan from the app. The group leader picks Tennis,
-   Bowling or Table Tennis on their phone and taps **Start game** when everyone
-   has joined. A full, ready room can also start automatically.
+1. Open the selected sport on the TV and scan from the app. The lobby shows
+   that sport and the joined players. The group leader taps **Start game**, then
+   confirms **Start now** when everyone has joined. Full rooms wait too.
+   Cancel keeps the lobby open; a roster or sport change cancels an old confirmation.
 2. Allow motion if the operating system asks. The controller checks fresh
    samples and automatically readies after the server accepts its setup.
    Denied or unavailable sensors select touch controls with a visible reason and
    **Try motion again**. A denied permission also offers **Open Settings**.
-3. Bowl with a gentle forward swing, or make compact table-tennis strokes.
+3. The single play card shows your current action, animated sport artwork and
+   compact score. Rackets respond to recognized swings and confirmed contacts;
+   the ball animates on release. Paused or reconnecting controllers stay still.
+   Reduced Motion disables the decorative movement. Bowl with a gentle forward
+   swing, or make compact table-tennis strokes.
    Keep the screen facing up to aim. Bowling waits for a quiet start, locks aim at forward onset, and releases
    at most once until the TV reports the next delivery. No Arm button is needed.
    Table-tennis serves are automatic. Tennis uses the browser's fast forehand /
@@ -159,9 +164,9 @@ documentation on 7 November 2026.
    hand, sensitivity, haptics, TV sound and optional profile/history. Guest
    preferences stay on this phone. The leader's **Game options** add assistance,
    solo practice, pause, restart and **Return to lobby**. The large fixed **Back
-   to play** button returns directly to the controller. Sport selection and
-   **Start game** stay in the lobby; returning readies everyone again but waits
-   for the leader's next Start. **Back to lobby** also cancels a countdown or
+   to play** button returns directly to the controller. **Change sport** is inside
+   Tools; **Start game** stays in the lobby. Returning readies everyone again but
+   waits for the leader’s next confirmation. **Back to lobby** also cancels a countdown or
    tutorial. **Leave & scan another TV** confirms departure with the server
    before opening the scanner; a failed departure keeps the current seat.
 5. Background the app and reopen it. Motion stops immediately, the seat

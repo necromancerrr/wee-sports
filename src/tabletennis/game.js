@@ -95,7 +95,8 @@ function stabilizedNormal(ball, player, strokeSpeed, orientation, friendly, sens
   // Friendly stabilizes the face toward a modest rising return, with bounded
   // player angle influence. Standard gives the player more face control.
   const loft = clamp((1.9 - .88 * ball.velocity.y) / (1.8 * incoming), .015, .6);
-  return unit(v3(clamp(yaw * (friendly ? .24 : .4) * sensitivity, -.3, .3),
+  // Screen-relative pointing mirrors in world X at the far player's end.
+  return unit(v3(-sign * clamp(yaw * (friendly ? .24 : .4) * sensitivity, -.3, .3),
     clamp(loft + pitch * (friendly ? .13 : .35) * sensitivity, -.15, .7), sign));
 }
 
@@ -292,7 +293,7 @@ export class TableTennisGame {
     this.clearStrokeInput();
     const player = this.rules.server;
     const sign = player === 1 ? 1 : -1;
-    const aim = player === 1 || this.mode === 'versus' ? clamp(this.players[player - 1].input.reach.x, -.7, .7) : 0;
+    const aim = player === 1 || this.mode === 'versus' ? sign * clamp(this.players[player - 1].input.reach.x, -.7, .7) : 0;
     const paddle = this.physics.paddles[player - 1];
     this.physics.launch(v3(aim * .3, 1.02, sign * 1.1), v3(0, -.1, 0));
     paddle.position = v3(aim * .3, 1.02, sign * 1.2);
@@ -308,6 +309,12 @@ export class TableTennisGame {
     if (!finite(seconds) || seconds <= 0) return;
     this.wallTime += seconds;
     const humans = this.mode === 'versus' ? this.players : [this.players[0]];
+    // Finished matches need no controller heartbeat. Preserve the result when
+    // a phone stops input, opens its result screen, or leaves the foreground.
+    if (this.mode !== 'practice' && this.rules.phase === 'complete') {
+      for (const controller of humans) controller.remoteStale = false;
+      return;
+    }
     if (this.paused) {
       this.clearStrokeInput();
       for (const controller of humans) {controller.settling = true; controller.settleUntil = this.time + .15;}
@@ -385,9 +392,9 @@ export class TableTennisGame {
     // Assistance follows the ball only after a deliberate stroke. A still
     // controller holds a stable ready pose instead of chasing every prediction.
     const receiving = ['queued', 'forward'].includes(controller.stroke.phase);
-    const target = receiving ? v3(clamp(intercept.x * assist + (friendly ? 0 : reach.x * .4), -.9, .9),
+    const target = receiving ? v3(clamp(intercept.x * assist + (friendly ? 0 : sign * reach.x * .4), -.9, .9),
       clamp(intercept.y + (friendly ? 0 : reach.y * .18), .81, 1.42), baseZ - sign * controller.stroke.offset)
-      : v3(controller.idleReach.x * .20, 1.02 + controller.idleReach.y * .08, sign * 1.45);
+      : v3(sign * controller.idleReach.x * .20, 1.02 + controller.idleReach.y * .08, sign * 1.45);
     if (!stale) paddle.position = approach(paddle.position, target, dt * (friendly ? 6 : 3));
     paddle.radiusX = friendly ? .13 : .095;
     paddle.radiusY = friendly ? .16 : .12;

@@ -1,4 +1,11 @@
 /** Human-facing scoring comes from the authoritative rules snapshot. */
+export function tableTennisResult(state, playerName = 'You', opponentName = 'Bot') {
+  if (state.mode === 'practice' || state.practice || !state.winner) return null;
+  const name = state.winner === 1 ? playerName : opponentName;
+  return {title: name === 'You' ? 'You win!' : `${name} wins!`, score: state.score.join(' – '),
+    detail: 'Match complete · Well played'};
+}
+
 export function tableTennisAnnouncement(state, event, playerName = 'You', opponentName = 'Bot') {
   const name = player => player === 1 ? playerName : opponentName;
   const score = state.score.join(' – ');

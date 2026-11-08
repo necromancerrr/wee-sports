@@ -8,10 +8,11 @@ import { createBowlingAimController } from '../../../src/controller/bowlingAim.j
 import { createSwingStream } from '../../../src/controller/swingStream.js';
 import { createSimpleSwingStream } from '../../../src/controller/motionGestures.js';
 import { tennisPower } from '../../../src/controller/tennisPower.js';
+import { createStrokeIntentDetector } from '../../../src/tabletennis/strokeIntent.js';
 
 /** Native collection only; units, calibration, filters and sport recognition are shared. */
 export class MotionController {
-  constructor({ session, sensors, onStatus = () => {}, onRelease = () => {}, onSwing = () => {}, hand = 'Right', sensitivity = 1, strokeMode = 'auto', now = () => performance.now() }) {
+  constructor({ session, sensors, onStatus = () => {}, onRelease = () => {}, onSwing = () => {}, onPaddleSwing = () => {}, hand = 'Right', sensitivity = 1, strokeMode = 'auto', now = () => performance.now() }) {
     this.Gyroscope = sensors.Gyroscope;
     this.DeviceMotion = sensors.DeviceMotion;
     this.Accelerometer = sensors.Accelerometer;
@@ -19,6 +20,8 @@ export class MotionController {
     this.onStatus = onStatus;
     this.onRelease = onRelease;
     this.onSwing = onSwing;
+    this.onPaddleSwing = onPaddleSwing;
+    this.visualStroke = createStrokeIntentDetector();
     this.hand = hand;
     this.sensitivity = sensitivity;
     this.strokeMode = strokeMode;
@@ -201,6 +204,8 @@ export class MotionController {
       if (intent) {
         const { orientation, angularVelocity, reach, calibrationRevision } = intent;
         this.lastPose={orientation,reach,calibrationRevision};
+        const gesture = this.visualStroke.push({...intent, hand:this.hand}, time / 1000);
+        if (gesture) this.onPaddleSwing(gesture);
         this.session.latest('pose', { orientation, angularVelocity, reach, calibrationRevision });
       }
     }
@@ -219,7 +224,7 @@ export class MotionController {
     this.paddle = createPaddleIntentController({hand, sensitivity});
     this.resetInput();
   }
-  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); this.lastPose=null; this.idlePose={orientation:[0,0,0,1],reach:{x:0,y:0},calibrationRevision:0}; }
+  resetInput() { this.delivery.suspend(); this.paddle.reset(); this.visualStroke.reset(); this.resetSwing(); this.aim = 0; this.filter.reset(0); this.lastPose=null; this.idlePose={orientation:[0,0,0,1],reach:{x:0,y:0},calibrationRevision:0}; }
   allowNewDelivery() { this.delivery = createBowlingDeliveryGate(); }
   recenter() { this.resetInput(); this.automatic.reset(); }
   stop() {
@@ -242,6 +247,7 @@ export class MotionController {
     this.controlsQuietSince = null;
     this.automatic.reset();
     this.paddle.reset();
+    this.visualStroke.reset();
     this.resetSwing();
   }
 }

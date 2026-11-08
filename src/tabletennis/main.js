@@ -1,7 +1,7 @@
 import {TableTennisGame} from './game.js';
 import {clamp, v3} from './physics.js';
 import {createTableTennisScene} from './scene.js';
-import {tableTennisAnnouncement} from './presentation.js';
+import {tableTennisAnnouncement, tableTennisResult} from './presentation.js';
 import {createSportsAudio} from '../audio/sportsAudio';
 import './style.css';
 
@@ -195,6 +195,9 @@ let previous = performance.now(), nextPublish = 0;
 function frame(now) {
   game.update((now - previous) / 1000); previous = now;
   const state = game.snapshot();
+  const result = tableTennisResult(state, playerName, opponentName);
+  $('tt-result').hidden = !result;
+  if (result) {setText('tt-winner', result.title); setText('tt-final-score', result.score); setText('tt-result-detail', result.detail);}
   const winnerName = state.winner === 1 ? playerName : opponentName;
   const winnerText = winnerName === 'You' ? 'You win' : `${winnerName} wins`;
   setText('tt-you-label', state.practice ? 'Returns' : playerName);
@@ -205,8 +208,8 @@ function frame(now) {
   setText('tt-you', state.practice ? state.returns : state.score[0]);
   setText('tt-bot', state.practice ? game.bestRally : state.score[1]);
   setText('tt-mode', state.practice ? `${game.settings.assistance === 'friendly' ? 'Friendly' : 'Standard'} practice` : `First to ${state.targetPoints || 12} · win by 2`);
-  setText('tt-status', game.paused ? 'Paused' : state.stale ? 'Waiting for your controller' : state.winner ? `${winnerText} · ${state.score.join(' – ')}` : state.practice ? game.physics.ball.active ? 'Swing after the bounce' : 'Next ball coming' : state.deuce ? 'Deuce · win by two' : state.gamePoint ? `Game point · ${state.gamePoint === 1 ? playerName : opponentName}` : game.physics.ball.active ? 'Keep the rally going' : `${state.server === 1 ? playerName : opponentName} serves next`);
-  setText('tt-detail', game.paused ? 'Resume when everyone is ready.' : state.stale ? 'Play resumes when fresh motion arrives.' : game.lastReason === 'Contact' || game.lastReason === 'Bot returned' ? 'Aim ring shows your next return.' : state.reason);
+  setText('tt-status', state.winner ? `${winnerText} · ${state.score.join(' – ')}` : game.paused ? 'Paused' : state.stale ? 'Waiting for your controller' : state.practice ? game.physics.ball.active ? 'Swing after the bounce' : 'Next ball coming' : state.deuce ? 'Deuce · win by two' : state.gamePoint ? `Game point · ${state.gamePoint === 1 ? playerName : opponentName}` : game.physics.ball.active ? 'Keep the rally going' : `${state.server === 1 ? playerName : opponentName} serves next`);
+  setText('tt-detail', state.winner ? 'Match complete' : game.paused ? 'Resume when everyone is ready.' : state.stale ? 'Play resumes when fresh motion arrives.' : game.lastReason === 'Contact' || game.lastReason === 'Bot returned' ? 'Aim ring shows your next return.' : state.reason);
   setText('tt-action', game.physics.ball.active ? 'Stroke · Space' : state.practice ? 'Feed ball · Space' : 'Serve · Space');
   setText('tt-pause', game.paused ? 'Resume · P' : 'Pause · P');
   setText('tt-player-tag', playerName);
@@ -214,7 +217,7 @@ function frame(now) {
   $('tt-practice').classList.toggle('selected', state.practice); $('tt-match').classList.toggle('selected', !state.practice);
   $('tt-you-side').classList.toggle('serving', !state.practice && state.server === 1);
   $('tt-bot-side').classList.toggle('serving', !state.practice && state.server === 2);
-  $('tt-announcement').hidden = game.paused || state.stale || now >= announcementUntil;
+  $('tt-announcement').hidden = Boolean(state.winner) || game.paused || state.stale || now >= announcementUntil;
   court?.render(now);
   if (now >= nextPublish) { publish(); nextPublish = now + 250; }
   requestAnimationFrame(frame);

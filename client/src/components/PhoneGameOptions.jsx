@@ -56,11 +56,11 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
       return;
     }
     // Polling/reconnect must not reopen a result the player already dismissed.
-    if (disabled || lobby.paused || resultShown.current === lobby.gameId) return;
+    if (tableTennis || disabled || lobby.paused || resultShown.current === lobby.gameId) return;
     resultShown.current = lobby.gameId;
     setMessage(''); setResultMode(true);
     dialog.current?.showModal();
-  }, [completed, disabled, lobby.paused, lobby.gameId, resultMode]);
+  }, [completed, disabled, lobby.paused, lobby.gameId, resultMode, tableTennis]);
   async function command(action, detail = {}) {
     if (locked || pending.current) return;
     const gameId = lobby.gameId;
@@ -136,7 +136,6 @@ export function PhoneGameOptions({ lobby, slot, disabled }) {
                 {!options.humanOpponent ? <label>Bot challenge<select value={settings.botDifficulty} onChange={event => configure('botDifficulty', event.target.value)}>
                   <option value="standard">Standard</option><option value="beginner">Beginner</option></select></label> : null}
                 <label className="phone-options-check"><input type="checkbox" checked={settings.timingAssist} onChange={event => configure('timingAssist', event.target.checked)} /> Timing assistance</label>
-                {!options.humanOpponent ? <label className="phone-options-check"><input type="checkbox" checked={settings.splitView} onChange={event => configure('splitView', event.target.checked)} /> Show both views in solo play</label> : null}
                 <details className="phone-options-section"><summary>Movement</summary>
                   <label className="phone-options-check"><input type="checkbox" checked={settings.autoMove} onChange={event => configure('autoMove', event.target.checked)} /> Automatic movement</label>
                   <p className="stub__muted">Keep this on for phone play. Turning it off uses the TV keyboard for movement.</p>

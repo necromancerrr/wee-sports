@@ -36,6 +36,8 @@ async function client() {
    if(index===0){await host.waitForTimeout(5500);assert.equal(await host.locator('iframe[title="Bowling game"]').count(),0,'first phone must wait for the rest of the party');}
   }
   const ninth=await client();assert.equal((await request(ninth,'player:join',{v:4,code,name:'Ninth'})).ok,false);
+  assert.equal(await host.locator('iframe').count(),0,'a full room must wait for confirmation');
+  assert.equal((await request(members[0].socket,'player:start',{})).countdownStarted,true);
   await host.locator('iframe[title="Bowling game"]').waitFor({timeout:20000});
   const bowling=host.frames().find(f=>f.url().includes('/bowling.html')); assert.ok(bowling);
   await bowling.locator('.bowling-standings__name').filter({hasText:'Friend 8'}).waitFor();
@@ -46,7 +48,7 @@ async function client() {
   assert.equal(await bowling.locator('#score-body tr').count(),8);
   await bowling.locator('#close-scorecard').click();
   assert.ok(await bowling.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  pass('The lobby grows as friends join; eight ready controllers start automatically and a ninth is rejected');
+  pass('The lobby grows as friends join; eight ready controllers wait for their leader and a ninth is rejected');
   pass('The real bowling renderer shows all eight names without horizontal page overflow');
   if(process.env.WEE_PARTY_SCREENSHOT)await host.screenshot({path:process.env.WEE_PARTY_SCREENSHOT});
   members[7].socket.disconnect();
@@ -68,9 +70,12 @@ async function client() {
    await context.addInitScript(()=>{Object.defineProperty(window,'DeviceMotionEvent',{value:undefined,configurable:true});Object.defineProperty(window,'DeviceOrientationEvent',{value:undefined,configurable:true});});
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/join?code='+code);await page.getByRole('button',{name:'Play',exact:true}).click();phones.push(page);
   }
+  await phones[0].getByRole('button',{name:'Start game',exact:true}).click();
+  await phones[0].getByRole('button',{name:'Start now',exact:true}).click();
   await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout:20000});
   const game=host.frameLocator('iframe[title="Table Tennis game"]');
   await game.getByText('First to 12 · win by 2',{exact:true}).waitFor();
+  await game.locator('#table-court[data-views="2"]').waitFor();
   const controls=phones.map(p=>p.frameLocator('iframe[title="Table Tennis phone controller"]'));
   for(const frame of controls){await frame.locator('#tt-touch-stroke').waitFor();assert.equal(await frame.locator('#tt-practice-phone').isVisible(),false);}
   pass('Two phones start a scored table-tennis match with independent touch controls and no solo practice actions');

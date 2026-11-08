@@ -19,7 +19,7 @@ test('forehand and backhand wind up on opposite sides, then follow through acros
   expect(paddlePresentation({phase: 'queued', kind: 'forehand', hand: 'Left', elapsed: .12}).x).toBe(-forehand.x);
   expect(paddlePresentation({phase: 'queued', kind: 'drive', elapsed: .12}).x).toBe(0);
   for (const player of [1, 2]) for (const direction of [-1, 1]) {
-    const localXToScreen = player === 1 ? -1 : 1;
+    const localXToScreen = -1; // Both cameras face their own paddle.
     const windup = paddlePresentation({phase: 'queued', direction, player, elapsed: .12});
     const finish = paddlePresentation({phase: 'recovery', direction, player, elapsed: .12});
     expect(Math.sign(windup.x * localXToScreen)).toBe(-direction);

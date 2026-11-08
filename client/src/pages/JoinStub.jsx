@@ -129,6 +129,7 @@ export default function JoinStub() {
       <>
         <GuestResultClaim lobby={lobby} />
         <PhoneSoundToggle lobby={lobby} disabled={reconnecting} />
+        {seat.slot === (lobby.leaderSlot ?? 0) ? <details><summary>Change sport</summary><SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /></details> : null}
         <a className="btn btn--ghost" href="/profile">Profile & history</a>
         <RoomScanner label="Scan another TV" activeRoom={seat} onLeave={leaveSession} disabled={reconnecting} />
         <h2>In this lobby</h2>
@@ -185,7 +186,6 @@ export default function JoinStub() {
           <PhoneReady lobby={lobby} slot={seat.slot} disabled={reconnecting || lobby.paused} />
         )}
 
-        {!playing && seat.slot === (lobby.leaderSlot ?? 0) ? <SportSwitcher lobby={lobby} role="player" disabled={reconnecting} /> : null}
         {reconnecting || lobby.reconnecting?.length ? <ReconnectNotice lobby={lobby} reconnecting={reconnecting} compact /> : null}
         {isController(seat.sport, seat.slot) ? (
           <>
@@ -197,7 +197,7 @@ export default function JoinStub() {
           </>
         ) : null}
           <details className="phone-session__options">
-            <summary>More <span>{seat.code}</span></summary>
+            <summary>Tools <span>{seat.code}</span></summary>
             {lobbyOptions}
           </details>
       </main>

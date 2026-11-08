@@ -42,6 +42,7 @@ beforeEach(() => {
     setInterval, clearInterval,
   });
   vi.stubGlobal('document', {
+    documentElement: {dataset:{}},
     querySelector: () => ({}),
     createElement: () => ({ setAttribute: vi.fn() }),
     body: { append: vi.fn() },
@@ -215,9 +216,9 @@ test('tennis audio follows real game events, not score polls, and pauses with th
   expect(runtime.sound.play).not.toHaveBeenCalled(); // Homepage context owns every sound.
 });
 
-test('solo shows both views and actual stroke results carry the current match ID', async () => {
+test('solo shows one view and actual stroke results carry the current match ID', async () => {
   await import('../src/main.ts'); state({});
-  expect(runtime.world.setSplitScreen).toHaveBeenLastCalledWith(true);
+  expect(runtime.world.setSplitScreen).toHaveBeenLastCalledWith(false);
   runtime.world.onStrokeResult({ id: 'stroke-1', player: 1, result: 'hit', reason: 'Good contact', receivedToContactMs: 75 });
   expect(parent.postMessage).toHaveBeenLastCalledWith({ type: 'wee:stroke-result', gameId: 'solo-match',
     id: 'stroke-1', player: 1, result: 'hit', reason: 'Good contact', receivedToContactMs: 75 }, location.origin);
@@ -396,4 +397,14 @@ test('a set announcement remains available after a paused interval and publishes
   expect(document.getElementById('set-result').hidden).toBe(false);
   vi.advanceTimersByTime(3500);
   expect(document.getElementById('set-result').hidden).toBe(true);
+});
+
+test('legacy solo split preferences cannot split the solo court; a second human gets a second view',async()=>{
+  await import('../src/main.ts');state({});
+  command({action:'configure',settings:{splitView:true}});
+  expect(runtime.world.setSplitScreen).toHaveBeenLastCalledWith(false);
+  expect(document.documentElement.dataset.views).toBe('1');
+  state({players:[{slot:0,name:'Sam'},{slot:1,name:'Ari'}]});
+  expect(runtime.world.setSplitScreen).toHaveBeenLastCalledWith(true);
+  expect(document.documentElement.dataset.views).toBe('2');
 });

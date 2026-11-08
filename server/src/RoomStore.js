@@ -126,7 +126,7 @@ export class RoomStore {
     }
     if (!code) return { ok: false, error: ERRORS.SERVER_BUSY };
 
-    this.#rooms.set(code, { code, sport, hostId, autoStart: true, phase: PHASES.LOBBY, players: new Map(), deadline: null, pausedAt: null, manuallyPaused: false,
+    this.#rooms.set(code, { code, sport, hostId, phase: PHASES.LOBBY, players: new Map(), deadline: null, pausedAt: null, manuallyPaused: false,
       gameId: null, matchRound: 0, inputGeneration: 0, hostEpoch: 1, profileBindings: new Map(), streams: new Map(), actionResults: new Map(), checkpoint: null, gameState: null, pendingRoll: null, seenRolls: new Set(),
       seenHits: new Set(), lastHitAt: new Map(), pendingStrokes: new Map(), soundMuted: null,
       gameOptions: null, seenCommands: new Set(), pendingGameCommand: null, vote: null, tutorial: null });
@@ -191,9 +191,8 @@ export class RoomStore {
     if (ready && isController(room.sport, player.slot) && !player.setup) return { ok: false, error: 'setup-required' };
     player.ready = ready;
 
-    if (room.phase === PHASES.READY) return this.#startWhenReady(room);
     if (room.phase === PHASES.COUNTDOWN && !ready) {
-      // Everyone else stays ready, so readying up again restarts it at once.
+      // Everyone else stays ready; the leader confirms a fresh start.
       room.phase = PHASES.READY;
       room.deadline = null;
       room.gameId = null;
@@ -212,7 +211,7 @@ export class RoomStore {
     if (room.phase !== PHASES.READY) return {ok: false, error: ERRORS.NO_READY_CHECK};
     if (room.pausedAt !== null) return {ok: false, error: ERRORS.PAUSED};
     if (!this.#canStart(room)) return {ok: false, error: 'players-not-ready'};
-    return this.#startWhenReady(room, true);
+    return this.#startWhenReady(room);
   }
 
   #leaderSlot(room) {
@@ -224,8 +223,8 @@ export class RoomStore {
       [...room.players.values()].every(player => player.ready && (!isController(room.sport, player.slot) || player.setup));
   }
 
-  #startWhenReady(room, explicit = false) {
-    if (!this.#canStart(room) || !explicit && (!room.autoStart || room.players.size < playerCapacity(room.sport))) return {ok: true, code: room.code};
+  #startWhenReady(room) {
+    if (!this.#canStart(room)) return {ok: true, code: room.code};
     room.phase = PHASES.COUNTDOWN;
     room.gameId = randomUUID();
     room.profileBindings = new Map([...room.players.keys()].map(id => [id, this.#members.get(id)?.profileId ?? null]));
@@ -514,7 +513,6 @@ export class RoomStore {
       return { ok: false, error: 'not-playing' };
     }
     room.deadline = null;
-    room.autoStart = false;
     this.#resetReady(room);
     // Keep genuine reconnect pauses, but a missing setup no longer pauses a lobby.
     this.#updatePause(room);
@@ -816,7 +814,6 @@ export class RoomStore {
       // Departures release seats; unlike a temporary disconnect they cannot strand
       // a lone racket player at P2, or keep a smaller sport blocked by old slot IDs.
       [...room.players.values()].sort((a, b) => a.slot - b.slot).forEach((player, slot) => {player.slot = slot;});
-      room.autoStart = false;
       this.#resetReady(room);
       this.#updatePause(room);
       if (countdownCancelled) return { code: room.code, closed: false, countdownCancelled };

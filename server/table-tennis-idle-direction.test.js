@@ -99,11 +99,12 @@ test('web/native device axes map the same screen-relative swing across every scr
 
 test('stroke direction is a tendency, with deliberate aim able to override either side', () => {
   for (const player of [1, 2]) for (const hand of ['Left', 'Right']) {
+    const screenSign = player === 1 ? 1 : -1;
     const forehand = {kind: 'forehand', direction: -1, hand}, backhand = {kind: 'backhand', direction: 1, hand};
-    expect(shotIntent(pose(), player, forehand).target.x).toBe(-.2);
-    expect(shotIntent(pose(), player, backhand).target.x).toBe(.2);
-    expect(shotIntent(pose(undefined, hand, 1), player, forehand).target.x).toBeGreaterThan(.4);
-    expect(shotIntent(pose(undefined, hand, -1), player, backhand).target.x).toBeLessThan(-.4);
+    expect(shotIntent(pose(), player, forehand).target.x * screenSign).toBe(-.2);
+    expect(shotIntent(pose(), player, backhand).target.x * screenSign).toBe(.2);
+    expect(shotIntent(pose(undefined, hand, 1), player, forehand).target.x * screenSign).toBeGreaterThan(.4);
+    expect(shotIntent(pose(undefined, hand, -1), player, backhand).target.x * screenSign).toBeLessThan(-.4);
     for (const aim of [-1, -.5, 0, .5, 1]) for (const stroke of [forehand, backhand]) {
       expect(Math.abs(shotIntent(pose(undefined, hand, aim), player, stroke).target.x)).toBeLessThanOrEqual(.58);
     }

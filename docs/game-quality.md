@@ -8,6 +8,53 @@ missed phone gestures, accidental idle contacts and inconsistent spin response.
 It includes primary-source research and new complete-motion-path regressions;
 the earlier selected-contact checks below did not establish phone hit accuracy.
 
+## Controller play and TV presentation
+
+The native controller now has one play card with compact scoring. Racket
+animations follow recognized swings and confirmed contacts; the bowling ball
+responds to release. Native-driver transforms do not control gameplay. Pause,
+Tools, backgrounding and Reduce Motion cancel decorative movement, and resuming
+does not replay an old animation. Motion and haptics still need an iPhone trial.
+
+A lobby shows the selected sport and its joined players. The leader chooses
+**Start game → Start now**, including in a full room. **Keep waiting** cancels;
+roster, setup or sport changes invalidate an open confirmation. Sport selection
+lives in **Tools → Change sport** on the phone. Web and native still have their
+own UI implementations; the proposed shared UI migration is deferred.
+
+The TV's sport-selection click requests browser fullscreen while it has user
+activation. Fullscreen stays through pairing, countdown and play. Browser denial
+keeps a full-window stage with a Full screen action on the TV. The large 5–1
+countdown keeps the original rounded type and tick animation, with the number
+on its own above the lobby’s faint sports-icon backdrop. There is no colored
+box behind the number; reduced-motion preferences are respected.
+
+Two-human table tennis renders one authoritative simulation through two scissor
+viewports, each looking from that player's end. Solo tennis uses one view and
+two-human tennis retains two. Table-tennis aim, serve placement and raw paddle
+pointing mirror into each player's camera coordinates. Forehand/backhand
+recognition uses accumulated angular movement within the existing recognition
+window; it adds no extra wait for classification. Deliberate aiming still
+overrides the left-forehand/right-backhand tendency in Friendly mode.
+
+The table-tennis final score and winner stay on the TV until a rematch or lobby
+return. Completion takes priority over stale input and reconnect overlays. A
+phone result modal no longer opens automatically for table tennis; its game
+options retain replay controls.
+
+Validation: 620 full-suite tests passed, followed by 110 focused table-tennis
+tests after the final camera/contact adjustment. Native controller tests: 65.
+Server startup, capacity, reconnect and relay regressions were checked, including
+a targeted rerun of the socket startup fixture for explicit confirmation.
+TypeScript, all six production pages and iOS/Android bundle exports passed.
+[Production browser evidence](system-plan/controller-play-flow-browser.json)
+covers confirmations and cancellation, both fullscreen permission outcomes,
+TV-sized countdowns, 8-player bowling, actual two-human table-tennis returns,
+continuous generated motion, restored TV results, phone departure and lobby
+restart/sport switching for every sport. Browser input is synthetic; the restored
+winner check seeds a valid 12–10 checkpoint. These checks do not measure physical
+recognition accuracy or wireless latency. Exports are not signed iPhone builds.
+
 ## Table tennis
 
 Friendly mode captures a table-relative landing target when a stroke starts.

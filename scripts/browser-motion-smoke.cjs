@@ -84,6 +84,7 @@ async function createGame(browser, permission, sport = 'Bowling', errors = [], s
     await host.locator('.host-lobby').getByRole('heading', {name: sport, exact: true}).waitFor();
   }
   await phone.getByRole('button', {name: 'Start game', exact: true}).click();
+  await phone.getByRole('button', {name:'Start now', exact:true}).click();
   await host.locator(`iframe[title="${sport} game"]`).waitFor({timeout: 20000});
   const frame = phone.frames().find(frame => frame.url().includes(sport === 'Bowling' ? '/controller.html' : '/table-tennis-controller.html'));
   assert.ok(frame, 'controller iframe has loaded');
@@ -186,8 +187,11 @@ async function returnToLobby(host) {
     pass('Sensor gaps discard partial deliveries; a fresh opposite wrist turn produces the opposite curve');
     await frame.getByText('Swing forward to bowl', {exact: true}).waitFor({timeout: 60000});
     await returnToLobby(host);
+    if (!await phone.locator('.phone-session__options').evaluate(node=>node.open)) await phone.locator('.phone-session__options > summary').click();
+    if (!await phone.getByLabel('Next sport',{exact:true}).isVisible()) await phone.getByText('Change sport',{exact:true}).click();
     await phone.getByLabel('Next sport', {exact: true}).selectOption('table-tennis');
     await phone.getByRole('button', {name: 'Start game', exact: true}).click();
+    await phone.getByRole('button', {name:'Start now', exact:true}).click();
     await host.locator('iframe[title="Table Tennis game"]').waitFor({timeout: 20000});
     const paddle = phone.frames().find(frame => frame.url().includes('/table-tennis-controller.html'));
     assert.ok(paddle);

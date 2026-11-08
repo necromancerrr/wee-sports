@@ -105,3 +105,10 @@
 }
 
 .game-session .game-frame > .game-save-issue { top: auto; bottom: 12px; left: auto; right: 12px; max-width: min(360px, calc(100% - 24px)); padding: 10px 14px; font-size: .875rem; color: #fff1e9; background: #542820; }
+
+/* Keep the original rounded countdown type and tick, scaled for the whole TV. */
+.game-countdown {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,3vmin,28px);isolation:isolate;background:repeating-linear-gradient(0deg,transparent,transparent 3px,var(--bg-stripe) 4px),var(--bg);color:var(--text);text-align:center;overflow:hidden;}
+.game-countdown__sport {display:flex;align-items:center;justify-content:center;gap:14px;font-size:clamp(20px,3vmin,40px);font-weight:900;margin:0;}
+.game-countdown__sport svg {width:clamp(30px,4vmin,50px);height:clamp(30px,4vmin,50px);color:var(--accent-ink);}
+.game-countdown .game-countdown__number {display:block;font-size:clamp(128px,42vmin,480px);line-height:1;font-weight:900;letter-spacing:-.035em;color:var(--text);}
+.game-countdown__hint {font-size:clamp(14px,2.2vmin,28px);color:var(--text-muted);margin:0;}

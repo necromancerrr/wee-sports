@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Gyroscope } from 'expo-sensors';
@@ -13,7 +13,9 @@ import { createGuestClaimVault } from './src/guestClaims.js';
 import { AutomaticControllerSetup } from './src/automaticSetup.js';
 import { TouchPaddleStream } from './src/touchPaddle.js';
 import { NativeBowlingActions } from './src/bowlingActions.js';
-import {CONTROLLER_SPORTS, matchSummary, sportChoice, sportTitle as title} from './src/controllerPresentation.js';
+import {PlayArtwork} from './src/PlayArtwork.jsx';
+import {startConfirmationKey} from '../../shared/startConfirmation.js';
+import {CONTROLLER_SPORTS, controllerPlayState, matchSummary, sportChoice, sportTitle as title} from './src/controllerPresentation.js';
 
 const sportArtwork = {tennis:require('./assets/sports/tennis.png'),'table-tennis':require('./assets/sports/table-tennis.png'),
   bowling:require('./assets/sports/bowling.png'),golf:require('./assets/sports/golf.png')};
@@ -33,14 +35,6 @@ function SportTile({sport,seat,disabled,onPress}) {
     disabled={locked} onPress={onPress} style={({pressed})=>[styles.sportTile,selected && styles.sportSelected,!choice.available && styles.comingSoon,pressed && styles.pressed]}>
     <SportMark sport={sport} size={42}/><Text style={styles.tileTitle}>{choice.title}{selected ? ' ✓' : ''}</Text><Text style={styles.small}>{choice.caption}</Text>
   </Pressable>;
-}
-function MatchSummary({summary}) {
-  if(!summary)return null;
-  return <View style={styles.scoreCard} accessibilityLiveRegion="polite">
-    <Text style={styles.eyebrow}>{summary.result || summary.label}</Text>
-    {summary.score ? <View style={styles.scoreRow}>{summary.score.map((points,index)=><View key={index} style={styles.scoreSide}><Text style={styles.scoreValue}>{points}</Text><Text numberOfLines={1} style={styles.small}>{summary.names[index]}</Text></View>)}</View> : null}
-    {summary.tally ? <Text style={styles.scoreDetail}>{summary.tally}</Text> : null}<Text style={styles.small}>{summary.detail}</Text>
-  </View>;
 }
 function Field({ label, ...props }) {
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor="#8792aa" style={styles.input} {...props}/></View>;
@@ -63,7 +57,6 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [savedSession, setSavedSession] = useState(null);
   const [setup, setSetup] = useState(null);
-  const [playIntent, setPlayIntent] = useState(true);
   const [mode, setMode] = useState('motion');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -84,6 +77,16 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmStart, setConfirmStart] = useState(null);
+  const [sportsOpen, setSportsOpen] = useState(false);
+  const [playEvent, setPlayEvent] = useState(null);
+  const visualId = useRef(0);
+  const startPending = useRef(false);
+  function animatePlay(type, label) {
+    const session=sessionRef.current;
+    if (!session?.playing() || session.controlsActive===false || session.seat?.gameState?.phase==='complete') return;
+    setPlayEvent({id:++visualId.current,type,label});
+  }
   const scrollRef = useRef(null);
   const sessionRef = useRef(null), motionRef = useRef(null), hapticsRef = useRef(true), flowRef = useRef(null);
   const scanLock = useRef(false), preferencesRef = useRef({hand,sensitivity,strokeMode});
@@ -161,7 +164,7 @@ export default function App() {
       changed: (next, connection) => {
         rollActions.current.observe();
         const boundary = next ? `${next.gameId}:${next.inputGeneration}:${next.hostEpoch}` : null;
-        if (boundary !== boundaryRef.current) { motionRef.current?.resetInput(); touchStream.current.reset(); }
+        if (boundary !== boundaryRef.current) { motionRef.current?.resetInput(); touchStream.current.reset(); setPlayEvent(null); }
         boundaryRef.current = boundary;
         const currentPlayer = next?.players?.find(value => value.slot === next.slot);
         if (currentPlayer?.setup === null) setSetup(null);
@@ -169,7 +172,7 @@ export default function App() {
         if (connection !== 'online') { setSetup(null); touchStream.current.stop(); }
         flowRef.current?.update(next, connection);
       },
-      feedback: () => buzz('contact'),
+      feedback: event => { if (event.player && event.player !== session.seat?.slot + 1) return; buzz('contact'); animatePlay('hit'); },
     });
     sessionRef.current = session;
     session.configure({hand:preferencesRef.current.hand});
@@ -177,7 +180,6 @@ export default function App() {
     flowRef.current = new AutomaticControllerSetup({session,notice:setNotice,
       changed: update => {
         setMode(update.mode); setSetup(update.setup);
-        if (update.playIntent !== undefined) setPlayIntent(update.playIntent);
         setMotionStatus(previous => ({...previous,...update}));
         // Resume the touch heartbeat from accepted session state too. A quick
         // background/foreground cycle may batch React state to the same values.
@@ -187,7 +189,9 @@ export default function App() {
       makeMotion: onStatus => {
         const motion = new NativeMotionController({session,...preferencesRef.current,onStatus,
           onRelease: roll => { buzz('recognized'); release(roll).catch(error => setNotice(error.message)); },
+          onPaddleSwing: stroke => animatePlay('swing',stroke.kind),
           onSwing: swing => {
+            animatePlay('swing',swing.label);
             buzz('recognized');
             session.action(EVENTS.PLAYER_SWING, swing).then(response => {
               if (!response.ok && !['not-playing','not-your-turn'].includes(response.error)) setNotice('That swing could not reach the TV. Try your next swing when connected.');
@@ -211,6 +215,7 @@ export default function App() {
     setOrigin(address); setScanner(false); setOptionsOpen(false); setProfileOpen(false); setSavedSession(null); buzz('ready');
   }
   async function release(roll = { aim, power, spin }) {
+    if (!rollActions.current.ticket) animatePlay('roll');
     await rollActions.current.release(roll);
   }
   async function checkRoll() {
@@ -261,13 +266,23 @@ export default function App() {
     setHistory((await profileRequest(address, '/history', { token: auth.token })).history || []);
   }
 
-  const player = seat?.players?.find(value => value.slot === seat.slot);
   const isLeader = seat?.slot === (seat?.leaderSlot ?? 0);
-  const inLobby = ['lobby','vote','ready'].includes(seat?.phase);
+  const inLobby = ['lobby','ready'].includes(seat?.phase);
   const playable = seat?.phase === 'game' && !seat.paused && status === 'online';
   const canRoll = playable && !optionsOpen && !profileOpen && seat?.gameState?.phase === 'ready' && seat?.gameState?.currentPlayer === seat.slot + 1;
   const summary = matchSummary(seat);
   const completed = seat?.gameState?.phase === 'complete';
+  const playState = controllerPlayState(seat,status,setup);
+  const startKey = status === 'online' ? startConfirmationKey(seat) : null;
+  useEffect(() => { if (confirmStart !== startKey) setConfirmStart(null); }, [startKey,confirmStart]);
+  useEffect(() => {setSportsOpen(false);setPlayEvent(null);}, [seat?.sport,seat?.phase]);
+  async function confirmGameStart() {
+    if (startPending.current) return;
+    if (!confirmStart || confirmStart !== startConfirmationKey(sessionRef.current?.seat)) {setConfirmStart(null);return;}
+    startPending.current=true;setConfirmStart(null);
+    try {await task(async () => result(await flowRef.current.startGame()));}
+    finally {startPending.current=false;}
+  }
   const gameOptions = seat?.gameOptions?.gameId === seat?.gameId && isGameOptions(seat?.gameOptions,seat?.sport) ? seat.gameOptions : null;
   const settings = gameOptions?.settings;
   const optionsLocked = !playable || !isLeader || !gameOptions || busy;
@@ -311,7 +326,16 @@ export default function App() {
     </View> : optionsOpen ? <>
       <View style={styles.card}><Text style={styles.eyebrow}>{seat ? `${title(seat.sport)} · ROOM ${seat.code}` : 'YOUR PHONE'}</Text><Text style={styles.heading}>Tools</Text>
         <Text style={styles.copy}>A few adjustments, then back to play.</Text>
+        {seat && isLeader && (['ready','lobby'].includes(seat.phase) || completed) ? <>
+          <Button quiet onPress={() => setSportsOpen(!sportsOpen)}>Change sport</Button>
+          {sportsOpen ? <View style={styles.sportGrid}>{CONTROLLER_SPORTS.filter(sport=>sportChoice(sport,seat).available).map(sport=><SportTile key={sport} sport={sport} seat={seat} disabled={busy || status!=='online'}
+            onPress={() => task(async () => {result(await sessionRef.current.request(EVENTS.PLAYER_SWITCH_SPORT,{sport,gameId:seat.gameId}));backToPlay();})}/>)}</View> : null}
+        </> : null}
         {seat ? <View style={styles.row}><Button quiet disabled={mode==='motion' && Boolean(setup)} onPress={() => flowRef.current?.select('motion')}>Motion{mode==='motion' ? ' ✓' : ''}</Button><Button quiet disabled={mode==='touch' && Boolean(setup)} onPress={() => flowRef.current?.select('touch')}>Touch{mode==='touch' ? ' ✓' : ''}</Button></View> : <Field label="Your playing name" value={name} onChangeText={setName} maxLength={12}/>}
+        {seat && mode==='touch' && motionStatus.motionIssue ? <>
+          <Text style={styles.small}>{motionStatus.motionIssue.message}</Text>
+          {motionStatus.motionIssue.code==='permission-denied' ? <Button quiet onPress={()=>task(()=>Linking.openSettings())}>Open Settings</Button> : null}
+        </> : null}
         <Button quiet onPress={() => setHand(hand==='Right' ? 'Left' : 'Right')}>{hand} handed</Button>
         <Stepper label="Sensitivity" value={sensitivity} change={setSensitivity} min={.5} max={2}/>
         <Button quiet onPress={() => setHaptics(!haptics)}>Haptics {haptics ? 'on' : 'off'}</Button>
@@ -361,52 +385,56 @@ export default function App() {
       {savedSession ? <Button quiet onPress={() => task(async () => { setOrigin(savedSession.origin); await (await makeSession(savedSession.origin)).restore(savedSession); })}>Reconnect to room {savedSession.code}</Button> : null}
       <Button quiet onPress={() => task(openProfile)}>Profile & history</Button><Text style={styles.small}>No account needed to play. Golf is coming soon.</Text>
     </> : <>
-      <View style={styles.card}><Text style={styles.eyebrow}>ROOM {seat.code} · PLAYER {seat.slot + 1}</Text>
-        <View style={styles.sportHeading}><SportMark sport={seat.sport} size={54}/><Text style={[styles.heading,styles.sportHeadingText]}>{title(seat.sport)}</Text></View>
-        {setup ? <Text style={styles.small}>{mode === 'motion' ? 'Motion controls are on' : 'Touch controls are on'}</Text> : null}
-        <Text style={styles.copy}>{seat.paused ? 'Game paused' : !setup ? 'Getting ready…' : seat.phase === 'game' ? 'Watch the TV. You’re in.' : playIntent ? isLeader ? 'Start when everyone is in.' : 'Ready. Waiting for the group to start.' : 'Ready when you are.'}</Text>
-        {mode === 'touch' && motionStatus.motionIssue ? <>
+      <View style={styles.card}>
+        <Text style={styles.eyebrow}>ROOM {seat.code} · PLAYER {seat.slot + 1}</Text>
+        <View style={styles.sportHeading}><SportMark sport={seat.sport} size={38}/><Text style={[styles.heading,styles.sportHeadingText]}>{title(seat.sport)}</Text></View>
+        {seat.phase === 'game' ? <>
+          <PlayArtwork sport={seat.sport} source={sportArtwork[seat.sport]} event={playEvent}
+            active={playable && Boolean(setup) && !completed && (seat.sport!=='bowling' || seat.gameState?.currentPlayer===seat.slot+1)}/>
+          <Text accessibilityLiveRegion="polite" style={styles.playTitle}>{playState.title}</Text>
+          <Text style={styles.playHint}>{playState.hint}</Text>
+          {mode === 'touch' && !completed ? seat.sport === 'bowling' ? <>
+            <Stepper label="Aim" value={aim} change={setAim}/>
+            <Button disabled={!canRoll || !setup || Boolean(rollState)} onPress={() => {setNotice('');release().catch(error=>setNotice(error.message));}}>{rollState ? 'Watch the TV' : 'Roll'}</Button>
+          </> : seat.sport === 'table-tennis' ? <View accessibilityLabel="Touch paddle. Drag to position and move the paddle." style={styles.touchPad}
+            onLayout={({nativeEvent})=>{padSize.current=nativeEvent.layout;}}
+            onStartShouldSetResponder={()=>playable && Boolean(setup)} onMoveShouldSetResponder={()=>playable && Boolean(setup)}
+            onResponderGrant={event=>{setPadDragging(true);touchPose(event,true);}} onResponderMove={event=>touchPose(event)}
+            onResponderRelease={endTouch} onResponderTerminate={endTouch}><Text style={styles.touchText}>Drag to move your paddle</Text></View>
+          : <View style={styles.row}>{['Forehand','Backhand'].map(label=><Button key={label} disabled={!playable || !setup} onPress={()=>task(async()=>{animatePlay('swing',label);result(await sessionRef.current.action(EVENTS.PLAYER_SWING,{type:'swing',label,hand,power}));})}>{label}</Button>)}</View> : null}
+          {rollState?.status==='unknown' ? <Button quiet onPress={()=>{setNotice('');checkRoll().catch(error=>setNotice(error.message));}}>Check previous roll outcome</Button> : null}
+          {summary ? <View style={styles.compactScore}>
+            <Text style={styles.scoreDetail}>{summary.label}{summary.score ? ` · ${summary.score.join(' – ')}` : ''}</Text>
+            {summary.tally ? <Text style={styles.small}>{summary.tally}</Text> : null}
+            <Text style={styles.small}>{mode==='motion' ? 'Motion controls' : 'Touch controls'}</Text>
+          </View> : null}
+        </> : <>
+          <Text style={styles.copy}>{seat.paused ? 'Game paused' : !setup ? 'Getting ready…' : inLobby ? isLeader ? 'Start when everyone is in.' : 'Ready. Waiting for the group to start.' : 'Watch the TV. Get ready!'}</Text>
+          {isLeader && inLobby ? <Button disabled={busy || !startKey || !setup} onPress={()=>setConfirmStart(startKey)}>Start game</Button> : null}
+          {seat.phase==='countdown' ? <Text style={styles.meter}>Starting in {Math.ceil((seat.countdown?.msLeft || 0)/1000)}</Text> : null}
+          {inLobby ? <Text style={styles.small}>{seat.players?.map(joined=>`${joined.name}${joined.ready ? ' ✓' : ''}`).join(' · ')}</Text> : null}
+        </>}
+        {mode==='touch' && motionStatus.motionIssue && seat.phase!=='game' ? <>
           <Text style={styles.small}>{motionStatus.motionIssue.message}</Text>
-          <Button quiet onPress={() => {setNotice(''); flowRef.current?.select('motion');}}>Try motion again</Button>
-          {motionStatus.motionIssue.code === 'permission-denied' ? <Button quiet onPress={() => task(() => Linking.openSettings())}>Open Settings</Button> : null}
+          <Button quiet onPress={()=>{setNotice('');flowRef.current?.select('motion');}}>Try motion again</Button>
+          {motionStatus.motionIssue.code==='permission-denied' ? <Button quiet onPress={()=>task(()=>Linking.openSettings())}>Open Settings</Button> : null}
         </> : null}
-        {isLeader && inLobby ? <>
-          <View style={styles.sportGrid}>{CONTROLLER_SPORTS.map(sport => <SportTile key={sport} sport={sport} seat={seat} disabled={busy || status !== 'online' || seat.phase === 'vote'}
-            onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_SWITCH_SPORT,{sport,gameId:seat.gameId})))}/>)}</View>
-          {seat.players.length > 2 ? <Text style={styles.small}>Tennis and table tennis support up to 2 players.</Text> : null}
-          <Button disabled={busy || status !== 'online' || !seat.canStart || !setup} onPress={() => task(async () => result(await flowRef.current.startGame()))}>Start game</Button>
-        </> : null}
-        {seat.phase === 'countdown' ? <Text style={styles.meter}>Starting in {Math.ceil((seat.countdown?.msLeft || 0) / 1000)}</Text> : null}
-        {inLobby ? <Text style={styles.small}>{seat.players?.map(joined=>`${joined.name}${joined.ready ? ' ✓' : ''}`).join(' · ')}</Text> : null}
       </View>
-      <MatchSummary summary={summary}/>
-      {!inLobby && !completed ? seat.sport === 'bowling' ? <View style={styles.card}>
-        {rollState?.status === 'unknown' ? <Button quiet onPress={() => {setNotice(''); checkRoll().catch(error => setNotice(error.message));}}>Check previous roll outcome</Button> : null}
-        {mode === 'touch' ? <><Stepper label="Aim" value={aim} change={setAim}/>
-          <Button disabled={!canRoll || !setup || Boolean(rollState)} onPress={() => {setNotice(''); release().catch(error => setNotice(error.message));}}>{rollState ? 'Watch the TV' : 'Roll'}</Button></> : <View style={styles.playCue}>
-          <SportMark sport="bowling" size={112}/>
-          <Text style={styles.subheading}>{canRoll ? 'Swing to roll' : 'Watch the TV'}</Text>
-          <Text style={styles.copy}>Screen up. Tilt to aim, then swing gently forward.</Text>
-        </View>}
-      </View> : seat.sport === 'table-tennis' ? <View style={styles.card}>
-        <Text style={styles.subheading}>{mode === 'touch' ? 'Your paddle' : 'Swing to play'}</Text>
-        {mode === 'touch' ? <View accessibilityLabel="Touch paddle. Drag to position and move the paddle." style={styles.touchPad}
-          onLayout={({nativeEvent}) => {padSize.current = nativeEvent.layout;}}
-          onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
-          onResponderGrant={event => {setPadDragging(true); touchPose(event, true);}} onResponderMove={event => touchPose(event)}
-          onResponderRelease={endTouch} onResponderTerminate={endTouch}>
-          <Text style={styles.touchText}>Drag to move your paddle</Text>
-        </View> : <View style={styles.playCue}><SportMark sport="table-tennis" size={112}/><Text style={styles.copy}>Small swings. Keep your eyes on the TV.</Text></View>}
-      </View> : <View style={styles.card}>
-        {mode === 'motion' ? <View style={styles.playCue}><SportMark sport="tennis" size={112}/><Text style={styles.subheading}>Swing to play</Text><Text style={styles.copy}>{strokeMode === 'auto' ? 'Forehand or backhand. Watch the ball on your TV.' : `Small swings play a ${strokeMode.toLowerCase()}.`}</Text></View>
-          : <>{['Forehand', 'Backhand'].map(label => <Button key={label} disabled={!playable || !setup} onPress={() => task(async () => result(await sessionRef.current.action(EVENTS.PLAYER_SWING, { type: 'swing', label, hand, power })))}>{label}</Button>)}</>}
-      </View> : null}
       {isLeader && seat.manuallyPaused ? <Button disabled={status!=='online'} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_PAUSE,{gameId:seat.gameId,paused:false})))}>Resume game</Button> : null}
       {completed && isLeader ? <Button disabled={!playable || busy} onPress={() => task(newMatch)}>Play again</Button> : null}
       {isLeader && (completed || ['countdown','vote','tutorial'].includes(seat.phase)) ? <Button quiet disabled={status!=='online'} onPress={() => task(async () => result(await sessionRef.current.request(EVENTS.PLAYER_RETURN_TO_LOBBY,{gameId:seat.gameId})))}>Back to lobby</Button> : null}
     </>}
     <Text style={styles.footer}>Watch the TV. Play with your phone.</Text>
-  </ScrollView>{optionsOpen || profileOpen ? <View style={styles.backDock}><Button onPress={backToPlay}>{seat ? inLobby ? 'Back to lobby' : 'Back to play' : 'Back to controller'}</Button></View> : null}</SafeAreaView>;
+  </ScrollView>{optionsOpen || profileOpen ? <View style={styles.backDock}><Button onPress={backToPlay}>{seat ? inLobby ? 'Back to lobby' : 'Back to play' : 'Back to controller'}</Button></View> : null}
+    <Modal visible={Boolean(confirmStart && confirmStart===startKey)} transparent animationType="fade" onRequestClose={()=>setConfirmStart(null)}>
+      <View style={styles.modalShade}><View style={[styles.card,styles.confirmCard]} accessibilityViewIsModal>
+        <Text accessibilityRole="header" style={styles.subheading}>Start {title(seat?.sport)}?</Text>
+        <Text style={styles.copy}>{seat?.players.length===1 ? 'Solo play' : `${seat?.players.length || 0} players`} · Everyone ready?</Text>
+        <Button disabled={busy || !startKey} onPress={confirmGameStart}>Start now</Button>
+        <Button quiet onPress={()=>setConfirmStart(null)}>Keep waiting</Button>
+      </View></View>
+    </Modal>
+  </SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
@@ -424,7 +452,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, stepper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   meter: { color: '#a6e8cf', fontWeight: '700', fontSize: 18 }, cameraFrame: { gap: 12 }, camera: { height: 300, borderRadius: 20, overflow: 'hidden' },
   touchPad: { width: '100%', height: 200, borderRadius: 20, borderWidth: 1, borderColor: '#89cbb8', backgroundColor: '#1a3e3a', alignItems: 'center', justifyContent: 'center' }, touchText: { color: '#a6e8cf', fontWeight: '600' },
-  playCue: { minHeight:220,alignItems:'center',justifyContent:'center',gap:16 },
+  playTitle:{fontSize:26,fontWeight:'800',color:'#f0fff9',textAlign:'center'},playHint:{fontSize:15,lineHeight:22,color:'#b9c8da',textAlign:'center'},
+  compactScore:{borderTopWidth:1,borderTopColor:'#33405a',paddingTop:16,gap:5,alignItems:'center'},
+  modalShade:{flex:1,backgroundColor:'#050d19cc',alignItems:'center',justifyContent:'center',padding:24},confirmCard:{width:'100%',maxWidth:420},
   backDock:{paddingHorizontal:20,paddingTop:12,paddingBottom:12,borderTopWidth:1,borderTopColor:'#33405a',backgroundColor:'#151e31',width:'100%',maxWidth:540,alignSelf:'center'},
   homeLead:{gap:16,alignItems:'center',paddingVertical:18},sportPreview:{flexDirection:'row',width:'100%',paddingBottom:16},previewIcon:{flex:1,alignItems:'center',gap:8},previewLabel:{fontSize:10,color:'#aab7ce',textAlign:'center'},
   sportGrid:{flexDirection:'row',flexWrap:'wrap',gap:12},sportTile:{flexBasis:'46%',flexGrow:1,alignItems:'center',justifyContent:'center',minHeight:124,padding:12,gap:6,borderWidth:1,borderColor:'#3a4666',borderRadius:18,backgroundColor:'#202c43'},

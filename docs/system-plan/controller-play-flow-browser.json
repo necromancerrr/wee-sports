@@ -1,0 +1,121 @@
+{
+  "recordedAt": "2026-11-08",
+  "scope": "Tasks 1\u20135, including the large countdown number without a colored box, original rounded type and lobby sport icons. Controller UI unification is deferred.",
+  "runs": {
+    "playFlow": {
+      "recordedAt": "2026-11-08T05:31:53.283Z",
+      "base": "http://127.0.0.1:5215",
+      "checks": [
+        "Bowling: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "Tennis: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "Table Tennis restores a 12\u201310 winner on the TV, retains it through sensor silence and phone disconnect, and does not force a phone result modal",
+        "Table Tennis: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Synthetic touch phones and software WebGL; result seeded through the existing checkpoint recovery path. Does not measure physical iPhone motion or wireless latency."
+      ]
+    },
+    "countdownStyle": {
+      "recordedAt": "2026-11-08T05:44:40.599Z",
+      "base": "http://127.0.0.1:5215",
+      "checks": [
+        "Bowling: confirmation/cancel, viewport-sized 5\u20131 countdown, and correct solo camera",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Synthetic touch phones and software WebGL; result seeded through the existing checkpoint recovery path. Does not measure physical iPhone motion or wireless latency."
+      ]
+    },
+    "party": {
+      "recordedAt": "2026-11-08T05:32:47.244Z",
+      "base": "http://127.0.0.1:5215",
+      "checks": [
+        "The lobby grows as friends join; eight ready controllers wait for their leader and a ninth is rejected",
+        "The real bowling renderer shows all eight names without horizontal page overflow",
+        "Player eight reconnects into the original seat and the bowling game resumes",
+        "Two phones start a scored table-tennis match with independent touch controls and no solo practice actions",
+        "Both human table-tennis players produce real rally contacts through their own controller, excluding assisted serves",
+        "Ordinary scroll, blur and duplicate pageshow do not pause the room",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Generated browser/button input and software WebGL; not physical phone comfort or end-to-end latency measurements."
+      ]
+    },
+    "motion": {
+      "recordedAt": "2026-11-08T05:34:01.318Z",
+      "base": "http://127.0.0.1:5215",
+      "runtime": "v24.22.1",
+      "browser": "156.0.8078.79",
+      "rendering": "headless Chromium software WebGL; 960x640 functional viewport",
+      "sensorSource": "Generated DeviceMotion and matching DeviceOrientation at 16 ms; continuous 3 rad/s sine gestures with a 700 ms period and no rest interval",
+      "checks": [
+        "Play joins and the leader starts a scored table-tennis motion game without a calibration checklist",
+        "An idle motion controller produces no automatic player hit or credited return",
+        "Y sideways continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+        "Z screen-up continuous swings make at least three real contacts and legal opponent-table returns without a still-hand reset",
+        "Hidden controller stops pose delivery and foreground resumes only with fresh input",
+        "Sensor silence cancels delivery and fresh neutral samples recover without another permission prompt",
+        "The same controller can enter the twelve-point bot game",
+        "No uncaught browser errors"
+      ],
+      "axisResults": [
+        {
+          "axis": "Y sideways",
+          "hostHits": 3,
+          "legalReturns": 3,
+          "elapsedMs": 6491
+        },
+        {
+          "axis": "Z screen-up",
+          "hostHits": 3,
+          "legalReturns": 3,
+          "elapsedMs": 5629
+        }
+      ],
+      "errors": [],
+      "limitations": [
+        "Continuous generated gestures validate software routing/contact/return; they are not a physical recognition-accuracy or latency benchmark.",
+        "No physical phone sensors, permission dialogs, grip comfort, haptics or full bot match are established."
+      ]
+    },
+    "lobbyReturn": {
+      "recordedAt": "2026-11-08T05:41:40.818Z",
+      "base": "http://127.0.0.1:5215",
+      "checks": [
+        "Bowling: solo starts from the phone and its controller works after return and restart",
+        "Bowling: leaving during play promotes the remaining phone, which can start and control a new game",
+        "Bowling: sport selection stays on the phone; closing the room releases the controller",
+        "Table Tennis: solo starts from the phone and its controller works after return and restart",
+        "Table Tennis: leaving during play promotes the remaining phone, which can start and control a new game",
+        "Table Tennis: sport selection stays on the phone; closing the room releases the controller",
+        "Tennis: solo starts from the phone and its controller works after return and restart",
+        "Tennis: leaving during play promotes the remaining phone, which can start and control a new game",
+        "Tennis: sport selection stays on the phone; closing the room releases the controller",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Touch controls in generated browser contexts; does not measure physical phone motion or latency."
+      ]
+    },
+    "finalTableTennisCameras": {
+      "recordedAt": "2026-11-08T05:46:10.982Z",
+      "base": "http://127.0.0.1:5215",
+      "checks": [
+        "Table Tennis: solo starts from the phone and its controller works after return and restart",
+        "Table Tennis: leaving during play promotes the remaining phone, which can start and control a new game",
+        "Table Tennis: sport selection stays on the phone; closing the room releases the controller",
+        "No uncaught browser errors"
+      ],
+      "errors": [],
+      "limitations": [
+        "Touch controls in generated browser contexts; does not measure physical phone motion or latency."
+      ]
+    }
+  }
+}

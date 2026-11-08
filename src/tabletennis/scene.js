@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {TABLE, BALL} from './physics.js';
 import {paddlePresentation} from './paddlePresentation.js';
+import {createTableTennisViews} from './views.js';
 
 /** Lightweight court presentation. The live contact face follows the simulation;
  * only disabled windup/recovery poses receive a decorative follow-through. */
@@ -8,13 +9,12 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#283b49');
   scene.fog = new THREE.Fog('#283b49', 8, 20);
-  const camera = new THREE.PerspectiveCamera(42, 1, .05, 35);
-  camera.position.set(0, 3.25, 5.3);
-  camera.lookAt(0, .72, -.10);
+  const views = createTableTennisViews(), camera = views.cameras[0];
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: false, powerPreference: 'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = .88;
@@ -90,12 +90,12 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     scene.add(group); return {group, body, face, handle, phase: null, phaseAt: 0, gestureId: null};
   });
   const motionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-  let width = 1, height = 1;
+  let width = 1, height = 1, split = game.mode === 'versus', viewports = [];
   function resize() {
     width = Math.max(1, container.clientWidth); height = Math.max(1, container.clientHeight);
-    renderer.setSize(width, height); camera.aspect = width / height;
-    camera.position.set(0, width / height < 1 ? 3.8 : 3.25, width / height < 1 ? 6.5 : 5.3);
-    camera.lookAt(0, .72, -.10); camera.updateProjectionMatrix();
+    renderer.setSize(width, height);
+    viewports = views.layout(width, height, split);
+    container.dataset.views = split ? '2' : '1';
   }
   const observer = new ResizeObserver(resize); observer.observe(container); resize();
   renderer.domElement.addEventListener('pointermove', onMove);
@@ -103,6 +103,7 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
   const normal = new THREE.Vector3(), lookAt = new THREE.Vector3(), screen = new THREE.Vector3();
   let contactId = null, contactAt = -Infinity;
   function render(now) {
+    if (split !== (game.mode === 'versus')) {split = game.mode === 'versus'; resize();}
     const p = game.physics.ball.position;
     ball.position.set(p.x, p.y, p.z); ball.visible = game.physics.ball.active;
     halo.position.copy(ball.position); halo.visible = ball.visible;
@@ -134,9 +135,14 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
       handle.position.y = -paddle.radiusY - .055;
       display.visible = true;
       if (labels[index]) {
+        if (split) {
+          const view = viewports[index];
+          labels[index].style.transform = `translate(${view.x + view.width / 2}px, ${height - 68}px) translate(-50%, 0)`;
+        } else {
         // Names sit outside the table and remain still while players swing.
         screen.set(index === 0 ? -1.05 : 1.05, TABLE.height + .10, index === 0 ? 1.5 : -1.5).project(camera);
         labels[index].style.transform = `translate(${(screen.x * .5 + .5) * width}px, ${(-screen.y * .5 + .5) * height}px) translate(-50%, 0)`;
+        }
       }
     });
     if (game.lastContact && game.lastContact.id !== contactId) {
@@ -147,7 +153,15 @@ export function createTableTennisScene(container, game, {onMove, onAction, label
     const age = (now - contactAt) / 1000;
     contact.visible = age < .18;
     if (contact.visible) { contact.scale.setScalar(1 + age * 3); contact.material.opacity = (1 - age / .18) * .7; }
-    renderer.render(scene, camera);
+    renderer.shadowMap.needsUpdate = true;
+    renderer.setScissorTest(split);
+    for (const view of viewports) {
+      renderer.setViewport(view.x, view.y, view.width, view.height);
+      renderer.setScissor(view.x, view.y, view.width, view.height);
+      contact.quaternion.copy(view.camera.quaternion);
+      renderer.render(scene, view.camera);
+    }
+    renderer.setScissorTest(false);
   }
   return {render, dispose() {
     observer.disconnect(); renderer.domElement.removeEventListener('pointermove', onMove);

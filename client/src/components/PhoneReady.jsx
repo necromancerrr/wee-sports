@@ -4,12 +4,17 @@ import { EVENTS, PHASES, isController } from '@wee/shared/protocol.js';
 import { errorText } from '../lib/errors.js';
 import { request } from '../lib/socket.js';
 import { useCountdown } from '../lib/useCountdown.js';
+import { startConfirmationKey } from '../../../shared/startConfirmation.js';
+import { sportName } from '../lib/sports.js';
 
 export function PhoneReady({ lobby, slot, disabled = false }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const pending = useRef(false);
+  const dialog = useRef(null);
+  const [confirmation, setConfirmation] = useState(null);
+  const confirmationKey = disabled ? null : startConfirmationKey(lobby);
   const current = useRef(null);
   const boundary = `${lobby.code}:${lobby.sport}:${lobby.gameId}:${lobby.phase}:${lobby.inputGeneration ?? 0}:${slot}`;
   if (current.current?.key !== boundary) current.current = {key: boundary};
@@ -21,6 +26,11 @@ export function PhoneReady({ lobby, slot, disabled = false }) {
   const leaderSlot = lobby.leaderSlot ?? 0;
   const leader = lobby.players.find(player => player.slot === leaderSlot);
   const isLeader = slot === leaderSlot;
+
+  useEffect(() => {
+    if (confirmation && confirmation === confirmationKey && isLeader) dialog.current?.showModal();
+    else { dialog.current?.close(); setConfirmation(null); }
+  }, [confirmation, confirmationKey, isLeader]);
 
   useEffect(() => {
     setError(null); setSending(false); pending.current = false;
@@ -35,7 +45,8 @@ export function PhoneReady({ lobby, slot, disabled = false }) {
   }, [lobby.code, lobby.sport, lobby.gameId, lobby.inputGeneration, lobby.phase, slot, ready, needsSetup, disabled, attempt]);
 
   async function start() {
-    if (pending.current || disabled || !isLeader || !lobby.canStart || counting) return;
+    if (pending.current || disabled || !isLeader || !lobby.canStart || counting || !confirmation || confirmation !== confirmationKey) return;
+    setConfirmation(null); dialog.current?.close();
     const scope = current.current;
     pending.current = true; setSending(true); setError(null);
     const result = await request(EVENTS.PLAYER_START, {});
@@ -52,9 +63,15 @@ export function PhoneReady({ lobby, slot, disabled = false }) {
           : isLeader ? `${count} ${count === 1 ? 'player' : 'players'} connected. Start when everyone’s here.`
             : `You’re ready. ${leader?.name || 'The first player'} starts the game.`}</p>
       {isLeader ? <button type="button" className="btn btn--primary phone-ready__btn"
-        disabled={disabled || sending || !lobby.canStart} onClick={start}>{sending ? 'Starting…' : 'Start game'}</button> : null}
+        disabled={disabled || sending || !lobby.canStart} onClick={() => setConfirmation(confirmationKey)}>{sending ? 'Starting…' : 'Start game'}</button> : null}
     </>}
     {error ? <><p className="alert" role="alert">{errorText(error)}</p>
-      <button type="button" className="btn btn--ghost" disabled={disabled || sending} onClick={() => {setError(null); if (ready && isLeader && lobby.canStart) void start(); else setAttempt(value => value + 1);}}>Try again</button></> : null}
+      <button type="button" className="btn btn--ghost" disabled={disabled || sending} onClick={() => {setError(null); if (ready && isLeader && lobby.canStart) setConfirmation(confirmationKey); else setAttempt(value => value + 1);}}>Try again</button></> : null}
+    <dialog ref={dialog} className="phone-start-confirm" aria-labelledby="phone-start-title" onCancel={() => setConfirmation(null)}>
+      <h2 id="phone-start-title">Start {sportName(lobby.sport)}?</h2>
+      <p>{count === 1 ? 'Solo play' : `${count} players`} · Everyone ready?</p>
+      <button type="button" className="btn btn--primary" disabled={sending || !confirmationKey} onClick={start}>Start now</button>
+      <button type="button" className="btn btn--ghost" onClick={() => setConfirmation(null)} autoFocus>Keep waiting</button>
+    </dialog>
   </section>;
 }

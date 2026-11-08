@@ -15,10 +15,15 @@ resort. `/home` follows the same device roles; QR join links still go straight
 to the controller. Resizing a computer window does not turn it into a phone.
 
 Each person scans and taps **Play** to join. The first phone gets **Start game**
-and **Next sport**; the TV shows the code and people who have joined. Start solo
-or with the friends already there. A full ready room starts automatically:
-eight for Bowling, two for Tennis or Table Tennis. Returning from a match waits
-for another **Start game**, so there is time to change sports or leave.
+and confirms **Start now**; the TV shows the code and people who have joined.
+Start solo or with friends. Even full rooms wait for confirmation: up to eight
+for Bowling, two for Tennis or Table Tennis. Change sports in **Tools → Change
+sport**. Returning from a match waits for a new confirmation.
+
+Choosing a sport on the TV requests browser fullscreen before pairing. The
+confirmed countdown fills the TV with 5–1, then the game fills the same view.
+If the browser blocks fullscreen, play still fills its window and the TV offers
+a **Full screen** button. A phone cannot grant the TV's browser permission.
 
 See the [island implementation and checks](docs/island/README.md) for the
 reference artwork, responsive behavior and validation evidence.
@@ -29,16 +34,16 @@ reference artwork, responsive behavior and validation evidence.
   the phone and watch the live TV indicator; beginning a forward delivery freezes
   aim automatically. Button controls provide aim, power, curve and a deliberate roll.
 - **Table Tennis:** one or two players. Solo starts a scored bot game; two phones
-  play head to head. Games finish at 12 with a two-point lead; practice feeds are optional. Use compact motion or the touch paddle. The
+  play head to head with a separate camera view from each end of the table. Games finish at 12 with a two-point lead; practice feeds are optional. Use compact motion or the touch paddle. The
   standalone diagnostic view also supports pointer/arrow movement, click/Space
   to stroke, and P to pause. In Friendly mode, aim selects a landing area and
   power changes pace. Direction locks at stroke onset; the ball follows its
   physical flight after contact. Standard mode uses unassisted contact physics.
   A still phone holds a steady ready paddle. In Friendly mode, a forehand tends
-  left and a backhand right; deliberate aim can override that tendency.
+  left and a backhand right in each player’s view; deliberate aim can override that tendency. Winners and final scores stay on the TV, even after controller input stops.
 - **Tennis:** best of three sets, each first to **7 points, win by 2**, against a
   bot or a second phone controller. There are no games within sets. Each set
-  gets an announcement and a short break before the next serve.
+  gets an announcement and a short break before the next serve. Solo uses one camera; two humans use split screen.
   Forehand/backhand motion and button controls remain available.
 
 Tennis keyboard controls:

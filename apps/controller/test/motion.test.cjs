@@ -185,3 +185,19 @@ test('Tools hold a fresh neutral table-tennis paddle and require quiet before ga
     assert.equal(poses.length,before,'results do not stream more gameplay');
   }finally{controller.stop();}
 });
+
+test('table-tennis animation events follow recognized strokes and stop with Tools, pause or completion', async () => {
+  const {MotionController}=await import('../src/motionCore.js');
+  let now=1000,playing=true;const gestures=[],poses=[];
+  const session={inputSetup:'motion',controlsActive:true,seat:{sport:'table-tennis',gameState:{phase:'rally'}},playing:()=>playing,latest:(kind,value)=>poses.push({kind,value})};
+  const controller=new MotionController({session,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now,onPaddleSwing:stroke=>gestures.push(stroke)});
+  await controller.calibrate();
+  const samples=(rate,count=20)=>{for(let i=0;i<count;i++){now+=1000/60;controller.sample({x:0,y:rate,z:0});}};
+  samples(0);samples(-3);assert.equal(gestures.length,1);assert.equal(gestures[0].kind,'forehand');assert.ok(poses.length>0);
+  session.controlsActive=false;samples(0);samples(3);assert.equal(gestures.length,1);
+  assert.deepEqual(poses.at(-1).value.angularVelocity,{x:0,y:0,z:0});
+  session.controlsActive=true;samples(0);samples(3);assert.equal(gestures.length,2);assert.equal(gestures[1].kind,'backhand');
+  playing=false;samples(0);samples(-3);assert.equal(gestures.length,2);
+  playing=true;session.seat.gameState.phase='complete';samples(0);samples(-3);assert.equal(gestures.length,2);
+  controller.stop();
+});

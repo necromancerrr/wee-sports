@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     const deliveredCommands = new Map<string, {ok: boolean; error?: string}>();
     let names = ['Player 1', 'Bot'];
     let humanOpponent = false;
-    world.setSplitScreen(true);
+    world.setSplitScreen(false);
     if (!embedded) world.start();
     new InputController(input => world.setPlayerInput(paused ? { moveX: 0, moveZ: 0 } : input, 1));
 
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
       <label>Bot challenge <select id="bot-level"><option value="standard">Standard</option><option value="beginner">Beginner</option></select></label>
       <label><input id="auto" type="checkbox" checked> Automatic movement</label>
       <label><input id="timing-assist" type="checkbox" checked> Timing assistance</label>
-      <label id="split-label"><input id="split-view" type="checkbox" checked> Show my view and the bot’s view</label>
+      <label id="split-label" hidden><input id="split-view" type="checkbox"> Show my view and the bot’s view</label>
       <label id="bot-label"><input id="bot" type="checkbox" checked> Player 2 bot</label>
       </div>
       <section id="practice-controls" class="tennis-practice">
@@ -110,7 +110,8 @@ async function main(): Promise<void> {
     const split = el('split-view') as HTMLInputElement;
     auto.onchange = () => { world.configure({ autoMove: auto.checked }); };
     timing.onchange = () => { world.configure({ timingAssist: timing.checked }); };
-    split.onchange = () => { world.setSplitScreen(humanOpponent || split.checked); };
+    split.onchange = () => { world.setSplitScreen(humanOpponent);
+        document.documentElement.dataset.views = humanOpponent ? '2' : '1'; };
     el('assist-level').onchange = () => {
         world.configure({ assistance: (el('assist-level') as HTMLSelectElement).value as 'beginner' | 'standard' });
         const settings = world.getSettings(); auto.checked = settings.autoMove; timing.checked = settings.timingAssist;
@@ -134,7 +135,7 @@ async function main(): Promise<void> {
         if (!embedded || !activeGameId || paused) return;
         const practice = world.getPracticeState();
         const options = {type: 'wee:game-options', gameId: activeGameId, sport: 'tennis',
-            settings: {...world.getSettings(), splitView: humanOpponent || split.checked},
+            settings: {...world.getSettings(), splitView: humanOpponent},
             practice: {active: practice.active, stroke: practice.stroke, hand: practice.hand}, humanOpponent};
         const key = JSON.stringify(options);
         if (key !== publishedOptions) {
@@ -275,8 +276,9 @@ async function main(): Promise<void> {
             const {splitView, ...settings} = command.settings;
             world.configure(settings);
             if (typeof splitView === 'boolean') {
-                split.checked = splitView;
-                world.setSplitScreen(splitView);
+                split.checked = humanOpponent;
+                world.setSplitScreen(humanOpponent);
+                document.documentElement.dataset.views = humanOpponent ? '2' : '1';
             }
             const current = world.getSettings();
             auto.checked = current.autoMove;
@@ -320,8 +322,9 @@ async function main(): Promise<void> {
         activeGameId = nextGameId;
         names = [p1?.name ?? 'Player 1', p2?.name ?? 'Bot'];
         world.botEnabled = !p2;
-        world.setSplitScreen(humanOpponent || split.checked);
-        el('split-label').hidden = humanOpponent;
+        world.setSplitScreen(humanOpponent);
+        document.documentElement.dataset.views = humanOpponent ? '2' : '1';
+        el('split-label').hidden = true;
         el('practice-controls').hidden = humanOpponent;
         (el('bot-level') as HTMLSelectElement).disabled = humanOpponent;
         el('match-mode').textContent = p2 ? 'Tennis · head to head' : 'Tennis · solo';

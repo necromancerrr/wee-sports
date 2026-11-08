@@ -303,7 +303,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       <iframe key={attempt} ref={frame} src={src} title={`${sport === 'bowling' ? 'Bowling' : sport === 'table-tennis' ? 'Table Tennis' : 'Tennis'} ${controller ? 'phone controller' : 'game'}`}
         style={controller ? { height } : undefined}
         allow={controller ? 'accelerometer; gyroscope; screen-wake-lock' : undefined} onLoad={publishState} />
-      {showPause ? <div className="game-frame__pause" role="status">{pauseMessage || 'Match paused. Reconnect and finish controller setup to continue.'}</div> : null}
+      {showPause && !(sport === 'table-tennis' && gameState?.phase === 'complete') ? <div className="game-frame__pause" role="status">{pauseMessage || 'Match paused. Reconnect and finish controller setup to continue.'}</div> : null}
     </div>
   );
 }

@@ -10,9 +10,9 @@ export function paddlePresentation({phase = 'ready', kind = 'drive', hand = 'Rig
   const handSign = hand === 'Left' ? -1 : 1;
   const landingSide = Number.isFinite(direction) ? Math.sign(direction)
     : (kind === 'forehand' ? -1 : kind === 'backhand' ? 1 : 0) * handSign;
-  // The near paddle faces -Z, so its local X points left on the TV. Prepare
-  // opposite the landing side, then follow through toward it at either end.
-  const side = landingSide * (player === 1 ? 1 : -1);
+  // Each paddle's local X points left in its own camera. Prepare opposite
+  // the landing side, then follow through toward it from either end.
+  const side = landingSide;
   const rest = {pitch: -.12, yaw: .04 * handSign, roll: .17 * handSign};
   if (phase === 'queued') {
     const amount = ease(elapsed / .10);

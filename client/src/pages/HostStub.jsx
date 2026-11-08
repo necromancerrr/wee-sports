@@ -41,8 +41,9 @@ export default function HostStub() {
   currentGame.current = lobby?.gameId;
 
   const [immersive, setImmersive] = useState(true);
-  const [fullscreen, setFullscreen] = useState(false);
-  const requestedFullscreen = useRef(false);
+  const [fullscreen, setFullscreen] = useState(Boolean(fullscreenElement(document)));
+  const requestedFullscreen = useRef(Boolean(fullscreenElement(document)));
+  const displayCleanup = useRef(null);
 
   function leaveGameView() {
     setImmersive(false);
@@ -61,6 +62,7 @@ export default function HostStub() {
 
   const active = lobby?.phase === PHASES.GAME;
   useEffect(() => {
+    clearTimeout(displayCleanup.current);
     const changed = () => {
       const entered = Boolean(fullscreenElement(document));
       setFullscreen(entered);
@@ -70,20 +72,19 @@ export default function HostStub() {
         setImmersive(false);
       }
     };
+    changed();
     document.addEventListener('fullscreenchange', changed);
     document.addEventListener('webkitfullscreenchange', changed);
     return () => {
       document.removeEventListener('fullscreenchange', changed);
       document.removeEventListener('webkitfullscreenchange', changed);
-      if (requestedFullscreen.current) { requestedFullscreen.current = false; void exitFullscreen(document); }
+      // StrictMode mounts effects twice; only a real departure exits fullscreen.
+      displayCleanup.current = setTimeout(() => {if (requestedFullscreen.current) void exitFullscreen(document);}, 0);
     };
   }, []);
   useEffect(() => {
     if (active) setImmersive(true);
-    else if (requestedFullscreen.current) {
-      requestedFullscreen.current = false;
-      void exitFullscreen(document);
-    }
+
   }, [active]);
 
   // A failed request is old news once the phase moves.
@@ -114,7 +115,7 @@ export default function HostStub() {
     const result = await request(EVENTS.HOST_RETURN_TO_LOBBY, { gameId });
     returnPending.current = false; setReturning(false);
     if (currentGame.current !== gameId) return;
-    if (result?.ok) leaveGameView();
+    if (result?.ok) setImmersive(true);
     else setStartError(result?.error ?? 'disconnected');
   }
 
@@ -152,7 +153,7 @@ export default function HostStub() {
     onPauseToggle={togglePause} pauseDisabled={reconnecting || pausing || returning || (lobby.gameState?.phase === 'complete' && !lobby.manuallyPaused)}
     immersive={immersive} fullscreen={fullscreen} onToggleView={immersive ? leaveGameView : enterGameView}
     paused={reconnecting || lobby.paused} error={startError ? errorText(startError) : null} onClose={async () => {
-      if (await leave()) navigate('/home');
+      if (await leave()) { leaveGameView(); navigate('/home'); }
       else setStartError('disconnected');
     }} />;
 
@@ -169,6 +170,7 @@ export default function HostStub() {
   // The vote, then its reveal for a moment, then the tutorial if anyone asked.
   if (lobby.phase === PHASES.VOTE || revealing) return <TvVote lobby={lobby} />;
   if (lobby.phase === PHASES.TUTORIAL) return <TvTutorial lobby={lobby} />;
+  if (lobby.phase === PHASES.COUNTDOWN) return <TvCountdown lobby={lobby} onTick={audio.onCountdown} fullscreen={fullscreen} onFullscreen={enterGameView} />;
 
   return (
     <main className="stub host-lobby" data-party={lobby.players.length > 4} data-empty={!lobby.players.length}>
@@ -190,7 +192,6 @@ export default function HostStub() {
         </section>
         <div className="host-lobby__players">
           <TvReady lobby={lobby} />
-          {lobby.phase === PHASES.COUNTDOWN ? <TvCountdown lobby={lobby} onTick={audio.onCountdown} /> : null}
         </div>
       </div>
 
@@ -202,7 +203,7 @@ export default function HostStub() {
 
       {lobby.recovery?.ownerRequired ? <p className="alert">Continuing a saved solo game. Sign in to the same profile on your phone, then join this room.</p> : null}
       <div className="stub__actions">
-        <button type="button" className="btn btn--ghost" onClick={async () => { if (await leave()) navigate('/home'); else setStartError('disconnected'); }}>
+        <button type="button" className="btn btn--ghost" onClick={async () => { if (await leave()) { leaveGameView(); navigate('/home'); } else setStartError('disconnected'); }}>
           Close lobby
         </button>
       </div>

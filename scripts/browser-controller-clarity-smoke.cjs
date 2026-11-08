@@ -72,6 +72,7 @@ async function primaryTarget(locator) {
       await phone.getByRole('button', {name: 'Scan TV code', exact: true}).waitFor();
       await phone.getByRole('button', {name: 'Play', exact: true}).click();
       await phone.getByRole('button', {name: 'Start game', exact: true}).click();
+    await phone.getByRole('button', {name:'Start now', exact:true}).click();
       await host.locator(`iframe[title="${sport} game"]`).waitFor({timeout: 20000});
       const controller = phone.frameLocator(`iframe[title="${sport} phone controller"]`);
       await controller.locator(id === 'bowling' ? '#roll' : id === 'tennis' ? '#forehand' : '#tt-touch-stroke').waitFor();

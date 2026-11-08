@@ -251,14 +251,17 @@ test('the host leaving during the ready check still closes the room', () => {
   assert.deepEqual(store.setReady('p1', { ready: true }), { ok: false, error: ERRORS.NOT_PLAYER });
 });
 
-// The countdown starts by itself ---------------------------------------------
+// The leader confirms the countdown ---------------------------------------------
 
-test('the last player to ready up starts the countdown on its own', () => {
+test('a full room waits for the leader to confirm its start', () => {
   const { store, code } = startReadyCheck();
   for (let i = 0; i < MAX_PLAYERS - 1; i += 1) store.setReady(`p${i}`, { ready: true });
   assert.equal(store.lobby(code).countdown, null);
-  assert.deepEqual(store.setReady(`p${MAX_PLAYERS - 1}`, { ready: true }),
-    { ok: true, code, countdownStarted: true, msLeft: COUNTDOWN_MS });
+  assert.deepEqual(store.setReady(`p${MAX_PLAYERS - 1}`, { ready: true }), {ok:true, code});
+  assert.equal(store.lobby(code).phase, PHASES.READY);
+  assert.equal(store.lobby(code).canStart, true);
+  assert.equal(store.startGame('p1').error, 'not-game-leader');
+  assert.deepEqual(store.startGame('p0'), { ok: true, code, countdownStarted: true, msLeft: COUNTDOWN_MS });
   const lobby = store.lobby(code);
   assert.equal(lobby.phase, PHASES.COUNTDOWN);
   assert.deepEqual(lobby.countdown, { msLeft: COUNTDOWN_MS });
@@ -288,8 +291,9 @@ test('un-readying during the countdown cancels it, and everyone else stays ready
   // The cancelled countdown's deadline passing later changes nothing.
   clock.t += COUNTDOWN_MS;
   assert.equal(store.finishCountdown(code), null);
-  // Readying up again restarts it straight away.
-  assert.equal(store.setReady('p2', { ready: true }).countdownStarted, true);
+  // Readiness alone never repeats a cancelled confirmation.
+  assert.equal(store.setReady('p2', { ready: true }).countdownStarted, undefined);
+  assert.equal(store.startGame('p0').countdownStarted, true);
 });
 
 test('a bowling countdown ends in the game, and not a moment early', () => {
@@ -624,7 +628,8 @@ test('joining during the ready check reopens readiness before the countdown', ()
   assert.equal(friend.phase, PHASES.READY);
   assert.equal(store.setReady('solo', { ready: true }).countdownStarted, undefined);
   store.setSetup('friend', { setup: 'buttons' });
-  assert.equal(store.setReady('friend', { ready: true }).countdownStarted, true);
+  assert.equal(store.setReady('friend', { ready: true }).countdownStarted, undefined);
+  assert.equal(store.startGame('solo').countdownStarted, true);
 });
 
 test('setup gates readiness, cancels a countdown, and pauses a running match until restored', () => {
@@ -636,13 +641,13 @@ test('setup gates readiness, cancels a countdown, and pauses a running match unt
   assert.equal(store.setSetup('tv', { setup: 'buttons' }).error, 'not-controller');
   assert.equal(store.setSetup('p0', { setup: 'fake' }).error, 'bad-setup');
   store.setSetup('p0', { setup: 'motion' }); store.setSetup('p1', { setup: 'buttons' });
-  store.setReady('p0', { ready: true }); store.setReady('p1', { ready: true });
+  store.setReady('p0', { ready: true }); store.setReady('p1', { ready: true }); store.startGame('p0');
   assert.equal(store.lobby(code).phase, PHASES.COUNTDOWN);
   store.setSetup('p1', { setup: null });
   assert.equal(store.lobby(code).phase, PHASES.READY);
   assert.equal(store.lobby(code).countdown, null);
   store.setSetup('p1', { setup: 'motion' });
-  store.setReady('p0', { ready: true }); store.setReady('p1', { ready: true });
+  store.setReady('p0', { ready: true }); store.setReady('p1', { ready: true }); store.startGame('p0');
   now += 5000; store.finishCountdown(code);
   now += VOTE_MS; store.expireVote(code);
   store.setSetup('p1', { setup: null });
