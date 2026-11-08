@@ -22,6 +22,7 @@ import { planCourtShot, type ShotIntent, type ShotPlan } from './shotTrajectory'
 import { chooseBotStroke, chooseBotPlacement, type BotStroke } from './botPlayer';
 import { predictBaselineIntercept, lateralSteering } from './autoPosition';
 import { sweptRacketContact, contactWindowCrossed } from './components/racketContact';
+import { strokeHeightOffset } from './components/forehandPose';
 import { ScoreSystem, type Score, type PointResult, type MatchFormat, type TennisScoreCheckpoint } from './scoreSystem';
 import { TENNIS_COURT, serviceSign, pointReasonLabel } from './tennisRules';
 
@@ -692,6 +693,8 @@ export class GameLogic {
                 if (!contactWindowCrossed(before, after, backhand)) continue;
                 previousPose.multiplyMatrices(previous.players[number - 1], poses[frame - 1]);
                 nextPose.multiplyMatrices(current.players[number - 1], poses[frame]);
+                previousPose.elements[13] += strokeHeightOffset(before, player.swingHeightOffset);
+                nextPose.elements[13] += strokeHeightOffset(after, player.swingHeightOffset);
                 if (sweptRacketContact(hitbox.bounds, previousPose, nextPose, previous.ball, current.ball, BALL_RADIUS)) {
                     return {position: current.ball.clone(), progress: after, age: this.simulationTime - current.time};
                 }
@@ -848,6 +851,16 @@ export class GameLogic {
         }, player.group.position.z + offset.z);
     }
 
+    private prepareStrokeHeight(player: PlayerController, animation: string, backhand: boolean, number: 1 | 2): void {
+        player.swingHeightOffset = 0;
+        if (!this.settings.timingAssist || !this.autoPositionEnabled) return;
+        const offset = this.strikeOffset(player, animation, backhand);
+        const intercept = this.strokeIntercept(player, animation, number, backhand);
+        if (offset && intercept) {
+            player.swingHeightOffset = THREE.MathUtils.clamp(intercept.y - player.group.position.y - offset.y, -.7, .7);
+        }
+    }
+
     private updatePendingSwings(delta: number): void {
         const data = this.ball.userData as BallUserData;
         for (const [player, number] of [[this.player1, 1], [this.player2, 2]] as const) {
@@ -875,6 +888,7 @@ export class GameLogic {
             // Movement can still be settling when the strike-plane timer fires.
             // Start when the authored path has a reachable contact, not merely
             // because one nominal animation progress has arrived.
+            this.prepareStrokeHeight(player, animation, pending.backhand, number);
             const start = this.assistedStartTime(player, animation, pending.backhand, number);
             if (start === null) { pending.retryIn = .025; continue; }
             this.pendingSwings[number - 1] = null;
@@ -937,7 +951,9 @@ export class GameLogic {
             transform.copy(player.group.matrixWorld);
             transform.elements[12] += playerX[step] - player.group.position.x;
             transform.elements[14] += playerZ[step] - player.group.position.z;
-            return target.compose(position, rotation, scale).premultiply(transform);
+            target.compose(position, rotation, scale).premultiply(transform);
+            target.elements[13] += strokeHeightOffset(progress, player.swingHeightOffset);
+            return target;
         };
         // Favor the earliest robust contact in the remaining animation. A
         // later, wider window should not add another wind-up after the phone's
@@ -982,8 +998,10 @@ export class GameLogic {
             return;
         }
         player.swingBackhand = isBackhand;
+        player.swingHeightOffset = 0;
         this.swingPowers[number - 1] = power;
         player.playAnimation(animation);
+        if (assistTiming) this.prepareStrokeHeight(player, animation, isBackhand, number);
         const trace = this.strokes[number - 1];
         if (trace && trace.preparedAt === undefined) trace.preparedAt = performance.now();
         this.updateAutoTargets();

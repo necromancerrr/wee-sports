@@ -236,6 +236,35 @@ function swingNearArrival(state: Awaited<ReturnType<typeof court>>, number: 1 | 
     throw new Error(`The live ball did not approach Player ${number}`);
 }
 
+for (const number of [1, 2] as const) {
+    test(`P${number} can return short, normal and deep angled rallies with either stroke and hand`, async () => {
+        for (const aim of [-1, 0, 1]) for (const depth of [-1, 0, 1]) {
+            for (const hand of ['Right', 'Left'] as const) for (const label of ['Forehand', 'Backhand'] as const) {
+                const state = await court();
+                const opponent = number === 1 ? 2 : 1;
+                // Begin with a legal held serve from the receiving player's side,
+                // then generate the varied incoming shot through the public API.
+                (state.ball.userData as BallUserData).servingPlayer = number === 1 ? 'player1' : 'player2';
+                state.game.swing({label: 'Forehand', hand: 'Right', player: number});
+                swingNearArrival(state, opponent, 'Right', 'Forehand', .3, 120, {id: 'opponent', aim, depth});
+                for (let step = 0; step < 70; step++) state.game.update(1 / 120);
+                expect(state.strokes.find(stroke => stroke.id === 'opponent')?.result).toBe('hit');
+                swingNearArrival(state, number, hand, label, .08, 120, {id: 'return'});
+                const player = number === 1 ? state.player1 : state.player2;
+                const feet = player.group.position.clone();
+                expect(Math.abs(player.swingHeightOffset)).toBeLessThanOrEqual(.7);
+                state.game.update(1 / 120);
+                expect(player.group.position.distanceTo(feet)).toBeLessThanOrEqual(player.movementSpeed / 120 + 1e-8);
+                for (let step = 0; step < 100; step++) state.game.update(1 / 120);
+                expect(state.strokes.filter(stroke => stroke.id === 'return'),
+                    `P${number} ${hand} ${label}, aim=${aim}, depth=${depth}`).toEqual([
+                    expect.objectContaining({result: 'hit'}),
+                ]);
+            }
+        }
+    }, 15000);
+}
+
 for (const number of [1, 2] as const) for (const hand of ['Right', 'Left'] as const) {
     for (const label of ['Forehand', 'Backhand'] as const) {
         test(`P${number} ${hand} ${label} contacts at 80–450 ms early but misses a 550 ms early swing`, async () => {

@@ -270,6 +270,9 @@ See [input, first-shot placement and fullscreen](docs/direct-input-and-first-sho
 for the behavior and browser restrictions. The latest
 [tennis response validation](docs/tennis-response-validation.md) records late-hit,
 polling transport and cross-browser fullscreen fixes with their test evidence.
+The [forehand/backhand repair](docs/tennis-stroke-repair.md) adds compact-stroke
+recognition, sensor-timing tolerance and bounded racket-height assistance for
+deep returns, with recorded-motion and real-model regression evidence.
 
 For an already built deployment, `npm start` serves the existing assets without
 building again. Follow the [Railway runbook](docs/railway.md) for origins,

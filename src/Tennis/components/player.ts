@@ -1,6 +1,6 @@
 // components/player.ts
 import * as THREE from 'three';
-import { forehandDrop, worldOffsetToLocal, DEFAULT_FOREHAND_DROP } from './forehandPose';
+import { forehandDrop, strokeHeightOffset, worldOffsetToLocal, DEFAULT_FOREHAND_DROP } from './forehandPose';
 import { RacketHitbox, contactWindowCrossed } from './racketContact';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -17,6 +17,7 @@ export interface PlayerController {
     contactActive: boolean;
     hitConsumed: boolean;
     swingBackhand: boolean;
+    swingHeightOffset: number;
     strikeOffsets: Record<string, THREE.Vector3>;
     swingPoses: Record<string, THREE.Matrix4[]>;
     movementSpeed: number;
@@ -86,6 +87,7 @@ export function createPlayer(
         contactActive: false,
         hitConsumed: false,
         swingBackhand: false,
+        swingHeightOffset: 0,
         strikeOffsets: {},
         swingPoses: {},
         movementSpeed: speed,
@@ -153,6 +155,7 @@ export function createPlayer(
             this.isSwinging = false;
             this.isPreparing = false;
             this.contactActive = false;
+            this.swingHeightOffset = 0;
         },
 
         update(delta: number): void {
@@ -166,7 +169,8 @@ export function createPlayer(
             if (this.isSwinging && action && duration > 0 && handBone?.parent) {
                 const drop = forehandDrop(action.time / duration, this.swingBackhand, forehandDropAmount);
                 handBone.parent.updateWorldMatrix(true, false);
-                appliedHandOffset.copy(worldOffsetToLocal(handBone.parent.matrixWorld, new THREE.Vector3(0, -drop, 0)));
+                const height = strokeHeightOffset(action.time / duration, this.swingHeightOffset);
+                appliedHandOffset.copy(worldOffsetToLocal(handBone.parent.matrixWorld, new THREE.Vector3(0, height - drop, 0)));
                 handBone.position.add(appliedHandOffset);
             }
         },

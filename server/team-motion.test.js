@@ -24,6 +24,51 @@ function replay(samples, hand, options = {}) {
   return { events, stream };
 }
 const actions = events => events.filter(event => event.label !== 'Unknown');
+
+// Scale real recordings, retaining their timing and direction. These represent
+// smaller strokes, not new device recordings. Direction must not depend on a
+// single axis reaching the original hard-swing amplitude.
+for (const [name, hand, expected] of cases) {
+  test(`compact recorded strokes retain their labels without extra recovery shots: ${name}`, () => {
+    const data = JSON.parse(readFileSync(new URL(`./fixtures/team-motion/${name}.json`, import.meta.url)));
+    for (const gain of [.5, .65, .8]) {
+      const samples = (data.samples ?? data).map(sample => ({...sample,
+        rotationAlpha: sample.rotationAlpha * gain,
+        rotationBeta: sample.rotationBeta * gain,
+        rotationGamma: sample.rotationGamma * gain}));
+      const actual = actions(replay(samples, hand, {fast: true}).events);
+      assert.deepEqual(actual.map(event => event.label), expected, `gain=${gain}`);
+    }
+  });
+}
+
+// Browser replay exposed a missed backhand when corroborating samples arrived
+// 15.4 ms apart. The same direction evidence must survive normal event jitter.
+for (const [name, hand, expected] of cases) {
+  test(`recorded stroke directions tolerate two milliseconds of delivery jitter: ${name}`, () => {
+    const data = JSON.parse(readFileSync(new URL(`./fixtures/team-motion/${name}.json`, import.meta.url)));
+    for (const gain of [.5, .65, .8, 1]) for (const phase of [-1, 1]) {
+      const samples = (data.samples ?? data).map((sample, index) => ({...sample,
+        timeMs: sample.timeMs + (index % 2 ? 2 : -2) * phase,
+        rotationAlpha: sample.rotationAlpha * gain,
+        rotationBeta: sample.rotationBeta * gain,
+        rotationGamma: sample.rotationGamma * gain}));
+      const actual = actions(replay(samples, hand, {fast: true}).events);
+      assert.deepEqual(actual.map(event => event.label), expected, `gain=${gain}, phase=${phase}`);
+    }
+  });
+}
+
+test('compact right-hand backhands keep the live approach reading before the trigger threshold', () => {
+  const data = JSON.parse(readFileSync(new URL('./fixtures/team-motion/four-backhands.json', import.meta.url)));
+  const samples = (data.samples ?? data).map(sample => ({...sample,
+    rotationAlpha: sample.rotationAlpha * .35,
+    rotationBeta: sample.rotationBeta * .35,
+    rotationGamma: sample.rotationGamma * .35}));
+  const actual = actions(replay(samples, 'Right', {fast: true}).events);
+  assert.deepEqual(actual.map(event => event.label), Array(4).fill('Backhand'));
+  assert.ok(actual.every(event => event.fast && event.endMs - event.peakTimeMs <= 67));
+});
 // Detection lag after peak in the original base-game fast mode (ed0b85e).
 // These are offline recording measurements, not network/render latency.
 const previousFastLag = {

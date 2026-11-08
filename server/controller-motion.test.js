@@ -892,8 +892,8 @@ test('phone stays awake from calibrated lobby into play and haptics only accept 
   expect(request).toHaveBeenCalledTimes(4);
 });
 
-for (const [name, hand, expected] of teamRecordings) {
-  test(`team's recorded sensor swings reach gameplay after calibration: ${name}`, async () => {
+for (const [name, hand, expected] of teamRecordings) for (const gain of [1, .5, .65, .8]) {
+  test(`team's recorded sensor swings reach gameplay after calibration: ${name}, strength ${gain}`, async () => {
     const recording = JSON.parse(readFileSync(new URL(`./fixtures/team-motion/${name}.json`, import.meta.url), 'utf8'));
     await import('../src/controller/main.js');
     elements.get('hand').value = hand;
@@ -903,8 +903,8 @@ for (const [name, hand, expected] of teamRecordings) {
     for (const sample of recording.samples ?? recording) {
       // Fixtures are bias-corrected. Add the measured zero offset back before
       // delivering DeviceMotion events, to exercise actual controller correction.
-      tick(sample.timeMs - previous, { alpha: sample.rotationAlpha + .1,
-        beta: sample.rotationBeta - .1, gamma: sample.rotationGamma + .2 });
+      tick(sample.timeMs - previous, { alpha: sample.rotationAlpha * gain + .1,
+        beta: sample.rotationBeta * gain - .1, gamma: sample.rotationGamma * gain + .2 });
       previous = sample.timeMs;
     }
     expect(relay.sendSwing.mock.calls).toEqual(expected.map(label => [label, hand, expect.any(Number), placement()]));

@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const {readFileSync} = require('node:fs');
+const {resolve} = require('node:path');
 
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function sensor() {
@@ -13,6 +15,34 @@ async function fixture() {
   const session = { seat: { sport: 'table-tennis' }, latest() {}, playing: () => true };
   return { sensors, controller: new MotionController({ session, sensors }) };
 }
+
+test('native tennis keeps compact recorded forehands and backhands for both hands', async () => {
+  const {MotionController} = await import('../src/motionCore.js');
+  for (const [name, hand, expected] of [
+    ['two-forehands-one-backhand', 'Right', ['Forehand','Forehand','Backhand']],
+    ['four-backhands', 'Right', Array(4).fill('Backhand')],
+    ['left-mixed', 'Left', ['Forehand','Backhand','Forehand','Backhand']],
+    ['left-four-backhands-new', 'Left', Array(4).fill('Backhand')],
+    ['left-four-forehands', 'Left', Array(4).fill('Forehand')],
+  ]) {
+    const data = JSON.parse(readFileSync(resolve(__dirname, '../../../server/fixtures/team-motion', name + '.json')));
+    let now = 1000;
+    const strokes = [];
+    const session = {seat:{sport:'tennis'},inputSetup:'motion',playing:()=>true};
+    const controller = new MotionController({session,hand,sensors:{Gyroscope:sensor(),DeviceMotion:sensor()},now:()=>now,onSwing:stroke=>strokes.push(stroke)});
+    try {
+      await controller.calibrate();
+      for (now = 1000; now < 2000; now += 16) controller.sample({x:0,y:0,z:0});
+      for (const sample of data.samples ?? data) {
+        now = 2000 + sample.timeMs;
+        controller.sample({x:sample.rotationAlpha * .5 * Math.PI / 180,
+          y:sample.rotationBeta * .5 * Math.PI / 180,z:sample.rotationGamma * .5 * Math.PI / 180});
+      }
+      assert.deepEqual(strokes.map(stroke=>stroke.label), expected, name);
+      assert.ok(strokes.every(stroke=>stroke.hand === hand));
+    } finally {controller.stop();}
+  }
+});
 
 test('background while permission is pending cannot restart native sensors', async () => {
   const { sensors, controller } = await fixture();
