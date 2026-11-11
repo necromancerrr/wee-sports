@@ -4,7 +4,8 @@
 npm run check         # TypeScript and semantic lint across first-party code
 npm run compile       # TypeScript check only
 npm test              # Vitest: simulation, controller and service tests
-npm --prefix server test  # Node: room state and real Socket.IO transport tests
+npm run test:server   # Node: remaining platform, recovery and operational tests
+npm run test:node     # Vitest: upstream's room/socket subset (also in npm test)
 npm run test:watch    # watch mode
 npm run test:physics  # physics and bot tests
 npm run lint          # JavaScript/JSX/TypeScript correctness checks
@@ -13,6 +14,13 @@ node scripts/replay-motion.mjs  # recorded detector + canonical-unit compatibili
 
 Root `npm ci` installs the local `@wee/shared` npm workspace used by the
 standalone server suite; separate server/client installs are unnecessary.
+
+Vitest discovers `test/**/*.test.ts` and `server/tests/*.test.js`. The server
+test folder follows upstream's layout, including its migrated room/socket
+suites. Additional Node tests remain in `server/src` and `server/scripts` and
+run through `test:server`; CI runs both commands. See the
+[upstream integration notes](../docs/upstream-compatibility.md) for the merge
+decisions and deferred controller changes.
 
 The replay runner checks five original recordings with 19 expected strokes in
 each detector mode, records fixture/source hashes, and verifies that canonical

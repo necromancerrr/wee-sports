@@ -10,7 +10,7 @@ const NO_PLAYERS = [];
 /** Authenticated bridge between the lobby and an isolated WebGL game/controller.
  * Owns input delivery, lifecycle gating, checkpoint recovery, and feedback.
  */
-export function GameFrame({ code, controller = false, controllerIntent = null, onControllerMode, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle }) {
+export function GameFrame({ code, controller = false, controllerIntent = null, onControllerMode, player = 1, players = NO_PLAYERS, sport = 'tennis', gameId, gameState, generation = 0, hostEpoch = 1, matchRound = 0, playing = true, paused = false, manuallyPaused = false, showPause = paused, pauseMessage, onAudio, onPauseToggle, onSwing }) {
   const frame = useRef(null);
   const diagnosticScope = `bridge.${controller ? 'phone' : 'tv'}.${sport}`;
   const diagnosticRef = useRef(null);
@@ -321,6 +321,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
           seen.add(identity); if (seen.size > 256) seen.delete(seen.values().next().value);
           diagnostics.mark(event.id, 'tvReceived'); diagnostics.count('swingsReceived');
           post({ type: 'wee:game-swing', event });
+          onSwing?.(event);
         } else diagnostics.count('duplicateSwingDropped');
       }
       if (typeof ack === 'function') ack({ ok });
@@ -399,7 +400,7 @@ export function GameFrame({ code, controller = false, controllerIntent = null, o
       socket.off(EVENTS.GAME_HIT, hit);
       socket.off(EVENTS.GAME_STROKE_RESULT, strokeResult);
     };
-  }, [paused, manuallyPaused, connection, src, controller, controllerIntent, onControllerMode, attempt, players, playing, sport, gameId, gameState, generation, hostEpoch, matchRound, profilePreferences, player, onAudio, onPauseToggle]);
+  }, [paused, manuallyPaused, connection, src, controller, controllerIntent, onControllerMode, attempt, players, playing, sport, gameId, gameState, generation, hostEpoch, matchRound, profilePreferences, player, onAudio, onPauseToggle, onSwing]);
   return (
     <div className={`game-frame ${controller ? 'game-frame--phone' : ''}`}>
       {loading ? <p role="status">{failed ? 'Taking too long to load.' : `Loading ${controller ? 'controller' : sport}…`}

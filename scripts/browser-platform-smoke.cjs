@@ -181,8 +181,19 @@ async function waitForRoll(controller, host) {
         assert.equal(await host.getByTestId('lobby-code').innerText(), code);
         await host.getByText('Player', { exact: true }).waitFor();
         pass('Existing Tennis remains available in the same room');
+        await phone.getByRole('button', {name: 'Start game', exact: true}).click();
+        await phone.getByRole('button', {name: 'Start now', exact: true}).click();
+        await host.getByRole('button', {name: 'Toggle swing diagnostics', exact: true}).click();
+        const tennisController = phone.frameLocator('iframe[title="Tennis phone controller"]');
+        await tennisController.getByRole('button', {name: 'Forehand', exact: true}).click();
+        await host.locator('.tv-swing-debug').filter({hasText: 'P1 Forehand'}).waitFor();
+        await host.locator('.tv-swing-debug').waitFor({state: 'hidden'});
+        pass('Tennis input reaches TV diagnostics and the label expires without a page error');
+        await returnToLobby(host);
         await host.getByRole('button', { name: 'Close lobby', exact: true }).click();
-        await phone.getByRole('button', { name: 'Play', exact: true }).waitFor();
+        await phone.waitForURL(base + '/home');
+        await phone.getByRole('heading', {name: 'Choose a sport', exact: true}).waitFor();
+        assert.equal(await phone.locator('iframe').count(), 0);
         pass('Room closure reaches the controller');
         await host.goto(base + '/profile');
         await host.getByRole('button', { name: 'Create a profile', exact: true }).click();
@@ -271,7 +282,7 @@ async function waitForRoll(controller, host) {
         await host.getByRole('button', { name: 'Close lobby', exact: true }).click();
         assert.deepEqual(failures, []);
         pass('No uncaught page errors');
-        const report = { recordedAt: new Date().toISOString(), base, runtime: process.version, browser: browser.version(), rendering: 'headless Chromium with software rendering', checks, errors: failures, limitations: ['Touch controls and local HTTP only; no physical motion, sensor permission, haptics or latency evidence.', 'No complete ten-frame bowling game or complete scored table-tennis bot game.', 'Continue UI verified after closing a live room; process restart is covered separately by server/profileRecovery.test.js.'] };
+        const report = { recordedAt: new Date().toISOString(), base, runtime: process.version, browser: browser.version(), rendering: 'headless Chromium with software rendering', checks, errors: failures, limitations: ['Touch controls and local HTTP only; no physical motion, sensor permission, haptics or latency evidence.', 'No complete ten-frame bowling game or complete scored table-tennis bot game.', 'Continue UI verified after closing a live room; process restart is covered separately by server/tests/profileRecovery.test.js.'] };
         if (process.env.WEE_SMOKE_REPORT)
             writeFileSync(process.env.WEE_SMOKE_REPORT, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
         console.log(JSON.stringify(report));

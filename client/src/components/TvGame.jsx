@@ -3,7 +3,7 @@
  * changing view or reconnecting. The tutorial vote and the tutorial, if anyone
  * asked for it, both land here.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sportName } from '../lib/sports.js';
 import { GameFrame } from './GameFrame.jsx';
 import { shouldTogglePause } from '../../../src/network/pauseShortcut.js';
@@ -11,6 +11,19 @@ import { shouldTogglePause } from '../../../src/network/pauseShortcut.js';
 export function TvGame({ lobby, paused, onClose, error, immersive = true, fullscreen = false, fullscreenAvailable = true, onToggleView, onAudio, audioControls,
   onReturnToLobby, returning = false, returnDisabled = false, onPauseToggle, pauseDisabled = false }) {
   const [confirmReturn, setConfirmReturn] = useState(false);
+  const [debugOn, setDebugOn] = useState(false);
+  const [swingLabel, setSwingLabel] = useState(null);
+  const swingTimer = useRef(null);
+  const handleSwing = useCallback(event => {
+    clearTimeout(swingTimer.current);
+    setSwingLabel(`P${event.player} ${event.label}`);
+    swingTimer.current = setTimeout(() => setSwingLabel(null), 1500);
+  }, []);
+  useEffect(() => () => clearTimeout(swingTimer.current), []);
+  useEffect(() => {
+    clearTimeout(swingTimer.current);
+    setSwingLabel(null);
+  }, [lobby.gameId, paused]);
   useEffect(() => {
     const keydown = event => {
       if (pauseDisabled || !onPauseToggle || !shouldTogglePause(event)) return;
@@ -61,9 +74,13 @@ export function TvGame({ lobby, paused, onClose, error, immersive = true, fullsc
       {error ? <p className="game-session__error" role="alert">{error}</p> : null}
       <GameFrame code={lobby.code} players={lobby.players} paused={paused} sport={lobby.sport} gameId={lobby.gameId} gameState={lobby.gameState} generation={lobby.inputGeneration} hostEpoch={lobby.hostEpoch} matchRound={lobby.matchRound}
         onAudio={onAudio} manuallyPaused={lobby.manuallyPaused} onPauseToggle={pauseDisabled ? undefined : onPauseToggle}
+        onSwing={handleSwing}
         pauseMessage={lobby.reconnecting?.length ? `Waiting for ${lobby.reconnecting.map(member => member.name).join(', ')} to reconnect.`
           : lobby.setupPending?.length ? `Waiting for ${lobby.setupPending.join(', ')} to finish controller setup.`
             : lobby.manuallyPaused ? 'Game paused · resume on Player 1’s phone or press P on the TV.' : undefined} />
+      {/* later should be an easier way to register things inside the debug view*/}
+      <button type="button" className="tv-debug-toggle" onClick={() => setDebugOn(v => !v)} aria-pressed={debugOn} title="Toggle swing diagnostics" aria-label="Toggle swing diagnostics">D</button>
+      {debugOn && swingLabel ? <div className="tv-swing-debug" aria-hidden="true">{swingLabel}</div> : null}
     </main>
   );
 }
