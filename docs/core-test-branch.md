@@ -142,3 +142,21 @@ sensors; actual-device feel is still an acceptance check.
 [Controller ownership and state transitions](controller-design.md) is the
 concrete design contract. The Bowling and shared-motion notes now describe the
 actual filters, player capacity and checkpoint behavior instead of older settings.
+
+### Independently checked proposal repairs
+
+These local candidates preserve the original published proposal commits and form
+the same dependency chain. No proposal PR or main-branch merge was created.
+
+| Candidate branch | Commit | Main tests | Server tests | Native tests |
+| --- | --- | ---: | ---: | ---: |
+| `repair/pr-1-platform-phone-controller` | `fc97950` | 759 | 31 | — |
+| `repair/pr-2-gameplay-and-scoring` | `76d1f38` | 825 | 51 | — |
+| `repair/pr-4-expo-controller` | `aa6a20b` | 825 | 53 | 68 |
+| `repair/pr-5-profiles-and-production` | `d02bf16` | 872 | 74 | 72 |
+
+Every row also passed compile, lint, recorded-motion replay and production build.
+Final PR5 has the same application and test files as the combined repair candidate;
+only this test-branch document is omitted. Native profile code remains in PR5.
+The candidates can advance the corresponding published branches without rewriting
+their existing history after the combined candidate passes physical-phone testing.
