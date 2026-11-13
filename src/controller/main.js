@@ -250,8 +250,11 @@ function renderPlayState() {
         state = 'waiting'; title = 'Watch the lane'; help = 'Your ball is rolling. Let the pins settle.';
       } else if (turnReady()) {
         status = 'Your turn';
-        title = buttonMode ? 'Choose your line' : bowlingGate.phase === 'finished' ? 'Watch the lane' : 'Swing forward to bowl';
-        help = buttonMode ? 'Aim, then tap Roll.' : bowlingGate.phase === 'finished' ? 'Waiting for the next ball.' : 'Screen up. Tilt to aim, then swing gently forward.';
+        title = buttonMode ? 'Choose your line' : bowlingGate.phase === 'finished' ? 'Watch the lane'
+          : bowlingGate.phase === 'rest' ? 'Hold still for a moment' : 'Swing forward to bowl';
+        help = buttonMode ? 'Aim, then tap Roll.' : bowlingGate.phase === 'finished' ? 'Waiting for the next ball.'
+          : bowlingGate.phase === 'rest' ? 'Screen up. Keep your hand steady until the swing prompt appears.'
+            : 'Screen up. Tilt to aim, then swing gently forward.';
       } else {
         state = 'waiting'; title = currentPlayer ? `P${currentPlayer} is bowling` : 'Waiting for the lane';
         help = 'Watch the TV. Your turn will appear here.';
@@ -522,7 +525,13 @@ window.addEventListener('message', event => {
   if (data?.type === 'wee:bowling-state' && bowling) {
     // Readiness also changes on pause/reconnect. Only an actual lane/player
     // transition can grant a new delivery while an earlier outcome is unknown.
-    if (data.phase === 'ready' && (bowlingPhase !== 'ready' || currentPlayer !== data.currentPlayer)) bowlingTurn++;
+    if (data.phase === 'ready' && (bowlingPhase !== 'ready' || currentPlayer !== data.currentPlayer)) {
+      bowlingTurn++;
+      // A new authoritative turn resolves the previous delivery even if its
+      // reply was lost. Replaying the same ready state after pause/reconnect
+      // does not create a turn, and cannot unlock an uncertain release.
+      if (pendingRoll && pendingRoll.turnKey !== bowlingTurn) pendingRoll = null;
+    }
     canRoll = data.canRoll === true;
     currentPlayer = data.currentPlayer;
     bowlingPhase = data.phase;
@@ -644,6 +653,7 @@ function motion(event) {
   if (bowling) {
     // Capture the last positioning line before the first forward-pitch sample
     // can move its gravity vector. Delivery recognition owns the aim lock.
+    const previousPhase = bowlingGate.phase;
     const result = bowlingGate.push(sample, {active: turnReady(), turnKey: bowlingTurn, aim: Number(element('aim').value)});
     if (bowlingGate.lockedAim === null && turnReady()) {
       const degrees = Math.PI / 180;
@@ -666,6 +676,7 @@ function motion(event) {
       showBowlingReadout(bowlingReadout);
     }
     if (result) roll(Math.min(1, result.power * motionSensitivity), result.spin);
+    else if (previousPhase !== bowlingGate.phase) renderPlayState();
   } else {
     const radians = Math.PI / 180;
     tennisAim.push({...canonical, angularVelocity:{x:sample.rotationAlpha * radians,y:sample.rotationBeta * radians,z:sample.rotationGamma * radians}});

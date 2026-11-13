@@ -612,11 +612,12 @@ test('bowling presents the other player, natural swing, delivery and completion 
   expect(elements.get('play-title').textContent).toBe('P2 is bowling');
   expect(elements.get('bowling-controls').hidden).toBe(true);
   bowlingState({ currentPlayer: 1 });
-  expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
-  expect(elements.get('play-help').textContent).toBe('Screen up. Tilt to aim, then swing gently forward.');
+  expect(elements.get('play-title').textContent).toBe('Hold still for a moment');
   expect(elements.get('shot-adjustments').hidden).toBe(true);
   expect(elements.has('arm-roll')).toBe(false);
   for (let i = 0; i < 16; i++) tick();
+  expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
+  expect(elements.get('play-help').textContent).toBe('Screen up. Tilt to aim, then swing gently forward.');
   tick(20, {alpha: 400, beta: 0, gamma: 0});
   elements.get('toggle-settings').onclick();
   elements.get('toggle-settings').onclick();
@@ -959,6 +960,57 @@ test('natural motion sends one roll, never retries after ACK or timeout, and wai
   bowlingState('rolling'); bowlingState('ready'); rest(); bowl(); expect(rolls()).toHaveLength(2);
   tick(4500, null); rest(); bowl(); expect(rolls()).toHaveLength(2);
   expect(permission).not.toHaveBeenCalled();
+});
+
+test.each(['buttons', 'motion'])('the next authoritative bowling turn unlocks %s without the old ACK and ignores its late reply', async mode => {
+  location.search += '&sport=bowling';
+  await import('@wee/src/controller/main.js');
+  if (mode === 'buttons') elements.get('use-buttons').onclick();
+  else await calibrate();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'lost-ack', generation: 1});
+  const lane = (phase, canRoll = phase === 'ready') => emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', phase, currentPlayer: 1, canRoll}});
+  const bowl = () => {
+    if (mode === 'buttons') elements.get('roll').onclick();
+    else {
+      for (let i = 0; i < 16; i++) tick();
+      for (let i = 0; i < 35; i++) tick(20, {alpha: i < 15 ? 400 : 0, beta: 0, gamma: 0});
+    }
+  };
+  const rolls = () => messages.filter(message => message.type === 'wee:player-roll');
+  lane('ready'); bowl(); expect(rolls()).toHaveLength(1);
+  const firstId = rolls()[0].event.id;
+  // The old release is unresolved; pause/reconnect or another ready snapshot
+  // must not permit a duplicate throw in this same turn.
+  state({playing: true, paused: true, connected: false, gameId: 'lost-ack', generation: 2});
+  lane('ready', false);
+  state({playing: true, paused: false, gameId: 'lost-ack', generation: 3});
+  lane('ready'); bowl(); expect(rolls()).toHaveLength(1);
+  // No release ACK arrives, but the TV finishes that ball and starts the next.
+  lane('rolling'); lane('ready'); bowl(); expect(rolls()).toHaveLength(2);
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:roll-ack', result: {id: firstId, ok: false, error: 'network-busy'}}});
+  bowl(); expect(rolls()).toHaveLength(2);
+  lane('rolling'); lane('ready'); bowl(); expect(rolls()).toHaveLength(3);
+});
+
+test('bowling asks for a steady hand until motion is armed and updates the prompt on the ready sample', async () => {
+  location.search += '&sport=bowling';
+  await import('@wee/src/controller/main.js');
+  await calibrate();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'ready-cue', generation: 1});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', phase: 'ready', currentPlayer: 1, canRoll: true}});
+  expect(elements.get('play-title').textContent).toBe('Hold still for a moment');
+  // Do not advance UI timers: recognition itself must reveal the ready cue.
+  for (let i = 0; i < 16; i++) {
+    now += 20;
+    emit('devicemotion', {rotationRate: {alpha: .1, beta: -.1, gamma: .2}});
+  }
+  expect(elements.get('play-title').textContent).toBe('Swing forward to bowl');
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
+  for (let i = 0; i < 35; i++) tick(20, {alpha: i < 15 ? 400 : 0, beta: 0, gamma: 0});
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
 });
 
 test.each(['network-busy', 'paused', 'disconnected'])('a bowling %s rejection permits a fresh delivery without waiting for a nonexistent turn', async error => {

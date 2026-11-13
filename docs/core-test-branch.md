@@ -68,9 +68,10 @@ rendering still require an actual-device test.
 
 ## Verification of this branch
 
-Compile/lint and production build passed, along with 841 main tests, 74 server
+Compile/lint and production build passed, along with 844 main tests, 74 server
 tests and 69 native tests. Expo Android and iOS exports passed. The five recorded
-motion fixtures retained all 19 expected strokes in both detector modes.
+Tennis fixtures retained all 19 expected strokes in both detector modes; Bowling
+gesture tests use synthetic samples, not a physical-device motion recording.
 
 Browser checks passed for stable sport-card hover, keyboard activation, phone
 entry/joining, Bowling/Tennis gameplay, scoring progression, TV checkpoint
@@ -84,3 +85,17 @@ The local Bowling relay test delivered 16 of 16 releases exactly once across
 eight synthetic players: median 0.45 ms over WebSocket and 7.65 ms over polling
 (maxima 2.06 and 9.54 ms). These are same-machine relay round trips only, not
 measurements of a real phone, network or screen.
+
+## Bowling follow-up
+
+A browser-controller regression kept the phone waiting for a release reply even
+after the TV authoritatively announced the next ball. The next turn now retires
+that old pending release. Same-turn pause/reconnect snapshots and late replies
+still cannot unlock duplicate throws. A real-browser test drops the first roll
+acknowledgement and verifies that the second ball can still be played.
+
+The existing 250 ms steady-hand arming period is now visible as "Hold still for a
+moment", followed by the swing prompt. This repair does not change gesture
+thresholds, sensitivity or physics. PR 14 conflict resolution did not change
+Bowling's detector or physics; earlier controller work had already changed
+automatic arming and tilt/curve sensitivity compared with `update-homepage`.
