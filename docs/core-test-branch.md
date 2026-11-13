@@ -1,8 +1,7 @@
 # Four-proposal test branch
 
-`test/prs-1-2-4-5` is a local branch for testing the four functional proposals
-together before publishing PRs. Its push destination is the user's fork,
-`necromancerrr/wee-sports`. It has not been pushed.
+`test/prs-1-2-4-5` is a branch on `necromancerrr/wee-sports` for testing the four
+functional proposals together before publishing PRs.
 
 The base is `ab98186` (`pr/5-profiles-and-production`), which already contains:
 
