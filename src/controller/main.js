@@ -70,7 +70,9 @@ const controllerPreferences = createControllerPreferences(setupStorage ?? fallba
 let motionSensitivity = controllerPreferences.values.sensitivity;
 let automaticSetupPending = true;
 let motionAcquired = false;
-const automaticMotion = createAutomaticMotionSetup();
+// Brief foreground scheduling gaps retain setup, while recognizers discard
+// partial gestures and resume from fresh samples. Backgrounding resets below.
+const automaticMotion = createAutomaticMotionSetup({readyGapSeconds: 1.5});
 element('hand').value = savedSetup?.hand ?? controllerPreferences.values.hand;
 let strengthProfile = null;
 let rehearsal = null;
@@ -638,6 +640,17 @@ function motion(event) {
     bias = {alpha: setup.calibration.bias.x * degrees, beta: setup.calibration.bias.y * degrees, gamma: setup.calibration.bias.z * degrees};
     sample = toLegacyMotionSample(setup.sample, {timeOriginSeconds: (rehearsal ? rehearsalStarted : started) / 1000});
     if (setup.justReady) {
+      if (savedSetup) {
+        // Revalidate when fresh readings arrive: storage alone never readies
+        // motion, and waiting on permission must not extend a tuning's expiry.
+        const restored = calibrationMemory.read();
+        if (restored?.hand === element('hand').value) {
+          strengthProfile = restored.strength;
+          if (strengthProfile) element('strength-status').textContent = 'Your comfortable strength was restored for this playing hand.';
+        }
+        // Later reconnects must preserve an explicit retune/default choice.
+        savedSetup = null;
+      }
       motionAcquired = true;
       if (!userPaused) motionWanted = true;
       element('motion').textContent = 'Motion ready. Watch the TV.';
@@ -726,9 +739,13 @@ function showMotionError(error) {
   renderPlayState();
 }
 function rememberCalibration() {
-  if (bias && Number.isFinite(verifiedAt)) calibrationMemory.save({
-    hand: element('hand').value, bias, strength: strengthProfile, verifiedAt,
-  });
+  if (!bias) return;
+  const hand = element('hand').value;
+  // Automatic readiness can still be using a provisional zero. Updating
+  // strength must retain an already verified bias and its original expiry.
+  const verified = automaticSetupPending ? calibrationMemory.read()
+    : Number.isFinite(verifiedAt) ? {hand, bias, verifiedAt} : null;
+  if (verified?.hand === hand) calibrationMemory.save({...verified, strength: strengthProfile});
 }
 function beginCalibration(restore = false) {
   stop();

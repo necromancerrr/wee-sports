@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { createCalibrationMemory, CALIBRATION_STORAGE_KEY } from '@wee/src/controller/calibrationMemory.js';
+import { createCalibrationMemory, CALIBRATION_STORAGE_KEY, CALIBRATION_MAX_AGE_MS } from '@wee/src/controller/calibrationMemory.js';
+import { tennisPower } from '@wee/src/controller/tennisPower.js';
 
 const relay = vi.hoisted(() => ({ sendSwing: vi.fn(() => true), options: null }));
 vi.mock('@wee/src/theme.js', () => ({}));
@@ -124,6 +125,36 @@ test('a granted API without gyro samples falls back automatically, but an establ
   tick(3100, null);
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
   expect(elements.get('use-buttons').hidden).toBe(false);
+});
+
+test('bowling resumes fresh aim immediately after a brief foreground gap and discards the interrupted swing', async () => {
+  location.search += '&sport=bowling';
+  await import('@wee/src/controller/main.js');
+  await elements.get('enable').onclick();
+  const sensors = angle => ({acceleration: {x: 0, y: 0, z: 0}, accelerationIncludingGravity: {
+    x: -Math.sin(angle * Math.PI / 180) * 9.80665, y: 0, z: Math.cos(angle * Math.PI / 180) * 9.80665,
+  }});
+  for (let i = 0; i < 40; i++) tick(20, undefined, sensors(0));
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'foreground-gap'});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', canRoll: true, currentPlayer: 1, phase: 'ready'}});
+  for (let i = 0; i < 20; i++) tick(20, undefined, sensors(0));
+  messages.length = 0;
+  tick(280, null);
+  tick(20, undefined, sensors(20));
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.aim).toBeGreaterThan(.5);
+  expect(messages.filter(message => message.type === 'wee:controller-setup' && message.setup === null)).toHaveLength(0);
+
+  for (let i = 0; i < 20; i++) tick(20, undefined, sensors(20));
+  for (let i = 0; i < 8; i++) tick(20, {alpha: 500, beta: 0, gamma: 0}, sensors(20));
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.locked).toBe(true);
+  tick(280, null);
+  for (let i = 0; i < 20; i++) tick(20, undefined, sensors(0));
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.locked).toBe(false);
+  for (let i = 0; i < 12; i++) tick(20, {alpha: 500, beta: 0, gamma: 0}, sensors(0));
+  for (let i = 0; i < 6; i++) tick(20, undefined, sensors(0));
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(1);
 });
 
 test('a denied manual motion attempt returns directly to playable touch controls', async () => {
@@ -328,6 +359,67 @@ test('closing a tennis lobby and joining bowling reuses origin setup while the p
 const savedMotionSetup = (overrides = {}) => createCalibrationMemory(window.sessionStorage).save({
   hand: 'Left', bias: { alpha: .1, beta: -.1, gamma: .2 },
   strength: { hand: 'Left', Forehand: 1.2, Backhand: 1.1 }, ...overrides,
+});
+
+test.each(['saved', 'default', 'expired', 'changed-hand', 'explicit-reset'])('automatic startup applies %s strength to the actual outgoing tennis stroke', async choice => {
+  const strength = {hand: 'Right', Forehand: 1.5, Backhand: 1.25};
+  if (choice !== 'default') savedMotionSetup({hand: 'Right', bias: {alpha: 0, beta: 0, gamma: 0}, strength});
+  const saved = createCalibrationMemory(window.sessionStorage).read();
+  await import('@wee/src/controller/main.js');
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
+  if (choice === 'expired') vi.setSystemTime(Date.now() + CALIBRATION_MAX_AGE_MS + 1);
+  if (choice === 'changed-hand') {elements.get('hand').value = 'Left'; elements.get('hand').onchange();}
+  for (let i = 0; i < 40; i++) tick(20, {alpha: 0, beta: 0, gamma: 0});
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  if (choice === 'saved') {
+    expect(createCalibrationMemory(window.sessionStorage).read().verifiedAt).toBe(saved.verifiedAt);
+    expect(elements.get('tune-strength').textContent).toBe('Retune power');
+  }
+  if (choice === 'explicit-reset') {
+    await elements.get('calibrate').onclick();
+    for (let i = 0; i < 110; i++) tick(20, {alpha: 0, beta: 0, gamma: 0});
+  }
+  state({playing: true, paused: false, sport: 'tennis', gameId: 'saved-power'});
+  for (let i = 0; i < 15; i++) tick(20, {alpha: 300, beta: choice === 'changed-hand' ? -600 : 600, gamma: 0});
+  for (let i = 0; i < 25; i++) tick(20, {alpha: 0, beta: 0, gamma: 0});
+  expect(relay.sendSwing).toHaveBeenCalledTimes(1);
+  const [label, hand, power] = relay.sendSwing.mock.calls[0];
+  expect(hand).toBe(choice === 'changed-hand' ? 'Left' : 'Right');
+  const expected = tennisPower(Math.hypot(300, 600), choice === 'saved' ? strength : null, label);
+  expect(power).toBeCloseTo(expected, 8);
+  if (choice === 'saved') expect(power).toBeGreaterThan(tennisPower(Math.hypot(300, 600), null, label) + .2);
+});
+
+test('an explicit default-strength choice survives automatic sensor recovery', async () => {
+  savedMotionSetup({hand: 'Right', bias: {alpha: 0, beta: 0, gamma: 0}, strength: {hand: 'Right', Forehand: 1.5, Backhand: 1.25}});
+  await import('@wee/src/controller/main.js');
+  for (let i = 0; i < 40; i++) tick(20, {alpha: 0, beta: 0, gamma: 0});
+  elements.get('skip-strength').onclick();
+  tick(1600, null);
+  for (let i = 0; i < 40; i++) tick(20, {alpha: 0, beta: 0, gamma: 0});
+  state({playing: true, paused: false, sport: 'tennis', gameId: 'default-power'});
+  for (let i = 0; i < 15; i++) tick(20, {alpha: 300, beta: 600, gamma: 0});
+  for (let i = 0; i < 25; i++) tick(20, {alpha: 0, beta: 0, gamma: 0});
+  expect(relay.sendSwing).toHaveBeenCalledTimes(1);
+  const [label, , power] = relay.sendSwing.mock.calls[0];
+  expect(power).toBeCloseTo(tennisPower(Math.hypot(300, 600), null, label), 8);
+  expect(createCalibrationMemory(window.sessionStorage).read().strength).toBeNull();
+});
+
+test('changing restored strength never saves a provisional automatic bias as verified', async () => {
+  const verifiedBias = {alpha: 1, beta: 2, gamma: 3};
+  savedMotionSetup({hand: 'Right', bias: verifiedBias, strength: {hand: 'Right', Forehand: 1.5, Backhand: 1.25}});
+  const saved = createCalibrationMemory(window.sessionStorage).read();
+  await import('@wee/src/controller/main.js');
+  // Fresh moving readings establish automatic readiness without a new
+  // stationary bias fit. Its provisional zero must never replace saved bias.
+  for (let i = 0; i < 20; i++) tick(20, {alpha: i % 2 ? 100 : -100, beta: 80, gamma: -40});
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  elements.get('skip-strength').onclick();
+  const updated = createCalibrationMemory(window.sessionStorage).read();
+  expect(updated.strength).toBeNull();
+  expect(updated.bias).toEqual(verifiedBias);
+  expect(updated.verifiedAt).toBe(saved.verifiedAt);
 });
 
 test('cached setup never substitutes for permission or live sensors and a Resume tap can restore it', async () => {
@@ -774,6 +866,8 @@ test('bowling live aim streams only on the active turn, announces aim lock, and 
   expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event).toMatchObject({aim: .35, locked: false});
   for (let i = 0; i < 16; i++) tick();
   tick(20, {alpha: 400, beta: 0, gamma: 0});
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.locked).toBe(false);
+  tick(20, {alpha: 400, beta: 0, gamma: 0}); tick(20, {alpha: 400, beta: 0, gamma: 0});
   expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event).toMatchObject({aim: .35, locked: true});
   elements.get('aim').value = '-.8'; // Even a stray UI mutation cannot steer an armed delivery.
   for (let index = 0; index <= 60; index++) {
@@ -832,6 +926,34 @@ test('web bowling follows fast side tilts on every jittered sensor frame while t
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
 });
 
+test('browser mixed-axis positioning keeps aiming live until a coherent forward delivery', async () => {
+  location.search += '&sport=bowling';
+  await import('@wee/src/controller/main.js');
+  await calibrate();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'intent-bowl'});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', canRoll: true, currentPlayer: 1, phase: 'ready'}});
+  const gravity = angle => ({acceleration: {x: 0, y: 0, z: 0}, accelerationIncludingGravity: {
+    x: -Math.sin(angle * Math.PI / 180) * 9.80665, y: 0, z: Math.cos(angle * Math.PI / 180) * 9.80665,
+  }});
+  for (let i = 0; i < 20; i++) tick(20, undefined, gravity(0));
+  messages.length = 0;
+  for (let i = 0; i < 20; i++) tick(20, {alpha: 160.1, beta: 179.9, gamma: .2}, gravity(i / 2));
+  tick(20, {alpha: 700.1, beta: -.1, gamma: .2}, gravity(10));
+  for (let i = 0; i < 10; i++) tick(20, undefined, gravity(12));
+  const aims = messages.filter(message => message.type === 'wee:player-aim');
+  expect(aims.length).toBeGreaterThan(10);
+  expect(aims.every(message => !message.event.locked)).toBe(true);
+  expect(aims.at(-1).event.aim).toBeGreaterThan(.25);
+  expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
+  const intendedAim = Number(elements.get('aim').value);
+  for (let i = 0; i < 35; i++) tick(20, {alpha: (i < 15 ? 400 : 0) + .1, beta: i < 15 ? 69.9 : -.1, gamma: .2}, gravity(-20));
+  const rolls = messages.filter(message => message.type === 'wee:player-roll');
+  expect(rolls).toHaveLength(1);
+  expect(rolls[0].event.aim).toBe(intendedAim);
+  expect(rolls[0].event.spin).toBeGreaterThan(0);
+});
+
 test('browser range steps cannot quantize motion preview or its locked delivery', async () => {
   location.search += '&sport=bowling';
   await import('@wee/src/controller/main.js');
@@ -864,6 +986,8 @@ test('browser range steps cannot quantize motion preview or its locked delivery'
   const preciseAim = aims.at(-1);
   expect(Math.abs(preciseAim - Number(slider.value))).toBeGreaterThan(.001);
   tick(20, {alpha: 500.1, beta: -.1, gamma: .2});
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.locked).toBe(false);
+  tick(20, {alpha: 500.1, beta: -.1, gamma: .2}); tick(20, {alpha: 500.1, beta: -.1, gamma: .2});
   expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event)
     .toMatchObject({aim: preciseAim, locked: true});
   slider.value = '-.8'; // Display changes after locking cannot steer the ball.
@@ -998,6 +1122,8 @@ test('granted parent intent is idempotent and only fresh real readings report mo
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
   expect(window.sessionStorage.getItem(CALIBRATION_STORAGE_KEY)).toBeNull();
   tick(300, null);
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');
+  tick(1250, null);
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBeNull();
   for (let i = 0; i < 10; i++) tick();
   expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1)?.setup).toBe('motion');

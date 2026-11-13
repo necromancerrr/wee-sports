@@ -3,6 +3,10 @@
 `test/prs-1-2-4-5` is a branch on `necromancerrr/wee-sports` for testing the four
 functional proposals together before publishing PRs.
 
+`fix/browser-motion-regressions` is the repair candidate derived from that test
+branch. The original proposal refs are preserved; `repair/pr-*` branches carry
+the corresponding fixes in stack order for separate validation before PRs.
+
 The base is `ab98186` (`pr/5-profiles-and-production`), which already contains:
 
 | Proposal | Included scope | Head included |
@@ -68,8 +72,9 @@ rendering still require an actual-device test.
 
 ## Verification of this branch
 
-Compile/lint and production build passed, along with 846 main tests, 74 server
-tests and 69 native tests. Expo Android and iOS exports passed. The five recorded
+Compile/lint and production build passed for the repair candidate, along with
+872 main tests, 74 server tests and 72 native tests. Expo Android and iOS exports
+passed. The five recorded
 Tennis fixtures retained all 19 expected strokes in both detector modes; Bowling
 gesture tests use synthetic samples, not a physical-device motion recording.
 
@@ -114,3 +119,26 @@ that tilting away after locking cannot alter the released ball's direction.
 This is a correction to aiming precision, not proof that every reported TV
 stutter is resolved. Automated graphics checks cannot establish the frame rate
 of a physical TV or motion-to-screen latency over the phone's network.
+
+## Automatic-motion repair candidate
+
+The review reproduced two more problems: a diagonal positioning movement could
+lock and release an automatic Bowling throw, and a 280 ms foreground sensor gap
+caused another approximately 180 ms of frozen aim after fresh readings returned.
+
+Automatic swings remain automatic. A candidate now requires three supporting
+samples, 40 ms and 8 degrees of forward-dominant movement before locking the
+pre-candidate aim. The final release checks, power/curve formulas and TV physics
+are preserved. Browser setup survives brief foreground gaps, while interrupted
+gesture evidence is discarded. Saved Tennis strength is also restored after
+fresh sensor readiness without saving provisional bias as verified calibration.
+
+The real-browser regression rejects the reproduced diagonal/twitch motion,
+keeps intermediate aim precision, and accepts one genuine roll with the exact
+locked direction. A separate browser probe preserves readiness through a 320 ms
+sensor interruption and resumes fresh aim without a throw. These use synthetic
+sensors; actual-device feel is still an acceptance check.
+
+[Controller ownership and state transitions](controller-design.md) is the
+concrete design contract. The Bowling and shared-motion notes now describe the
+actual filters, player capacity and checkpoint behavior instead of older settings.

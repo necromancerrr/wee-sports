@@ -23,12 +23,12 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5205';
       const Sensor = class {static requestPermission() {return Promise.resolve('granted');}};
       Object.defineProperty(window, 'DeviceMotionEvent', {configurable: true, value: Sensor});
       Object.defineProperty(window, 'DeviceOrientationEvent', {configurable: true, value: Sensor});
-      window.__bowlingPose = {angle: 0, pitch: 0};
+      window.__bowlingPose = {angle: 0, pitch: 0, twist: 0};
       setInterval(() => {
-        const {angle, pitch} = window.__bowlingPose;
+        const {angle, pitch, twist} = window.__bowlingPose;
         const radians = angle * Math.PI / 180;
         const event = new Event('devicemotion');
-        Object.assign(event, {rotationRate: {alpha: pitch, beta: 0, gamma: 0}, interval: 16,
+        Object.assign(event, {rotationRate: {alpha: pitch, beta: twist, gamma: 0}, interval: 16,
           acceleration: {x: 0, y: 0, z: 0},
           accelerationIncludingGravity: {x: -Math.sin(radians) * 9.80665, y: 0, z: Math.cos(radians) * 9.80665}});
         window.dispatchEvent(event);
@@ -62,6 +62,25 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5205';
     });
     assert.deepEqual(range, {step: .05, low: 0, high: .05});
     await phone.evaluate(() => {window.__bowlingMessages = [];});
+    // A diagonal aiming adjustment used to lock the guide and bowl by itself.
+    await controller.evaluate(() => {window.__bowlingPose = {angle: 12, pitch: 160, twist: 180};});
+    await phone.waitForTimeout(320);
+    await controller.evaluate(() => {window.__bowlingPose = {angle: 12, pitch: 0, twist: 0};});
+    await phone.waitForTimeout(120);
+    await controller.evaluate(async () => {
+      window.__bowlingPose.pitch = 700;
+      await new Promise(resolve => setTimeout(resolve, 24));
+      window.__bowlingPose.pitch = 0;
+    });
+    await phone.waitForTimeout(160);
+    const positioning = await phone.evaluate(() => window.__bowlingMessages);
+    const positioningAims = positioning.filter(message => message.type === 'wee:player-aim');
+    assert.ok(positioningAims.length > 3, 'Positioning must keep the live aim stream active');
+    assert.ok(positioningAims.every(message => !message.event.locked), 'Aiming and a short twitch must not lock the line');
+    assert.equal(positioning.filter(message => message.type === 'wee:player-roll').length, 0, 'Positioning must not bowl');
+    await controller.evaluate(() => {window.__bowlingPose.angle = 0;});
+    await phone.waitForTimeout(240);
+    await phone.evaluate(() => {window.__bowlingMessages = [];});
     await game.evaluate(() => {window.__bowlingMessages = [];});
     for (const angle of [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]) {
       await controller.evaluate(value => {window.__bowlingPose.angle = value;}, angle);
@@ -90,6 +109,7 @@ const base = process.env.WEE_SMOKE_URL || 'http://127.0.0.1:5205';
     assert.ok(Math.abs(locked - settled) < .001);
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({result: 'PASS', sensorSource: 'synthetic DeviceMotion at 16ms', range,
+      unlockedPositioningPackets: positioningAims.length, accidentalRolls: 0,
       previewPackets: preview.length, betweenStepPackets: fine.length, settledAim: settled,
       sliderAim: Number(slider), lockedAim: locked, rollAim: rolls[0].aim, browserErrors: errors}, null, 2));
   } finally {await browser.close();}
