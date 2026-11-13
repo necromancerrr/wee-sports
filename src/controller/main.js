@@ -173,8 +173,11 @@ function publishSetup() {
   }
 }
 function turnReady() { return bowling && gameActive && connected && !lobbyPaused && canRoll && currentPlayer === player && !pendingRoll; }
+// The touch slider has deliberately coarse steps. Keep motion at sensor
+// precision so its preview and locked delivery never inherit those steps.
+function currentAim() { return buttonMode ? Number(element('aim').value) : liveAim; }
 function publishAim() {
-  aimStream.publish(lockedAim ?? Number(element('aim').value), lockedAim !== null, performance.now(),
+  aimStream.publish(lockedAim ?? currentAim(), lockedAim !== null, performance.now(),
     turnReady() && pageActive && !document.hidden && !settingsOpen && (buttonMode || Boolean(bias)));
 }
 function cancelArmedRoll() { bowlingGate.suspend(); bowlingDetector = null; lockedAim = null; }
@@ -362,7 +365,7 @@ element('forehand').onclick = () => send('Forehand');
 element('backhand').onclick = () => send('Backhand');
 function roll(power, measuredSpin = null) {
   if (!turnReady() || document.hidden) return;
-  const aim = lockedAim ?? Number(element('aim').value);
+  const aim = lockedAim ?? currentAim();
   cancelArmedRoll();
   const event = { type: 'roll', id: createInputId(), power,
     aim, spin: measuredSpin ?? Number(element('spin').value) };
@@ -381,13 +384,16 @@ function showBowlingReadout(readout) {
   element('motion-curve').textContent = Math.abs(readout.spin) < .005 ? 'Straight'
     : `${readout.spin < 0 ? 'Left' : 'Right'} ${Math.round(Math.abs(readout.spin) / .55 * 100)}%`;
 }
+function showDeliveryValue(id, value) {
+  element(`${id}-value`).textContent = id === 'power' ? `${Math.round(value * 100)}%`
+    : value === 0 ? id === 'aim' ? 'Center' : 'Straight'
+    : `${value < 0 ? 'Left' : 'Right'} ${Math.round(Math.abs(value) * 100)}%`;
+}
 for (const id of ['aim', 'spin', 'power']) {
   element(id).oninput = () => {
     const value = Number(element(id).value);
-    element(`${id}-value`).textContent = id === 'power' ? `${Math.round(value * 100)}%`
-      : value === 0 ? id === 'aim' ? 'Center' : 'Straight'
-      : `${value < 0 ? 'Left' : 'Right'} ${Math.round(Math.abs(value) * 100)}%`;
-    if (id === 'aim') publishAim();
+    showDeliveryValue(id, value);
+    if (id === 'aim') { liveAim = value; publishAim(); }
   };
 }
 function analyze() {
@@ -654,7 +660,7 @@ function motion(event) {
     // Capture the last positioning line before the first forward-pitch sample
     // can move its gravity vector. Delivery recognition owns the aim lock.
     const previousPhase = bowlingGate.phase;
-    const result = bowlingGate.push(sample, {active: turnReady(), turnKey: bowlingTurn, aim: Number(element('aim').value)});
+    const result = bowlingGate.push(sample, {active: turnReady(), turnKey: bowlingTurn, aim: currentAim()});
     if (bowlingGate.lockedAim === null && turnReady()) {
       const degrees = Math.PI / 180;
       const tilt = aimMotion.push({...reading.sample, angularVelocity: {
@@ -662,8 +668,9 @@ function motion(event) {
       }}, {sensitivity: motionSensitivity});
       if (tilt !== null) {
         liveAim = tilt;
-        element('aim').value = String(Math.round(liveAim * 100) / 100);
-        element('aim').oninput();
+        element('aim').value = String(liveAim);
+        showDeliveryValue('aim', liveAim);
+        publishAim();
       }
     }
     bowlingDetector = bowlingGate.phase === 'forward' ? bowlingGate : null;

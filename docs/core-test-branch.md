@@ -68,7 +68,7 @@ rendering still require an actual-device test.
 
 ## Verification of this branch
 
-Compile/lint and production build passed, along with 844 main tests, 74 server
+Compile/lint and production build passed, along with 846 main tests, 74 server
 tests and 69 native tests. Expo Android and iOS exports passed. The five recorded
 Tennis fixtures retained all 19 expected strokes in both detector modes; Bowling
 gesture tests use synthetic samples, not a physical-device motion recording.
@@ -99,3 +99,18 @@ moment", followed by the swing prompt. This repair does not change gesture
 thresholds, sensitivity or physics. PR 14 conflict resolution did not change
 Bowling's detector or physics; earlier controller work had already changed
 automatic arming and tilt/curve sensitivity compared with `update-homepage`.
+
+The browser motion aim also passed through the touch slider's `0.05` step before
+being sent to the TV. Real Chromium reproduced values such as `0.02` becoming
+`0` and `0.03` becoming `0.05`, making a smooth tilt appear stepped. Motion now
+keeps its precise aim independently of the slider; the TV preview, swing lock
+and released ball use that same value. Touch controls retain their existing
+steps. This removes input quantization without adding smoothing delay or changing
+the physics, sensor thresholds or post-release steering restrictions.
+`scripts/browser-bowling-aim-smoke.cjs` verifies this through the real browser
+controller and authenticated room using synthetic motion. It also confirms
+that tilting away after locking cannot alter the released ball's direction.
+
+This is a correction to aiming precision, not proof that every reported TV
+stutter is resolved. Automated graphics checks cannot establish the frame rate
+of a physical TV or motion-to-screen latency over the phone's network.

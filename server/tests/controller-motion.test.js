@@ -832,6 +832,71 @@ test('web bowling follows fast side tilts on every jittered sensor frame while t
   expect(messages.filter(message => message.type === 'wee:player-roll')).toHaveLength(0);
 });
 
+test('browser range steps cannot quantize motion preview or its locked delivery', async () => {
+  location.search += '&sport=bowling';
+  await import('@wee/src/controller/main.js');
+  await calibrate();
+  const slider = elements.get('aim');
+  // Real range inputs sanitize programmatic values as well as pointer input.
+  // Read the actual touch step instead of giving this DOM stub free precision.
+  const markup = readFileSync(new URL('../../controller.html', import.meta.url), 'utf8');
+  const step = Number(markup.match(/<input id="aim"[^>]*step="([^"]+)"/)[1]);
+  let sliderValue = slider.value;
+  Object.defineProperty(slider, 'value', {
+    get: () => sliderValue,
+    set: value => { sliderValue = String(Number((Math.round(Number(value) / step) * step).toFixed(8))); },
+  });
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'precise-bowl'});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', canRoll: true, currentPlayer: 1, phase: 'ready'}});
+  const tilt = degrees => ({acceleration: {x: 0, y: 0, z: 0}, accelerationIncludingGravity: {
+    x: -Math.sin(degrees * Math.PI / 180) * 9.80665, y: 0, z: Math.cos(degrees * Math.PI / 180) * 9.80665,
+  }});
+  for (let i = 0; i < 20; i++) tick(20, undefined, tilt(0));
+  messages.length = 0;
+  for (const angle of [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]) tick(20, undefined, tilt(angle));
+  const aims = messages.filter(message => message.type === 'wee:player-aim').map(message => message.event.aim);
+  expect(aims).toHaveLength(8);
+  for (let i = 1; i < aims.length; i++) {
+    expect(aims[i]).toBeGreaterThan(aims[i - 1]);
+    expect(aims[i] - aims[i - 1]).toBeLessThan(step);
+  }
+  const preciseAim = aims.at(-1);
+  expect(Math.abs(preciseAim - Number(slider.value))).toBeGreaterThan(.001);
+  tick(20, {alpha: 500.1, beta: -.1, gamma: .2});
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event)
+    .toMatchObject({aim: preciseAim, locked: true});
+  slider.value = '-.8'; // Display changes after locking cannot steer the ball.
+  for (let i = 0; i < 40; i++) tick(20, {alpha: (i < 15 ? 500 : 0) + .1, beta: -.1, gamma: .2});
+  const rolls = messages.filter(message => message.type === 'wee:player-roll');
+  expect(rolls).toHaveLength(1);
+  expect(rolls[0].event.aim).toBe(preciseAim);
+});
+
+test('switching between precise motion and touch keeps the active control authoritative', async () => {
+  location.search += '&sport=bowling';
+  await import('@wee/src/controller/main.js');
+  await calibrate();
+  state({playing: true, paused: false, sport: 'bowling', gameId: 'touch-bowl'});
+  emit('message', {source: parent, origin: location.origin,
+    data: {type: 'wee:bowling-state', canRoll: true, currentPlayer: 1, phase: 'ready'}});
+  for (let i = 0; i < 20; i++) tick(20, undefined, {accelerationIncludingGravity: {x: -3, y: 0, z: 9.3}});
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.aim).toBeGreaterThan(.3);
+  elements.get('use-buttons').onclick();
+  elements.get('aim').value = '-.3'; elements.get('aim').oninput();
+  tick(30, null);
+  expect(messages.filter(message => message.type === 'wee:player-aim').at(-1).event)
+    .toMatchObject({aim: -.3, locked: false});
+  await elements.get('enable').onclick();
+  for (let i = 0; i < 30; i++) tick(20, undefined, {accelerationIncludingGravity: {x: 0, y: 0, z: 9.80665}});
+  expect(messages.filter(message => message.type === 'wee:controller-setup').at(-1).setup).toBe('motion');
+  expect(Math.abs(messages.filter(message => message.type === 'wee:player-aim').at(-1).event.aim)).toBeLessThan(.01);
+  elements.get('use-buttons').onclick();
+  elements.get('aim').value = '-.35'; elements.get('aim').oninput();
+  elements.get('roll').onclick();
+  expect(messages.filter(message => message.type === 'wee:player-roll').at(-1).event.aim).toBe(-.35);
+});
+
 const teamRecordings = [
   ['two-forehands-one-backhand', 'Right', ['Forehand', 'Forehand', 'Backhand']],
   ['four-backhands', 'Right', Array(4).fill('Backhand')],
